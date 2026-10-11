@@ -44,3 +44,67 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Intégration API (Testcontainers) | À faire |
 | E2E Playwright | À faire |
 | Sécurité (SAST, DAST, dépendances, images) | À faire |
+
+---
+
+## Backlog d'idées (priorisé) — toutes `À faire`
+Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
+
+### Intelligence et automatisation (100 % local, aucune donnée envoyée à un tiers)
+| Idée | Prio | Notes / ajustements |
+|---|---|---|
+| Import de relevés bancaires CSV/OFX (PDF en repli OCR) + rapprochement avec opérations déjà saisies | P1 | Parser par format, aperçu avant validation, empreinte (hash) par opération pour l'idempotence ; PDF plus tard car moins fiable |
+| Catégorisation automatique (règles + apprentissage des corrections) | P1 | Règles par libellé/montant d'abord, puis classifieur léger local (naïve Bayes/TF-IDF) ; chaque correction crée ou ajuste une règle |
+| Détection des doublons | P1 | Fait partie du rapprochement d'import (même date ± 2 j, montant, libellé proche) |
+| Détection des abonnements et récurrences oubliées + alerte hausse de prix | P1 | Détecter les montants périodiques dans l'historique → proposer de créer une `RecurringRule` ; alerte si variation > seuil configurable |
+| Détection d'anomalies (dépense inhabituelle, prime absente de la fiche de paie, prélèvement en double) | P2 | Comparer à la médiane par catégorie ; comparer fiche de paie courante à la précédente |
+
+### Prévision et pilotage
+| Idée | Prio | Notes / ajustements |
+|---|---|---|
+| Reste à vivre prévisionnel à 30/60/90 jours | P1 | Réutilise `occurrences()` et `resteAVivre()` de `finance-core` ; ajouter une fonction `projectBalance()` pure + alerte si solde projeté < 0 |
+| Enveloppes et budgets par catégorie, alerte à 80 % du plafond | P1 | Alerte à 80 % et 100 %, report optionnel du reliquat au mois suivant |
+| Provisions lissées des dépenses annuelles (impôts, assurances, vacances, rentrée) | P2 | Mensualité = montant annuel / 12 déduite du reste à vivre ; lien avec les enveloppes |
+| Simulateur « et si ? » (crédit, changement de salaire, dépense ponctuelle) | P2 | Scénarios non persistés dans les vraies données, comparés au prévisionnel ; s'appuie sur `projectBalance()` |
+
+### Spécifique à un foyer de 5
+| Idée | Prio | Notes / ajustements |
+|---|---|---|
+| Multi-membres avec rôles, comptes individuels/joints, vues par personne | P1 | Étend le modèle `User`/RLS : rôles OWNER / ADULTE / ENFANT (lecture seule) ; propriété d'un compte = individuel ou joint |
+| Argent de poche et objectifs des enfants (mode lecture seule) | P2 | Sous-compte virtuel par enfant, versement récurrent, vue simplifiée sans autres données du foyer |
+| Suivi du coût par enfant (cantine, activités, santé) | P3 | Étiquette « bénéficiaire » sur les opérations plutôt qu'un modèle séparé |
+
+### Objectifs et patrimoine
+| Idée | Prio | Notes / ajustements |
+|---|---|---|
+| Objectifs d'épargne avec progression et versement mensuel conseillé | P2 | Versement conseillé = reste / mois restants, plafonné par le reste à vivre |
+| Suivi du patrimoine net avec courbe d'évolution | P2 | Snapshot mensuel : comptes + épargne − crédits |
+| Suivi des crédits : tableau d'amortissement, simulation de remboursement anticipé | P2 | Fonctions pures dans `finance-core` (mensualité, capital restant dû, économie d'intérêts) |
+
+### Documents et rappels
+| Idée | Prio | Notes / ajustements |
+|---|---|---|
+| Rappel hebdomadaire interactif : push → assistant « bilan de la semaine » en 2 minutes | P1 | Remplace le rappel simple : opérations à valider, écarts vs budget, reste à vivre ; état « bilan fait » enregistré |
+| Coffre-fort de justificatifs (factures, contrats, garanties) avec rappels d'échéance (fin de garantie, résiliation d'assurance) | P2 | Réutilise le stockage chiffré des documents ; date d'échéance + alerte J-60/J-30 (loi Hamon / résiliation infra-annuelle) |
+| OCR des tickets et factures (pas seulement fiches de paie) | P3 | Même pipeline worker local (Tesseract), validation humaine obligatoire |
+
+### Sécurité et confiance
+| Idée | Prio | Notes / ajustements |
+|---|---|---|
+| Passkeys WebAuthn (verrouillage biométrique) en plus ou à la place du TOTP | P1 | Intégré à l'auth dès le jalon 2 plutôt qu'en ajout tardif |
+| Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
+| Mode confidentialité (masquer les montants d'un geste) | P1 | Purement front, quasi gratuit, stocké par appareil |
+| Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
+| Journal d'audit des accès et modifications (consultable par le propriétaire) | P1 | Déjà prévu en base ; ajouter une page de consultation |
+
+### IA locale
+| Idée | Prio | Notes / ajustements |
+|---|---|---|
+| Extraction fiches de paie et catégorisation en local (Tesseract + règles ; petit modèle auto-hébergé en option) | P1 | Conteneur worker sans accès réseau sortant ; modèle LLM local seulement si les règles sont insuffisantes |
+
+## Sélection MVP évolutif (P1 prioritaires)
+1. Import de relevés + catégorisation auto + doublons
+2. Reste à vivre prévisionnel
+3. Détection des abonnements et récurrences
+4. Bilan hebdomadaire interactif
+Puis sécurité de base (passkeys, mode confidentialité, export/suppression, audit).
