@@ -1,0 +1,31 @@
+# Services d'infrastructure pour le développement (api/web/worker ajoutés aux jalons suivants).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gest
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_DB: gest_finance
+    secrets: [pg_password]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gest -d gest_finance"]
+      interval: 10s
+      retries: 5
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+secrets:
+  pg_password:
+    file: ../../secrets/pg_password.txt
+volumes:
+  pgdata:
+networks:
+  internal:
+    internal: true
