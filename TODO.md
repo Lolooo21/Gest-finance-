@@ -102,6 +102,12 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 |---|---|---|
 | Extraction fiches de paie et catégorisation en local (Tesseract + règles ; petit modèle auto-hébergé en option) | P1 | Conteneur worker sans accès réseau sortant ; modèle LLM local seulement si les règles sont insuffisantes |
 
+### Simulateurs bancaires (ajout)
+| Idée | Prio | Notes / faisabilité des données |
+|---|---|---|
+| Simulateur de crédit conso / immo : mensualité, coût total, TAEG, assurance, tableau d'amortissement, capacité d'emprunt (taux d'endettement ~35 %), impact sur le reste à vivre | P2 | **Calcul faisable à 100 % hors ligne** (formules d'annuité, fonctions pures dans `finance-core`, partagées avec le suivi des crédits). Taux indicatifs : taux d'usure et taux moyens publiés par la Banque de France (source publique, à vérifier), ajustables à la main. Taux réels par banque non disponibles librement : l'utilisateur saisit l'offre reçue |
+| Comparateur de frais bancaires (banques en ligne et physiques) : coût annuel estimé selon l'usage du foyer (carte, retraits, virements, découvert, tenue de compte) | P3 | **Données moins faciles** : pas d'API ouverte unique ; les banques publient leurs tarifs en PDF (extrait standard des tarifs, format normalisé) et un comparateur public existe côté pouvoirs publics (à vérifier avant d'envisager un import). Approche : jeu de données **versionné et maintenu à la main** (`data/bank-fees.json`, date de mise à jour et source par banque, avertissement « indicatif »), puis calcul du coût annuel à partir de l'usage réel déduit des opérations importées. Pas de scraping |
+
 ## Sélection MVP évolutif (P1 prioritaires)
 1. Import de relevés + catégorisation auto + doublons
 2. Reste à vivre prévisionnel
