@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { api, ApiError, type Account, type Rule, type Summary, type Tx } from "../api";
+import { api, ApiError, type Account, type Reminder, type Rule, type Summary, type Tx } from "../api";
 import { centsToInput, monthRange, parseEuros, todayIso } from "../money";
 import { Money, usePrivacy } from "../privacy";
+import { ReminderSettings, WeeklyReviewPanel } from "./Weekly";
 
 const FREQ = { WEEKLY: "chaque semaine", MONTHLY: "chaque mois", YEARLY: "chaque année" } as const;
 const card = "rounded-xl bg-white p-4 shadow";
@@ -18,6 +19,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("GET", "/recurring-rules") });
   // Le reste à vivre est recalculé côté serveur : on le relit après chaque modification.
   const summary = useQuery({ queryKey: ["summary", range.from], queryFn: () => api<Summary>("GET", `/summary?from=${range.from}&to=${range.to}`) });
+  const reminder = useQuery({ queryKey: ["reminder"], queryFn: () => api<Reminder>("GET", "/reminder"), refetchInterval: 5 * 60_000 });
   const refresh = () => qc.invalidateQueries();
 
   const [editing, setEditing] = useState<string | null>(null);
@@ -37,6 +39,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           <button onClick={onLogout} className="rounded-lg border border-slate-300 px-3 py-1">Déconnexion</button>
         </div>
       </header>
+
+      <WeeklyReviewPanel reminder={reminder.data} />
 
       <TwoFactor />
 
@@ -96,6 +100,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           {rules.data?.length === 0 && <li className="py-2 text-sm text-slate-500">Aucune récurrence (salaire, loyer…).</li>}
         </ul>
       </section>
+
+      <ReminderSettings reminder={reminder.data} />
 
       <section className={card}>
         <h2 className="mb-2 font-medium">Dernières opérations</h2>

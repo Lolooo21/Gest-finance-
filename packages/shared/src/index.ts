@@ -80,3 +80,32 @@ export const RecurringRulePatch = RecurringRuleDto.omit({ accountId: true, end: 
   .partial()
   .refine(atLeastOne, "aucune modification");
 export type RecurringRulePatch = z.infer<typeof RecurringRulePatch>;
+
+const validTimezone = (tz: string) => {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const ReminderDto = z.object({
+  enabled: z.boolean(),
+  weekday: z.number().int().min(1).max(7),
+  hour: z.number().int().min(0).max(23),
+  timezone: z.string().max(64).refine(validTimezone, "fuseau horaire invalide"),
+});
+export type ReminderDto = z.infer<typeof ReminderDto>;
+
+export const PushSubscriptionDto = z.object({
+  endpoint: z.string().url().max(1024),
+  keys: z.object({ p256dh: z.string().min(1).max(256), auth: z.string().min(1).max(128) }),
+});
+export type PushSubscriptionDto = z.infer<typeof PushSubscriptionDto>;
+
+export const PushUnsubscribeDto = z.object({ endpoint: z.string().url().max(1024) });
+export type PushUnsubscribeDto = z.infer<typeof PushUnsubscribeDto>;
+
+export const WeeklyReviewQuery = z.object({ to: isoDate.optional() });
+export type WeeklyReviewQuery = z.infer<typeof WeeklyReviewQuery>;

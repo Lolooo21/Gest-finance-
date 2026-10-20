@@ -38,6 +38,8 @@ model User {
   lockedUntil   DateTime?
   createdAt     DateTime @default(now())
   refreshTokens RefreshToken[]
+  reminder      ReminderSetting?
+  pushSubscriptions PushSubscription[]
 
   @@index([householdId])
 }
@@ -122,4 +124,30 @@ model RecurringRule {
   createdAt   DateTime @default(now())
 
   @@index([householdId])
+}
+
+model ReminderSetting {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled        Boolean  @default(false)
+  /// 1 = lundi … 7 = dimanche
+  weekday        Int      @default(7)
+  hour           Int      @default(18)
+  timezone       String   @default("Europe/Paris")
+  /// Activation / dernière modification : aucun rappel rétroactif avant cette date
+  since          DateTime @default(now())
+  lastDoneAt     DateTime?
+  lastReminderAt DateTime?
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

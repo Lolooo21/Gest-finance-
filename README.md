@@ -25,6 +25,8 @@ erDiagram
     Household ||--o{ RecurringRule : "possède"
     Household ||--o{ AuditLog : "journal"
     User ||--o{ RefreshToken : "sessions"
+    User ||--o| ReminderSetting : "rappel hebdo"
+    User ||--o{ PushSubscription : "appareils"
     BankAccount ||--o{ Transaction : "opérations"
     BankAccount ||--o{ RecurringRule : "récurrences"
 
@@ -51,6 +53,23 @@ erDiagram
         string tokenHash UK "SHA-256"
         datetime expiresAt
         datetime revokedAt
+    }
+    ReminderSetting {
+        uuid userId PK,FK
+        bool enabled
+        int weekday "1 lundi … 7 dimanche"
+        int hour
+        string timezone "IANA"
+        datetime since "pas de rappel rétroactif"
+        datetime lastDoneAt "dernier bilan fait"
+        datetime lastReminderAt "dernière notification"
+    }
+    PushSubscription {
+        uuid id PK
+        uuid userId FK
+        string endpoint UK "service push du navigateur"
+        string p256dh
+        string auth
     }
     AuditLog {
         uuid id PK
@@ -92,6 +111,8 @@ erDiagram
 - Un **compte bancaire** (`BankAccount`) porte un solde initial et un IBAN chiffré. Son **solde courant** n'est pas stocké : il est calculé = solde initial + opérations + occurrences de règles récurrentes déjà échues.
 - Une **opération** (`Transaction`) est ponctuelle, en centimes signés (entrée positive, sortie négative).
 - Une **règle récurrente** (`RecurringRule`) décrit un salaire, un loyer, un abonnement… (hebdomadaire, mensuel, annuel, avec fin optionnelle). Les occurrences ne sont pas stockées : `finance-core` les génère à la demande.
+- `ReminderSetting` (une ligne par utilisateur) décrit son rappel hebdomadaire : jour, heure, fuseau. Le **créneau** du rappel est le dernier instant où tombent ce jour et cette heure ; le bilan est « dû » si ce créneau est postérieur à l'activation (`since`) et au dernier bilan fait (`lastDoneAt`). `lastReminderAt` garantit une seule notification par créneau.
+- `PushSubscription` : un appareil abonné aux notifications. L'API n'envoie qu'aux services push connus des navigateurs (liste blanche anti-SSRF) ; la notification ne contient aucune donnée financière.
 - `RefreshToken` stocke uniquement l'empreinte SHA-256 du jeton de session, avec rotation et révocation. `AuditLog` garde les actions (connexion, ajout…), sans montants ni secrets.
 
 **Reste à vivre** = revenus (récurrents + ponctuels) − charges fixes récurrentes − dépenses ponctuelles, sur la période demandée (`GET /summary?from&to`), recalculé à chaque lecture donc après chaque ajout, modification ou suppression.
@@ -107,11 +128,13 @@ erDiagram
 | Opérations | Création, liste, modification, suppression ; le compte doit appartenir au foyer |
 | Récurrences | Création, liste, modification (dont fin), suppression ; hebdo, mensuel, annuel |
 | Reste à vivre | Calcul du mois en cours, recalculé après chaque changement |
+| Rappel hebdomadaire | Jour, heure et fuseau au choix ; bannière « c'est l'heure de faire les comptes » dans l'appli ; notification push (si clés VAPID configurées) vérifiée chaque minute par un planificateur interne, une seule fois par créneau, sans rappel rétroactif |
+| Bilan de la semaine | Écran en un coup d'œil : entrées et sorties des 7 derniers jours, récurrences échues, échéances des 7 jours à venir, reste à vivre du mois ; bouton « J'ai fait mes comptes » qui éteint le rappel ; ouvert directement depuis la notification |
 | Confidentialité | Bouton « Masquer les montants » (mémorisé sur l'appareil) |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
-| Tests | `finance-core` (100 %), API sur PostgreSQL réel (28 tests), front (19 tests) |
+| Tests | `finance-core` (13 tests, 100 %), API sur PostgreSQL réel (40 tests), front (22 tests) |
 
-À venir (voir `TODO.md`) : rappel hebdomadaire, import de relevés et catégorisation, lecture des fiches de paie, actualités financières, prévisionnel à 30/60/90 jours, passkeys, RLS PostgreSQL.
+À venir (voir `TODO.md`) : lecture des fiches de paie (jalon 6), actualités financières, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys, RLS PostgreSQL.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker.
@@ -123,3 +146,5 @@ cd apps/api && pnpm exec prisma migrate deploy && cd ../..
 pnpm dev                                                  # API :3000 + front http://localhost:5173
 pnpm test
 ```
+
+**Notifications push (optionnel).** Générez des clés VAPID (`cd apps/api && pnpm exec web-push generate-vapid-keys`) et renseignez-les dans `apps/api/.env` (voir `.env.example`). Le service worker n'est actif que dans la version construite : `pnpm --filter @gest-finance/web build` puis `pnpm --filter @gest-finance/web exec vite preview`. Sans clés, le rappel reste visible dans l'application.

@@ -135,3 +135,54 @@ describe("modification et 2FA", () => {
     expect(calls.find((c) => c.url === "/auth/2fa/enable")?.body).toEqual({ code: "123456" });
   });
 });
+
+describe("rappel hebdomadaire", () => {
+  const baseReminder = { enabled: true, weekday: 7, hour: 18, timezone: "Europe/Paris", lastDoneAt: null, due: true, pushConfigured: false, subscribed: false };
+  const review = {
+    from: "2026-10-02", to: "2026-10-08", incomeCents: 1_000, expensesCents: 82_500,
+    transactions: [{ id: "t1", date: "2026-10-03", label: "Courses", account: "Courant", amountCents: -2_500 }],
+    recurringInPeriod: [{ date: "2026-10-05", label: "Loyer", account: "Courant", amountCents: -80_000 }],
+    upcoming: [{ date: "2026-10-12", label: "Assurance", account: "Courant", amountCents: -5_000 }],
+    month: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 165_500 },
+  };
+  const weeklyApi = (state: { reminder: typeof baseReminder }): Handler => (m, u) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    if (u === "/reminder" && m === "GET") return { json: state.reminder };
+    if (u === "/reminder" && m === "PUT") return { json: state.reminder };
+    if (u === "/reminder/done") { state.reminder = { ...state.reminder, due: false }; return { json: state.reminder }; }
+    if (u === "/review/weekly") return { json: review };
+    return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("affiche la bannière quand le bilan est dû, ouvre le bilan et le valide", async () => {
+    const calls = mockApi(weeklyApi({ reminder: { ...baseReminder } }));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Faire le bilan" }));
+    const panel = await screen.findByLabelText("Bilan de la semaine");
+    await waitFor(() => expect(within(panel).getByText("Courses")).toBeInTheDocument());
+    expect(within(panel).getByText("Loyer")).toBeInTheDocument();
+    expect(within(panel).getByText("Assurance")).toBeInTheDocument();
+    expect(within(panel).getByTestId("review-remaining").textContent?.replace(/\s/g, " ")).toContain("1 655,00");
+
+    await user.click(within(panel).getByRole("button", { name: /J'ai fait mes comptes/ }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/reminder/done" && c.method === "POST")).toBe(true));
+    await waitFor(() => expect(screen.queryByLabelText("Bilan de la semaine")).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Faire le bilan" })).not.toBeInTheDocument();
+  });
+
+  it("enregistre les réglages du rappel avec le fuseau de l'appareil", async () => {
+    const calls = mockApi(weeklyApi({ reminder: { ...baseReminder, due: false, enabled: false } }));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText(/Me rappeler/));
+    await user.selectOptions(screen.getByLabelText("Jour du rappel"), "1");
+    await user.selectOptions(screen.getByLabelText("Heure du rappel"), "9");
+    const form = screen.getByLabelText("Jour du rappel").closest("form")!;
+    await user.click(within(form).getByRole("button", { name: "Enregistrer le rappel" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ enabled: true, weekday: 1, hour: 9, timezone: expect.any(String) });
+    expect(await screen.findByText(/Notifications push non configurées/)).toBeInTheDocument();
+  });
+});

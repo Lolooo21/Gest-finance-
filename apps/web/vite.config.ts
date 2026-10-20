@@ -24,7 +24,7 @@ export default defineConfig({
         icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }],
       },
       // Les appels à l'API ne sont jamais mis en cache : données financières sensibles.
-      workbox: { navigateFallbackDenylist: apiRoutes.map((r) => new RegExp(`^${r}`)) },
+      workbox: { importScripts: ["push-sw.js"], navigateFallbackDenylist: apiRoutes.map((r) => new RegExp(`^${r}`)) },
     }),
   ],
   server: { proxy: Object.fromEntries(apiRoutes.map((r) => [r, API])) },

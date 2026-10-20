@@ -28,3 +28,12 @@ describe("centsToInput", () => {
     expect(parseEuros(centsToInput(-4550))).toBe(4550);
   });
 });
+
+import { urlBase64ToUint8Array } from "./push";
+
+describe("urlBase64ToUint8Array", () => {
+  it("décode une clé VAPID en base64 url", () => {
+    expect(Array.from(urlBase64ToUint8Array("AQID"))).toEqual([1, 2, 3]);
+    expect(Array.from(urlBase64ToUint8Array("-_8"))).toEqual([251, 255]);
+  });
+});

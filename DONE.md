@@ -91,3 +91,26 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 
 ### Documentation
 - `README.md` : schéma de la base (Mermaid), explication des entités, tableau des fonctionnalités ; règle de mise à jour à chaque itération ajoutée à `CLAUDE.md`.
+
+## Jalon 5 — Rappel hebdomadaire et bilan de la semaine
+### `packages/finance-core/src/reminder.ts`
+- `latestSlot(now, {weekday, hour, timezone})` : dernier créneau (≤ maintenant) où tombent ce jour de semaine et cette heure dans le fuseau, en gérant le changement d'heure été/hiver.
+- `dueSlot(now, cfg, since, lastDoneAt)` : renvoie le créneau si le bilan est dû (créneau postérieur à l'activation et au dernier bilan fait), sinon `null`.
+- Tests : 8 (heure d'hiver et d'été, jour même avant/après l'heure, passage à l'heure d'été, autre fuseau, règles de `since` et `lastDoneAt`).
+
+### API
+- `reminder/reminder.service.ts` — `view()` (réglages + `due` + abonnement), `update()` (repart de maintenant : pas de rappel rétroactif), `markDone()`, `runOnce(now, sender)` (envoie les notifications dues, une seule fois par créneau, supprime les abonnements expirés, ne marque pas le créneau si l'envoi échoue) et planificateur interne (chaque minute, désactivé en test ou avec `REMINDER_SCHEDULER=off`).
+- `reminder/reminder.controller.ts` — `GET/PUT /reminder`, `POST /reminder/done`, `GET /push/config`, `POST/DELETE /push/subscriptions`. Réglages personnels, ouverts à tous les rôles, y compris CHILD.
+- `push/push.sender.ts` — `PushSender` (abstrait), `WebPushSender` (clés VAPID, désactivé sans clés), `isAllowedPushEndpoint()` : liste blanche anti-SSRF (https, hôtes FCM, Mozilla, Windows, Apple, sans identifiants ni port).
+- `review/review.controller.ts` — `GET /review/weekly?to=` : 7 jours se terminant à `to`, totaux d'entrées et sorties (opérations + récurrences échues), échéances des 7 jours suivants, reste à vivre du mois ; filtré par foyer.
+- Migration `rappel_hebdo` (ReminderSetting, PushSubscription).
+
+### Front
+- `pages/Weekly.tsx` — `WeeklyReviewPanel` (bannière quand dû, bilan, bouton « J'ai fait mes comptes », ouverture auto avec `?bilan=1`), `ReminderSettings` (jour, heure, activation des notifications sur l'appareil).
+- `push.ts` — `enablePush()` (permission, abonnement, enregistrement), `urlBase64ToUint8Array()`.
+- `public/push-sw.js` — affichage de la notification et ouverture du bilan au clic, importé par le service worker.
+
+### Tests
+- API : 40 tests (+12 : réglages et validation, pas de rappel rétroactif, bilan fait, enfant, anti-SSRF, isolation des abonnements, notification unique par créneau, contenu sans donnée financière, abonnement expiré, échec d'envoi, absence de clés, bilan de la semaine et isolation par foyer).
+- Front : 22 tests (+3). Production : build PWA vérifié (le service worker importe `push-sw.js`).
+- Non vérifié : réception réelle d'une notification sur un navigateur ou un téléphone (nécessite des clés VAPID et un HTTPS ou localhost).

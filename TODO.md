@@ -30,7 +30,11 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Occurrences récurrentes affichées dans l'historique des opérations | À faire |
 | UI PWA (React/Vite, installable) : connexion, inscription, tableau de bord | Terminé (jalon 3) ; lecture hors-ligne à faire |
 | Mode confidentialité (masquer les montants) | Terminé (jalon 3) |
-| Rappel hebdomadaire « faire les comptes » (BullMQ + Web Push) | À faire |
+| Rappel hebdomadaire « faire les comptes » (planificateur interne + Web Push + bannière) | Terminé (jalon 5) |
+| Bilan hebdomadaire interactif (entrées/sorties, récurrences, à venir, « bilan fait ») | Terminé (jalon 5) |
+| Rappel : déplacer le planificateur dans un worker dédié (BullMQ) si plusieurs instances de l'API | À faire |
+| Rappel : test réel des notifications sur appareil (clés VAPID, navigateur) | À faire — non vérifié ici |
+| Rappel : écarts vs budget dans le bilan (dépend des enveloppes) | À faire |
 | Documents : upload, antivirus, chiffrement | À faire |
 | Lecture fiches de paie (PDF, OCR repli, validation humaine) | À faire |
 | Page actualités financières (taux, actifs d'épargne) | À faire |
