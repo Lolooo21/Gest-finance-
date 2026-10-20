@@ -4,6 +4,8 @@ import { CryptoModule } from "./crypto/crypto.module.js";
 import { RecurringController } from "./recurring/recurring.controller.js";
 import { SummaryController } from "./summary/summary.controller.js";
 import { TransactionsController } from "./transactions/transactions.controller.js";
+import { MarketController, SavingsController } from "./market/market.controller.js";
+import { MarketService } from "./market/market.service.js";
 import { PayslipController } from "./payslip/payslip.controller.js";
 import { PushSender, WebPushSender } from "./push/push.sender.js";
 import { ReminderController } from "./reminder/reminder.controller.js";
@@ -24,7 +26,7 @@ class HealthController {
 
 @Module({
   imports: [PrismaModule, CryptoModule, AuditModule, AuthModule, HouseholdModule],
-  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController],
-  providers: [ReminderService, { provide: PushSender, useClass: WebPushSender }],
+  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController],
+  providers: [ReminderService, MarketService, { provide: PushSender, useClass: WebPushSender }],
 })
 export class AppModule {}

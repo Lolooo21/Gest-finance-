@@ -45,7 +45,11 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Fiches de paie : parseurs par employeur / logiciel de paie selon vos vrais PDF | En cours : dépend de vos vrais PDF (utiliser `pnpm payslip:debug --anonymize`) |
 | Fiches de paie : isoler l'extraction PDF dans un processus ou worker avec délai maximal | À faire |
 | Fiches de paie : conservation chiffrée du PDF dans le coffre-fort | À faire |
-| Page actualités financières (taux, actifs d'épargne) | À faire |
+| Page actualités financières : taux réglementés, indicateurs de marché automatiques, fiches d'épargne, simulateur d'intérêts | Terminé (jalon 7) ; appels réels BCE/Eurostat à vérifier chez vous (`pnpm market:check`) |
+| Actualités : taux réglementés à mettre à jour à chaque arrêté (1er février / 1er août) ; taux du CEL non renseigné | À faire (récurrent) |
+| Actualités : historique et graphiques des indicateurs, alerte quand un taux change | À faire |
+| Actualités : comparaison des taux de crédit et simulateur de crédit conso/immo | À faire |
+| Actualités : lecture automatique des taux réglementés depuis une source officielle (aujourd'hui saisie à la main) | À faire |
 
 ## Sécurité
 | Tâche | Statut |

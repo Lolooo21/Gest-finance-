@@ -169,3 +169,27 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - Front : liste « Éléments détectés » (✓/✗) sous la fiabilité, pour comprendre ce qui manque.
 - Tests : finance-core 38 (+6, espaces insécables, colonnes espacées, plages de dates, mois-année, employeur, net après impôt), API 61 (+5 : colonnes écrites dans le désordre dans un vrai PDF, U+00A0, `rebuildLines`), front 37.
 - Limite : non validé sur de vraies fiches de paie ; le diagnostic local sert à adapter la lecture à votre logiciel de paie.
+
+## Jalon 7 — Actualités financières
+### `packages/finance-core/src/savings.ts`
+- `projectSavings({principalCents, monthlyCents, annualRateBp, years, taxRateBp})` : projection d'épargne (intérêts capitalisés chaque mois, versement en fin de mois, calcul décimal arrondi en sortie), capital final, intérêts bruts/nets, impôt, détail par année ; refuse les paramètres hors limites.
+- `nextRateRevision(now)` : prochaine révision des taux réglementés (1er février ou 1er août).
+- Tests : 11 (taux nul, 12 % sur un an = 1 126,83 €, Livret A, impôt, durée nulle, bornes, dates).
+
+### API (`apps/api/src/market/`)
+- `regulated-rates.ts` — `REGULATED_RATES` (Livret A 1,7 %, LDDS 1,7 %, LEP 2,5 % depuis le 1er août 2026 ; période précédente 1,5 % / 1,5 % / 2,5 %), `PEL_RATES` (2,00 % pour 2026), `currentRegulatedRates(now)` (période en vigueur, précédente, drapeau périmé), `currentPelRate(now)`. Sources citées ; CEL non renseigné (non vérifié).
+- `savings-products.ts` — 9 fiches (Livret A, LDDS, LEP, PEL, assurance-vie fonds euros, PEA, ETF, obligations d'État, SCPI) et `SAVINGS_DISCLAIMER`.
+- `sdmx-csv.ts` — `parseSdmxCsv(csv)` : dernière observation `TIME_PERIOD` / `OBS_VALUE` (BCE `csvdata`, Eurostat `SDMX-CSV`), guillemets et BOM gérés, erreurs claires.
+- `indicators.ts` — 3 indicateurs (taux de dépôt BCE, OAT 10 ans France, inflation IPCH France), URL constantes, hôtes autorisés, bornes de vraisemblance.
+- `fetch-indicator.ts` — `fetchIndicator()` : https + hôte autorisé, redirections refusées, délai 10 s, réponse ≤ 1 Mo, valeur hors bornes rejetée, aucune donnée envoyée.
+- `market.service.ts` — `refresh()` (enregistre en points de base, idempotent, un échec n'arrête pas les autres), `refreshIfDue()` (seulement si une donnée manque ou a plus de 24 h), planificateur interne (toutes les heures, désactivé en test ou avec `MARKET_REFRESH=off`), `indicators()` (états ok / ancienne / indisponible).
+- `market.controller.ts` — `GET /market` (taux, variation, prochaine révision, indicateurs, avertissement), `GET /savings/products` ; authentification requise, tous rôles.
+- Migration `indicateurs_marche` (`MarketSnapshot`) ; `PrismaService` vérifie aussi cette table au démarrage ; `scripts/market-check.ts` (`pnpm market:check`).
+
+### Front
+- `pages/News.tsx` — taux réglementés (variation, révision, alerte périmé), indicateurs avec état, fiches dépliables avec taux officiel et niveau de risque, simulateur d'intérêts (prérempli avec l'épargne, calcul local, validation des saisies) ; `pages/Header.tsx` — navigation Tableau de bord / Actualités (`aria-current`, ancre `#actualites`).
+- `money.ts` : `parseAmountOrZero()`, `parsePercentToBp()`, `formatBp()`, `formatDateFr()`.
+
+### Tests
+- API 80 (+19 : analyse CSV, taux et périodes, fiches, rafraîchissement avec `fetch` simulé : succès, échec partiel, réponses invraisemblables/malformées/démesurées, hôtes et options d'appel, fréquence, état des indicateurs, authentification, rôle enfant) ; front 47 (+10) ; finance-core 49 (+11).
+- Non vérifié : les appels réels à la BCE et à Eurostat (réseau du bac à sable bloqué) ; la structure SDMX-CSV est gérée de façon tolérante, `pnpm market:check` permet de le contrôler chez vous.

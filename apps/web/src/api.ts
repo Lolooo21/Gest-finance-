@@ -75,3 +75,19 @@ export async function apiUpload<T>(path: string, file: File): Promise<T> {
   if (!res.ok) throw await errorFrom(res);
   return (await res.json()) as T;
 }
+
+export interface RegulatedRates { validFrom: string; validTo: string; livretABp: number; lddsBp: number; lepBp: number; sourceUrl: string; note?: string }
+export interface IndicatorView {
+  key: string; label: string; explanation: string; source: string; sourceUrl: string;
+  valueBp: number | null; observedAt: string | null; fetchedAt: string | null; status: "ok" | "stale" | "unavailable";
+}
+export interface MarketData {
+  regulated: { current: RegulatedRates; previous: RegulatedRates | null; stale: boolean; nextRevision: string; pel: { openedIn: number; rateBp: number; sourceUrl: string } | null };
+  indicators: IndicatorView[];
+  refreshEnabled: boolean;
+  disclaimer: string;
+}
+export interface SavingsProduct {
+  id: string; name: string; category: string; risk: 1 | 2 | 3 | 4 | 5; liquidity: string; ceiling: string | null; tax: string;
+  horizon: string; summary: string; suitableFor: string; watchOut: string[]; rateRef: "livretA" | "ldds" | "lep" | "pel" | null;
+}

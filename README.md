@@ -108,6 +108,15 @@ erDiagram
         int grossCents
         string employer
     }
+    MarketSnapshot {
+        uuid id PK
+        string key UK "ECB_DEPOSIT_RATE, FR_10Y_YIELD, FR_INFLATION"
+        string observedAt UK "période de la source"
+        int valueBp "points de base : 170 = 1,70 %"
+        datetime fetchedAt
+        string source
+        string sourceUrl
+    }
     RecurringRule {
         uuid id PK
         uuid householdId FK
@@ -128,6 +137,7 @@ erDiagram
 - `ReminderSetting` (une ligne par utilisateur) décrit son rappel hebdomadaire : jour, heure, fuseau. Le **créneau** du rappel est le dernier instant où tombent ce jour et cette heure ; le bilan est « dû » si ce créneau est postérieur à l'activation (`since`) et au dernier bilan fait (`lastDoneAt`). `lastReminderAt` garantit une seule notification par créneau.
 - `PushSubscription` : un appareil abonné aux notifications. L'API n'envoie qu'aux services push connus des navigateurs (liste blanche anti-SSRF) ; la notification ne contient aucune donnée financière.
 - `PayslipImport` garde uniquement les **métadonnées** d'une fiche de paie validée (période, net, brut, employeur, lien vers l'opération créée), jamais le PDF : le fichier est lu en mémoire par le serveur puis jeté. Il sert à détecter les doublons (même compte, période et net, tant que l'opération existe).
+- `MarketSnapshot` (indépendante des foyers, **aucune donnée personnelle**) mémorise les indicateurs publics récupérés chaque jour (taux de dépôt de la BCE, OAT 10 ans France, inflation IPCH France) : une ligne par indicateur et par période observée. Les taux réglementés (Livret A, LDDS, LEP, PEL) ne sont pas en base : ils sont dans une configuration versionnée avec source et période de validité (`apps/api/src/market/regulated-rates.ts`), car ils ne changent que les 1er février et 1er août.
 - `RefreshToken` stocke uniquement l'empreinte SHA-256 du jeton de session, avec rotation et révocation. `AuditLog` garde les actions (connexion, ajout…), sans montants ni secrets.
 
 **Reste à vivre** = revenus (récurrents + ponctuels) − charges fixes récurrentes − dépenses ponctuelles, sur la période demandée (`GET /summary?from&to`), recalculé à chaque lecture donc après chaque ajout, modification ou suppression.
@@ -146,12 +156,13 @@ erDiagram
 | Rappel hebdomadaire | Jour, heure et fuseau au choix ; bannière « c'est l'heure de faire les comptes » dans l'appli ; notification push (si clés VAPID configurées) vérifiée chaque minute par un planificateur interne, une seule fois par créneau, sans rappel rétroactif |
 | Bilan de la semaine | Écran en un coup d'œil : entrées et sorties des 7 derniers jours, récurrences échues, échéances des 7 jours à venir, reste à vivre du mois ; bouton « J'ai fait mes comptes » qui éteint le rappel ; ouvert directement depuis la notification |
 | Fiches de paie | Import d'un PDF numérique (5 Mo max, vérifié par signature) : le serveur lit le texte en mémoire et **propose** net à payer (net payé après prélèvement à la source de préférence), brut, période, employeur, avec un indice de fiabilité, la liste de ce qui est détecté ou non et des avertissements ; texte reconstruit par position (tableaux écrits colonne par colonne) et espaces insécables gérés ; diagnostic local `pnpm payslip:debug` ; vous corrigez puis validez, ce qui crée le revenu (« Salaire AAAA-MM ») ; détection des doublons (409, « enregistrer quand même » possible) ; récurrence mensuelle optionnelle démarrant le mois suivant (pas de double comptage) ; PDF jamais conservé ; scans refusés avec un message clair (OCR à venir) |
+| Actualités financières | Onglet « Actualités » : taux réglementés (Livret A, LDDS, LEP, PEL) avec variation, date d'entrée en vigueur, prochaine révision et alerte « périmé » ; indicateurs de marché (BCE, OAT 10 ans, inflation) rafraîchis automatiquement chaque jour avec état (à jour / ancienne / indisponible) et source ; fiches pédagogiques de 9 supports d'épargne (risque, disponibilité, plafond, fiscalité, points d'attention) ; simulateur d'intérêts calculé dans le navigateur (prérempli avec vos comptes d'épargne) ; avertissement permanent « information, pas un conseil en investissement » ; `pnpm market:check` pour tester les appels réels |
 | Ergonomie et erreurs | Actions rapides en haut du tableau de bord (ajouter une opération, importer une fiche de paie, bilan, 2FA) ; boutons libellés avec icônes et zones tactiles ≥ 44 px ; « Modifier » et « Supprimer » explicites, suppression avec boîte de confirmation ; notifications de succès et d'erreur (aucune action n'échoue en silence) ; messages d'erreur clairs et actionnables (serveur injoignable, session expirée, droits, fichier trop gros ou non PDF, scan, doublon…), validations en français ; bandeau « Réessayer » si le chargement échoue ; import PDF par bouton ou glisser-déposer avec contrôle du fichier avant envoi |
 | Confidentialité | Bouton « Masquer les montants » (mémorisé sur l'appareil) |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
-| Tests | `finance-core` (38 tests, 100 %), API sur PostgreSQL réel (61 tests), front (37 tests) |
+| Tests | `finance-core` (49 tests, 100 %), API sur PostgreSQL réel (80 tests), front (47 tests) |
 
-À venir (voir `TODO.md`) : actualités financières (jalon 7), OCR des scans, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys, RLS PostgreSQL.
+À venir (voir `TODO.md`) : OCR des scans, historique et alertes sur les taux, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys, RLS PostgreSQL.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker.
@@ -170,6 +181,7 @@ pnpm test
 | Symptôme | Cause probable et solution |
 |---|---|
 | Fiabilité de lecture d'une fiche de paie faible (ex. 30 %) | Lancez le diagnostic local sur votre PDF : `cd apps/api && pnpm payslip:debug chemin\fiche.pdf --anonymize`. Il affiche ce qui est détecté et le texte lu avec tous les chiffres remplacés par 9 (rien n'est envoyé) ; relisez-le (noms, adresses) puis partagez-le pour adapter la lecture à votre logiciel de paie. En attendant, saisissez les valeurs non détectées (listées en rouge) |
+| Indicateurs de marché « indisponibles » | Le serveur n'a pas pu joindre la BCE/Eurostat (accès Internet, pare-feu, proxy) ou `MARKET_REFRESH=off`. Lancez `cd apps/api && pnpm market:check` : il affiche l'indicateur et l'URL en erreur. Les nouvelles tentatives sont automatiques (toutes les heures si la donnée a plus de 24 h) |
 | Erreur 500 à l'inscription ou sur n'importe quelle requête | Regardez le terminal de l'API : la cause y est journalisée (sans données sensibles). Cas fréquent : base non migrée ou client Prisma obsolète → dans `apps/api`, `pnpm exec prisma migrate deploy` puis `pnpm exec prisma generate`, et redémarrez. L'API refuse désormais de démarrer avec un message explicite dans ce cas |
 | `404` sur une fonction (import de PDF, rappel, bilan…) en développement | Le proxy du front n'envoyait pas cette route à l'API (corrigé : la liste des préfixes est partagée dans `packages/shared/src/routes.ts`, un test de l'API vérifie qu'elle est complète). Après un `git pull` : `pnpm install` puis relancez `pnpm dev` pour recharger la configuration du proxy |
 | `ECONNREFUSED` dans le terminal du front | L'API n'a pas démarré : lisez l'erreur affichée juste avant « Failed running » dans le terminal de l'API |

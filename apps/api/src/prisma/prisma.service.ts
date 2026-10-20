@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 
 /** Un modèle par table : une migration oubliée est détectée au démarrage, pas à la première requête. */
-const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport"] as const;
+const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot"] as const;
 
 const notMigrated = (model: string) =>
   `Base de données non migrée ou client Prisma obsolète (modèle « ${model} ») : dans apps/api, lancez \`pnpm exec prisma migrate deploy\` puis \`pnpm exec prisma generate\`, et redémarrez.`;

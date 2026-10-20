@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { api, ApiError, type Account, type Reminder, type Rule, type Summary, type Tx } from "../api";
 import { centsToInput, monthRange, parseEuros, todayIso } from "../money";
-import { Money, usePrivacy } from "../privacy";
+import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
 import { PayslipImport } from "./Payslip";
 import { ReminderSettings, WeeklyReviewPanel } from "./Weekly";
@@ -10,11 +10,10 @@ import { ReminderSettings, WeeklyReviewPanel } from "./Weekly";
 const FREQ = { WEEKLY: "chaque semaine", MONTHLY: "chaque mois", YEARLY: "chaque année" } as const;
 type Panel = "payslip" | "review" | "2fa" | null;
 
-export function Dashboard({ onLogout }: { onLogout: () => void }) {
+export function Dashboard() {
   const qc = useQueryClient();
   const toast = useToast();
   const confirm = useConfirm();
-  const { hidden, toggle } = usePrivacy();
   const range = monthRange();
   const [panel, setPanel] = useState<Panel>(() => (new URLSearchParams(window.location.search).has("bilan") ? "review" : null));
   const [editing, setEditing] = useState<string | null>(null);
@@ -48,17 +47,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   };
 
   return (
-    <div>
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-2">
-          <h1 className="text-lg font-semibold text-teal-800">Gest-finance</h1>
-          <div className="flex gap-2">
-            <Button variant="ghost" icon={hidden ? "eye" : "eyeOff"} onClick={toggle} aria-pressed={hidden}>{hidden ? "Afficher les montants" : "Masquer les montants"}</Button>
-            <Button variant="ghost" icon="logout" onClick={onLogout}>Déconnexion</Button>
-          </div>
-        </div>
-      </header>
-
+    <>
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-4">
         {failed && <ErrorBanner message={failed.error instanceof Error ? failed.error.message : "Impossible de charger vos données."} onRetry={() => void refresh()} />}
 
@@ -163,7 +152,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           </ul>
         </section>
       </main>
-    </div>
+    </>
   );
 }
 

@@ -47,3 +47,30 @@ describe("detected", () => {
     expect(r.filter((d) => d.found).map((d) => d.name)).toEqual(["Brut", "Employeur"]);
   });
 });
+
+import { formatBp, formatDateFr, parseAmountOrZero, parsePercentToBp } from "./money";
+
+describe("saisies et formats du simulateur", () => {
+  it("accepte zéro et le champ vide pour un montant optionnel", () => {
+    expect(parseAmountOrZero("")).toBe(0);
+    expect(parseAmountOrZero(" 0 ")).toBe(0);
+    expect(parseAmountOrZero("0,00")).toBe(0);
+    expect(parseAmountOrZero("1 000")).toBe(100_000);
+    expect(parseAmountOrZero("abc")).toBeNull();
+    expect(parseAmountOrZero("-5")).toBeNull();
+  });
+
+  it("convertit un pourcentage en points de base", () => {
+    expect(parsePercentToBp("1,7")).toBe(170);
+    expect(parsePercentToBp("2.5")).toBe(250);
+    expect(parsePercentToBp("0")).toBe(0);
+    expect(parsePercentToBp("20")).toBe(2000);
+    for (const bad of ["", "abc", "21", "1,234", "-1"]) expect(parsePercentToBp(bad)).toBeNull();
+  });
+
+  it("formate les taux et les dates en français", () => {
+    expect(formatBp(170)).toBe("1,70 %");
+    expect(formatBp(5)).toBe("0,05 %");
+    expect(formatDateFr("2027-02-01")).toBe("1 février 2027");
+  });
+});

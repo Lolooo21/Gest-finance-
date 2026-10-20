@@ -174,3 +174,20 @@ model PayslipImport {
 
   @@index([householdId, accountId, periodMonth])
 }
+
+/// Indicateur de marché public (BCE, Eurostat) : non rattaché à un foyer, aucune donnée personnelle.
+model MarketSnapshot {
+  id         String   @id @default(uuid())
+  /// ECB_DEPOSIT_RATE | FR_10Y_YIELD | FR_INFLATION
+  key        String
+  /// Valeur en points de base (170 = 1,70 %)
+  valueBp    Int
+  /// Période observée par la source ("2026-09" ou "2026-10-15")
+  observedAt String
+  fetchedAt  DateTime @default(now())
+  source     String
+  sourceUrl  String
+
+  @@unique([key, observedAt])
+  @@index([key, fetchedAt])
+}

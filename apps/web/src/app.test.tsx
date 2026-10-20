@@ -346,3 +346,140 @@ describe("gestion des erreurs et ergonomie", () => {
     expect(screen.getByRole("button", { name: "Supprimer Courses" })).toHaveTextContent("Supprimer");
   });
 });
+
+describe("actualités financières", () => {
+  const market = {
+    regulated: {
+      current: { validFrom: "2026-08-01", validTo: "2027-01-31", livretABp: 170, lddsBp: 170, lepBp: 250, sourceUrl: "https://www.info.gouv.fr/x", note: "Arrêté du 28 juillet 2026." },
+      previous: { validFrom: "2026-02-01", validTo: "2026-07-31", livretABp: 150, lddsBp: 150, lepBp: 250, sourceUrl: "https://www.info.gouv.fr/x" },
+      stale: false, nextRevision: "2027-02-01", pel: { openedIn: 2026, rateBp: 200, sourceUrl: "https://x" },
+    },
+    indicators: [
+      { key: "ECB_DEPOSIT_RATE", label: "Taux de dépôt de la BCE", explanation: "Taux directeur.", source: "Banque centrale européenne", sourceUrl: "https://www.ecb.europa.eu", valueBp: 200, observedAt: "2025-06-11", fetchedAt: "2026-10-20T08:00:00Z", status: "ok" },
+      { key: "FR_10Y_YIELD", label: "OAT 10 ans", explanation: "Référence long terme.", source: "BCE", sourceUrl: "https://data.ecb.europa.eu", valueBp: null, observedAt: null, fetchedAt: null, status: "unavailable" },
+      { key: "FR_INFLATION", label: "Inflation en France", explanation: "Hausse des prix.", source: "Eurostat", sourceUrl: "https://ec.europa.eu", valueBp: 120, observedAt: "2026-09", fetchedAt: "2026-10-10T08:00:00Z", status: "stale" },
+    ],
+    refreshEnabled: true,
+    disclaimer: "Informations générales, non constitutives d'un conseil en investissement.",
+  };
+  const products = {
+    disclaimer: market.disclaimer,
+    products: [
+      { id: "livret-a", name: "Livret A", category: "Épargne réglementée", risk: 1, liquidity: "Immédiate", ceiling: "22 950 €", tax: "Exonéré", horizon: "Court terme", summary: "Le livret de base.", suitableFor: "Épargne de précaution.", watchOut: ["Taux révisé deux fois par an."], rateRef: "livretA" },
+      { id: "pea", name: "Plan d'épargne en actions (PEA)", category: "Placements financiers", risk: 4, liquidity: "Possible", ceiling: "150 000 €", tax: "Allégée après 5 ans", horizon: "5 ans et plus", summary: "Enveloppe fiscale actions.", suitableFor: "Long terme.", watchOut: ["Perte en capital possible."], rateRef: null },
+    ],
+  };
+  const newsApi = (overrides: Handler = () => ({})): Handler => (m, u, b) => {
+    const r = overrides(m, u, b);
+    if (r.json !== undefined || r.status || r.network) return r;
+    if (u === "/household/members") return { json: [] };
+    if (u === "/market") return { json: market };
+    if (u === "/savings/products") return { json: products };
+    if (u === "/accounts") return { json: [{ id: "s1", name: "Livret A", type: "SAVINGS", balanceCents: 250_000, ibanMasked: null }] };
+    return { json: [] };
+  };
+  const openNews = async () => {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Actualités" }));
+    return user;
+  };
+
+  it("affiche les taux réglementés, leur variation, la prochaine révision et l'avertissement", async () => {
+    mockApi(newsApi());
+    renderApp();
+    await openNews();
+    const rates = await screen.findByRole("region", { name: "Taux réglementés" });
+    expect(within(rates).getAllByText("1,70 %")).toHaveLength(2); // Livret A et LDDS
+    expect(within(rates).getByText("2,50 %")).toBeInTheDocument(); // LEP
+    expect(within(rates).getByText("2,00 %")).toBeInTheDocument(); // PEL
+    expect(rates).toHaveTextContent("depuis le 1 août 2026");
+    expect(rates).toHaveTextContent("Prochaine révision le 1 février 2027");
+    expect(rates).toHaveTextContent("hausse de 0,20 % (points)");
+    expect(rates).toHaveTextContent("PEL ouvert en 2026");
+    expect(screen.getByRole("note")).toHaveTextContent("non constitutives d'un conseil en investissement");
+  });
+
+  it("signale des taux périmés avec un lien vers la source officielle", async () => {
+    mockApi(newsApi((m, u) => (u === "/market" ? { json: { ...market, regulated: { ...market.regulated, stale: true } } } : {})));
+    renderApp();
+    await openNews();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("ont peut-être changé");
+    expect(within(alert).getByRole("link", { name: "la source officielle" })).toHaveAttribute("href", "https://www.info.gouv.fr/x");
+  });
+
+  it("indique l'état de chaque indicateur de marché, y compris indisponible", async () => {
+    mockApi(newsApi());
+    renderApp();
+    await openNews();
+    const section = await screen.findByRole("region", { name: "Indicateurs de marché" });
+    expect(section).toHaveTextContent("À jour");
+    expect(section).toHaveTextContent("Donnée ancienne");
+    expect(section).toHaveTextContent("Indisponible");
+    expect(section).toHaveTextContent("Pas encore de donnée récupérée");
+    expect(section).toHaveTextContent("sera réessayé automatiquement");
+  });
+
+  it("présente les supports d'épargne avec le taux officiel et le niveau de risque", async () => {
+    mockApi(newsApi());
+    renderApp();
+    const user = await openNews();
+    const section = await screen.findByRole("region", { name: "Où placer son épargne" });
+    expect(within(section).getByText("Capital garanti")).toBeInTheDocument();
+    expect(within(section).getByText("Risque élevé")).toBeInTheDocument();
+    await user.click(within(section).getByText("Plan d'épargne en actions (PEA)"));
+    expect(section).toHaveTextContent("Perte en capital possible.");
+  });
+
+  it("simule les intérêts dans le navigateur, préremplit avec l'épargne et gère les saisies invalides", async () => {
+    const calls = mockApi(newsApi());
+    renderApp();
+    const user = await openNews();
+    const sim = await screen.findByRole("region", { name: "Simulateur d'intérêts" });
+    expect(within(sim).getByLabelText(/Montant initial/)).toHaveValue("2500,00");
+    expect(sim).toHaveTextContent("Préremplí avec vos comptes d'épargne");
+
+    const norm = (el: HTMLElement) => el.textContent?.replace(/\s/g, " ");
+    await user.clear(within(sim).getByLabelText(/Montant initial/));
+    await user.type(within(sim).getByLabelText(/Montant initial/), "1000");
+    await user.clear(within(sim).getByLabelText(/Versement mensuel/));
+    await user.type(within(sim).getByLabelText(/Versement mensuel/), "0");
+    await user.clear(within(sim).getByLabelText(/Taux annuel/));
+    await user.type(within(sim).getByLabelText(/Taux annuel/), "12");
+    await user.clear(within(sim).getByLabelText(/Durée/));
+    await user.type(within(sim).getByLabelText(/Durée/), "1");
+    expect(norm(within(sim).getByTestId("sim-final"))).toContain("1 126,83");
+    expect(norm(within(sim).getByTestId("sim-deposited"))).toContain("1 000,00");
+
+    await user.clear(within(sim).getByLabelText(/Durée/));
+    await user.type(within(sim).getByLabelText(/Durée/), "99");
+    expect(within(sim).getByRole("alert")).toHaveTextContent("entre 1 et 40");
+    // Le simulateur n'envoie rien au serveur.
+    expect(calls.some((c) => c.method !== "GET")).toBe(false);
+  });
+
+  it("choisir un support remplit le taux officiel et active l'impôt pour le PEL", async () => {
+    mockApi(newsApi());
+    renderApp();
+    const user = await openNews();
+    const sim = await screen.findByRole("region", { name: "Simulateur d'intérêts" });
+    await user.selectOptions(within(sim).getByLabelText("Support"), "pel");
+    expect(within(sim).getByLabelText(/Taux annuel/)).toHaveValue("2,00");
+    expect(within(sim).getByRole("checkbox")).toBeChecked();
+    await user.selectOptions(within(sim).getByLabelText("Support"), "lep");
+    expect(within(sim).getByLabelText(/Taux annuel/)).toHaveValue("2,50");
+    expect(within(sim).getByRole("checkbox")).not.toBeChecked();
+  });
+
+  it("explique l'échec de chargement avec un bouton Réessayer, et revient au tableau de bord", async () => {
+    mockApi(newsApi((m, u) => (u === "/market" ? { status: 503 } : {})));
+    renderApp();
+    const user = await openNews();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Le serveur a rencontré une erreur");
+    expect(within(alert).getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actualités" })).toHaveAttribute("aria-current", "page");
+    await user.click(screen.getByRole("button", { name: "Tableau de bord" }));
+    expect(await screen.findByRole("region", { name: "Reste à vivre" })).toBeInTheDocument();
+  });
+});

@@ -44,7 +44,7 @@ describe("AllExceptionsFilter", () => {
 });
 
 describe("PrismaService au démarrage", () => {
-  const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport"];
+  const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot"];
   const service = (failing?: { model: string; code?: string; message?: string }) => {
     const s = new PrismaService();
     s.$connect = async () => undefined;
