@@ -66,3 +66,17 @@ export type RecurringRuleDto = z.infer<typeof RecurringRuleDto>;
 
 export const SummaryQuery = z.object({ from: isoDate, to: isoDate }).refine((q) => q.from <= q.to, "from doit précéder to");
 export type SummaryQuery = z.infer<typeof SummaryQuery>;
+
+const atLeastOne = (o: object) => Object.keys(o).length > 0;
+
+export const AccountPatch = AccountDto.partial().refine(atLeastOne, "aucune modification");
+export type AccountPatch = z.infer<typeof AccountPatch>;
+
+export const TransactionPatch = TransactionDto.omit({ accountId: true }).partial().refine(atLeastOne, "aucune modification");
+export type TransactionPatch = z.infer<typeof TransactionPatch>;
+
+export const RecurringRulePatch = RecurringRuleDto.omit({ accountId: true, end: true })
+  .extend({ end: isoDate.nullable() })
+  .partial()
+  .refine(atLeastOne, "aucune modification");
+export type RecurringRulePatch = z.infer<typeof RecurringRulePatch>;

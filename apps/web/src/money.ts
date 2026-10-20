@@ -21,3 +21,6 @@ export const monthRange = (now = new Date()) => {
 
 export const todayIso = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+/** 1250 → "12,50" (valeur absolue, pour préremplir un champ de saisie). */
+export const centsToInput = (cents: number) => (Math.abs(cents) / 100).toFixed(2).replace(".", ",");

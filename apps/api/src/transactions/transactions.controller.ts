@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Query, UseGuards } from "@nestjs/common";
-import { TransactionDto } from "@gest-finance/shared";
+import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { TransactionDto, TransactionPatch } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
@@ -37,6 +37,19 @@ export class TransactionsController {
     });
     await this.audit.record(user.householdId, user.userId, "transaction.created");
     return view(t);
+  }
+
+  @Patch(":id")
+  @Roles("OWNER", "ADULT")
+  async update(@CurrentUser() user: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(TransactionPatch)) dto: TransactionPatch) {
+    const { date, ...fields } = dto;
+    const { count } = await this.prisma.transaction.updateMany({
+      where: { id, householdId: user.householdId },
+      data: { ...fields, ...(date ? { date: toDate(date) } : {}) },
+    });
+    if (!count) throw new NotFoundException();
+    await this.audit.record(user.householdId, user.userId, "transaction.updated");
+    return { ok: true };
   }
 
   @Delete(":id")

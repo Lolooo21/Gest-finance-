@@ -24,9 +24,10 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | À faire |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
 | Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) |
-| Modification d'un compte, d'une opération ou d'une règle (PUT/PATCH) | À faire |
-| Interface 2FA (activation TOTP depuis l'UI ; l'API existe) | À faire |
-| Génération automatique des opérations récurrentes dans l'historique et le solde | À faire |
+| Modification d'un compte, d'une opération ou d'une règle (PATCH + édition en ligne) | Terminé (jalon 4) |
+| Interface 2FA (activation TOTP depuis le tableau de bord) | Terminé (jalon 4) ; QR code à faire |
+| Solde des comptes incluant les occurrences récurrentes échues | Terminé (jalon 4) |
+| Occurrences récurrentes affichées dans l'historique des opérations | À faire |
 | UI PWA (React/Vite, installable) : connexion, inscription, tableau de bord | Terminé (jalon 3) ; lecture hors-ligne à faire |
 | Mode confidentialité (masquer les montants) | Terminé (jalon 3) |
 | Rappel hebdomadaire « faire les comptes » (BullMQ + Web Push) | À faire |

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -91,5 +91,47 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Montant invalide");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+});
+
+describe("modification et 2FA", () => {
+  const dashboardApi = (extra: Handler): Handler => (m, u, b) => {
+    const r = extra(m, u, b);
+    if (r.json !== undefined || r.status) return r;
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules") return { json: [] };
+    if (u.startsWith("/transactions")) return { json: [{ id: "t1", accountId: "a1", amountCents: -4550, date: "2026-10-05", label: "Courses" }] };
+    return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("modifie une opération en conservant le sens et en envoyant des centimes", async () => {
+    const calls = mockApi(dashboardApi((m) => (m === "PATCH" ? { json: { ok: true } } : {})));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Modifier Courses" }));
+    const amount = screen.getByLabelText("Montant (€)");
+    expect(amount).toHaveValue("45,50");
+    await user.clear(amount);
+    await user.type(amount, "50");
+    await user.click(within(amount.closest("form")!).getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
+    expect(calls.find((c) => c.method === "PATCH")).toMatchObject({ url: "/transactions/t1", body: { label: "Courses", amountCents: -5000, date: "2026-10-05" } });
+  });
+
+  it("active le 2FA : affiche le secret puis envoie le code", async () => {
+    const calls = mockApi(dashboardApi((m, u) => {
+      if (u === "/auth/2fa/setup") return { status: 201, json: { secret: "JBSWY3DPEHPK3PXP", otpauthUrl: "otpauth://totp/x" } };
+      if (u === "/auth/2fa/enable") return { json: { ok: true } };
+      return {};
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Activer la double authentification/ }));
+    expect(await screen.findByTestId("totp-secret")).toHaveTextContent("JBSWY3DPEHPK3PXP");
+    await user.type(screen.getByLabelText("Code à 6 chiffres"), "123456");
+    await user.click(screen.getByRole("button", { name: "Valider" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Double authentification activée");
+    expect(calls.find((c) => c.url === "/auth/2fa/enable")?.body).toEqual({ code: "123456" });
   });
 });

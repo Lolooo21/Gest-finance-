@@ -109,3 +109,53 @@ describe("reste à vivre", () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe("modification et solde avec récurrences", () => {
+  const patch = (url: string, payload: object, cookies: { access: string }) => app.inject({ method: "PATCH", url, payload, cookies });
+
+  it("modifie un compte, une opération et une règle ; le reste à vivre suit", async () => {
+    const c = await register();
+    const accountId = await newAccount(c);
+    const t = (await post(app, "/transactions", { accountId, amountCents: -1_000, date: "2026-10-03", label: "Courses" }, c)).json();
+    const rule = (await post(app, "/recurring-rules", { accountId, label: "Loyer", amountCents: -50_000, frequency: "MONTHLY", start: "2026-01-05" }, c)).json();
+    const q = "/summary?from=2026-10-01&to=2026-10-31";
+    expect((await get(app, q, c)).json().remainingCents).toBe(-51_000);
+
+    expect((await patch(`/transactions/${t.id}`, { amountCents: -3_000, label: "Gros plein" }, c)).statusCode).toBe(200);
+    expect((await patch(`/recurring-rules/${rule.id}`, { amountCents: -40_000 }, c)).statusCode).toBe(200);
+    expect((await patch(`/accounts/${accountId}`, { name: "Principal" }, c)).statusCode).toBe(200);
+    expect((await get(app, q, c)).json().remainingCents).toBe(-43_000);
+    expect((await get(app, "/accounts", c)).json()[0].name).toBe("Principal");
+    expect((await get(app, "/transactions", c)).json()[0].label).toBe("Gros plein");
+  });
+
+  it("refuse les modifications d'un autre foyer, vides ou invalides, et celles d'un enfant", async () => {
+    const a = await register(1);
+    const b = await register(2);
+    const accountId = await newAccount(a);
+    const t = (await post(app, "/transactions", { accountId, amountCents: -100, date: "2026-10-03", label: "x" }, a)).json();
+    const rule = (await post(app, "/recurring-rules", { accountId, label: "R", amountCents: -100, frequency: "WEEKLY", start: "2026-05-01" }, a)).json();
+
+    expect((await patch(`/transactions/${t.id}`, { label: "piraté" }, b)).statusCode).toBe(404);
+    expect((await patch(`/accounts/${accountId}`, { name: "piraté" }, b)).statusCode).toBe(404);
+    expect((await patch(`/recurring-rules/${rule.id}`, { label: "piraté" }, b)).statusCode).toBe(404);
+    expect((await patch(`/transactions/${t.id}`, {}, a)).statusCode).toBe(400);
+    expect((await patch(`/transactions/${t.id}`, { amountCents: 0 }, a)).statusCode).toBe(400);
+    expect((await patch(`/recurring-rules/${rule.id}`, { end: "2026-01-01" }, a)).statusCode).toBe(400);
+    expect((await patch(`/recurring-rules/${rule.id}`, { end: null }, a)).statusCode).toBe(200);
+
+    await post(app, "/household/members", { email: "kid@example.com", password: "mot-de-passe-enfant-1", displayName: "Kid", role: "CHILD" }, a);
+    const kid = { access: sessionCookies(await post(app, "/auth/login", { email: "kid@example.com", password: "mot-de-passe-enfant-1" })).access! };
+    expect((await patch(`/transactions/${t.id}`, { label: "enfant" }, kid)).statusCode).toBe(403);
+  });
+
+  it("inclut dans le solde les occurrences récurrentes échues, pas les futures", async () => {
+    const c = await register();
+    const accountId = await newAccount(c, { initialBalanceCents: 0 });
+    const year = new Date().getUTCFullYear();
+    await post(app, "/recurring-rules", { accountId, label: "Passée", amountCents: 1_000, frequency: "YEARLY", start: `${year - 2}-01-01` }, c);
+    await post(app, "/recurring-rules", { accountId, label: "Future", amountCents: 999_999, frequency: "YEARLY", start: `${year + 1}-01-01` }, c);
+    // 2 ans passés + l'occurrence de l'année en cours (1er janvier déjà échu) = 3 occurrences
+    expect((await get(app, "/accounts", c)).json()[0].balanceCents).toBe(3_000);
+  });
+});

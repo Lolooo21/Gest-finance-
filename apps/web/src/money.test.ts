@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCents, monthRange, parseEuros, todayIso } from "./money";
+import { centsToInput, formatCents, monthRange, parseEuros, todayIso } from "./money";
 
 describe("parseEuros", () => {
   it.each([["12,50", 1250], ["12.5", 1250], ["1 000", 100_000], ["0,01", 1]])("convertit %s", (input, cents) => {
@@ -18,5 +18,13 @@ describe("dates et formats", () => {
   it("formate les dates et les euros", () => {
     expect(todayIso(new Date(2026, 0, 5))).toBe("2026-01-05");
     expect(formatCents(123_456).replace(/\s/g, " ")).toContain("1 234,56");
+  });
+});
+
+describe("centsToInput", () => {
+  it("préremplit un montant saisissable, sans signe", () => {
+    expect(centsToInput(-4550)).toBe("45,50");
+    expect(centsToInput(5)).toBe("0,05");
+    expect(parseEuros(centsToInput(-4550))).toBe(4550);
   });
 });

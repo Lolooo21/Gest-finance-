@@ -75,3 +75,19 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - API : 25 tests (chiffrement IBAN en base, IDOR comptes/opérations/résumé, enfant en lecture seule, recalcul du reste à vivre après chaque ajout, validation des périodes).
 - Front : 16 tests (saisie en euros, connexion, mode confidentialité, envoi d'une sortie en centimes négatifs, montant invalide sans appel API).
 - Vérification manuelle de bout en bout via le proxy Vite : inscription, compte, règle, résumé, refresh.
+
+## Jalon 4 — Modification, 2FA dans l'interface, solde avec récurrences
+### API
+- `PATCH /accounts/:id`, `PATCH /transactions/:id`, `PATCH /recurring-rules/:id` : modifications partielles (schémas `AccountPatch`, `TransactionPatch`, `RecurringRulePatch`, au moins un champ), filtrées par foyer (404 sinon), réservées à OWNER/ADULT, journalisées. Pour une règle, la fin ne peut pas précéder le début ; `end: null` supprime la fin.
+- `AccountsController.list` : le solde courant inclut maintenant les occurrences des règles récurrentes déjà échues jusqu'à aujourd'hui (via `occurrences()` de `finance-core`) ; les occurrences futures sont ignorées.
+
+### Front
+- `Dashboard.tsx` : bouton ✎ sur comptes, opérations et récurrences ; composant `EditForm` (modification en ligne, montant en euros, sens entrée/sortie conservé) ; composant `TwoFactor` (démarrage du 2FA, affichage de la clé secrète, saisie du code de validation).
+- `money.ts` : `centsToInput()` préremplit un montant (1250 → « 12,50 »).
+
+### Tests
+- API : 28 tests (+3 : modification avec recalcul du reste à vivre, refus inter-foyers/vides/invalides/enfant, solde avec occurrences échues et non futures).
+- Front : 19 tests (+3 : modification d'une opération en centimes, activation du 2FA, `centsToInput`).
+
+### Documentation
+- `README.md` : schéma de la base (Mermaid), explication des entités, tableau des fonctionnalités ; règle de mise à jour à chaque itération ajoutée à `CLAUDE.md`.

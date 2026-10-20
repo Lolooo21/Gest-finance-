@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, UseGuards } from "@nestjs/common";
-import { RecurringRuleDto } from "@gest-finance/shared";
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from "@nestjs/common";
+import { RecurringRuleDto, RecurringRulePatch } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
@@ -39,6 +39,28 @@ export class RecurringController {
     });
     await this.audit.record(user.householdId, user.userId, "recurring_rule.created");
     return view(r);
+  }
+
+  @Patch(":id")
+  @Roles("OWNER", "ADULT")
+  async update(@CurrentUser() user: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(RecurringRulePatch)) dto: RecurringRulePatch) {
+    const current = await this.prisma.recurringRule.findFirst({ where: { id, householdId: user.householdId } });
+    if (!current) throw new NotFoundException();
+    const start = dto.start ?? toIso(current.start);
+    const end = dto.end === undefined ? (current.end ? toIso(current.end) : null) : dto.end;
+    if (end && end < start) throw new BadRequestException("La fin précède le début");
+    await this.prisma.recurringRule.update({
+      where: { id },
+      data: {
+        ...(dto.label !== undefined ? { label: dto.label } : {}),
+        ...(dto.amountCents !== undefined ? { amountCents: dto.amountCents } : {}),
+        ...(dto.frequency !== undefined ? { frequency: dto.frequency } : {}),
+        start: toDate(start),
+        end: end ? toDate(end) : null,
+      },
+    });
+    await this.audit.record(user.householdId, user.userId, "recurring_rule.updated");
+    return { ok: true };
   }
 
   @Delete(":id")
