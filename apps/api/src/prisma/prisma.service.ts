@@ -1,19 +1,24 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 
-const NOT_MIGRATED = "Base de données non migrée ou client Prisma obsolète : dans apps/api, lancez `pnpm exec prisma migrate deploy` puis `pnpm exec prisma generate`.";
+/** Un modèle par table : une migration oubliée est détectée au démarrage, pas à la première requête. */
+const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport"] as const;
+
+const notMigrated = (model: string) =>
+  `Base de données non migrée ou client Prisma obsolète (modèle « ${model} ») : dans apps/api, lancez \`pnpm exec prisma migrate deploy\` puis \`pnpm exec prisma generate\`, et redémarrez.`;
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     await this.$connect();
-    // Diagnostic clair au démarrage plutôt qu'une erreur 500 à la première requête.
-    try {
-      await this.user.count();
-    } catch (e) {
-      const code = (e as { code?: string }).code;
-      if (code === "P2021" || code === "P2022") throw new Error(NOT_MIGRATED);
-      throw e;
+    for (const model of MODELS) {
+      try {
+        await (this[model] as { count: () => Promise<number> }).count();
+      } catch (e) {
+        const code = (e as { code?: string }).code;
+        if (code === "P2021" || code === "P2022") throw new Error(notMigrated(model));
+        throw e;
+      }
     }
   }
   async onModuleDestroy() {

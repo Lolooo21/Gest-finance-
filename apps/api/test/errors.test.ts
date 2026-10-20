@@ -44,20 +44,27 @@ describe("AllExceptionsFilter", () => {
 });
 
 describe("PrismaService au démarrage", () => {
-  const service = (count: () => Promise<unknown>) => {
+  const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport"];
+  const service = (failing?: { model: string; code?: string; message?: string }) => {
     const s = new PrismaService();
     s.$connect = async () => undefined;
-    Object.defineProperty(s, "user", { value: { count } });
+    for (const model of MODELS) {
+      const fails = failing?.model === model;
+      Object.defineProperty(s, model, {
+        value: { count: async () => { if (fails) throw Object.assign(new Error(failing.message ?? "x"), { code: failing.code }); return 0; } },
+      });
+    }
     return s;
   };
 
-  it("explique comment migrer quand les tables sont absentes", async () => {
-    await expect(service(async () => { throw Object.assign(new Error("x"), { code: "P2021" }); }).onModuleInit()).rejects.toThrow(/prisma migrate deploy/);
-    await expect(service(async () => { throw Object.assign(new Error("x"), { code: "P2022" }); }).onModuleInit()).rejects.toThrow(/prisma generate/);
+  it("indique le modèle manquant et comment migrer, quelle que soit la table absente", async () => {
+    await expect(service({ model: "user", code: "P2021" }).onModuleInit()).rejects.toThrow(/« user ».*prisma migrate deploy/);
+    await expect(service({ model: "bankAccount", code: "P2021" }).onModuleInit()).rejects.toThrow(/« bankAccount »/);
+    await expect(service({ model: "payslipImport", code: "P2022" }).onModuleInit()).rejects.toThrow(/prisma generate/);
   });
 
   it("laisse passer les autres erreurs et démarre si le schéma est migré", async () => {
-    await expect(service(async () => { throw new Error("réseau"); }).onModuleInit()).rejects.toThrow("réseau");
-    await expect(service(async () => 0).onModuleInit()).resolves.toBeUndefined();
+    await expect(service({ model: "transaction", message: "réseau" }).onModuleInit()).rejects.toThrow("réseau");
+    await expect(service().onModuleInit()).resolves.toBeUndefined();
   });
 });

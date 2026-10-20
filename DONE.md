@@ -137,7 +137,7 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 
 ## Correctif — Erreurs 500 invisibles (inscription en échec sur le PC)
 - `apps/api/src/common/all-exceptions.filter.ts` — `AllExceptionsFilter` : journalise les erreurs inattendues (nom, code, dernière ligne du message = la cause, 6 lignes de pile) sans corps de requête, en-têtes, cookies ni valeurs SQL ; répond un message générique au client ; conserve le statut des erreurs client de Fastify (429, 413, 400) ; laisse les `HttpException` suivre leur chemin normal. Auparavant `logger: false` rendait ces erreurs muettes.
-- `apps/api/src/prisma/prisma.service.ts` — `onModuleInit` vérifie le schéma au démarrage : si les tables ou colonnes manquent (P2021/P2022), l'API s'arrête avec « lancez prisma migrate deploy puis prisma generate ».
+- `apps/api/src/prisma/prisma.service.ts` — `onModuleInit` vérifie au démarrage une table par modèle (user, bankAccount, transaction, recurringRule, reminderSetting, pushSubscription, payslipImport) : si l'une manque (P2021/P2022), l'API s'arrête en nommant le modèle et en indiquant « prisma migrate deploy puis prisma generate ». Vérifié sur une base à moitié migrée.
 - `apps/api/src/app.ts` — logs `error`/`warn` activés hors test, filtre global enregistré.
 - Tests (+5, API : 54) : cause journalisée sans valeurs sensibles, réponse générique, statut 429 conservé, HttpException inchangée, message de base non migrée. Vérifié à la main : démarrage sur une base vide → message explicite.
 - `README.md` : section « Dépannage ».
