@@ -8,12 +8,27 @@ permissions:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gest
+          POSTGRES_PASSWORD: gest_ci
+          POSTGRES_DB: gest_finance
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gest" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://gest:gest_ci@localhost:5432/gest_finance
+      JWT_SECRET: ci-secret-ci-secret-ci-secret-ci-secret
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @gest-finance/api exec prisma generate
+      - run: pnpm --filter @gest-finance/api exec prisma migrate deploy
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

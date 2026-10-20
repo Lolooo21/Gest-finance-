@@ -8,7 +8,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Monorepo pnpm, tsconfig, ESLint | Terminé |
 | Compose dev (Postgres, Redis) | Terminé (non démarré/testé) |
 | CI de base (lint, typecheck, tests, audit, Gitleaks) | En test (jamais exécutée sur GitHub) |
-| Push GitHub (erreur 403 : app Claude non installée sur le dépôt) | En cours — bloqué côté utilisateur |
+| Push GitHub | Terminé |
 | Dockerfiles multi-stage non-root, compose prod + Caddy | À faire |
 | CI complète : CodeQL, Semgrep, Trivy, e2e Playwright, ZAP | À faire |
 | CD : build images GHCR signées, déploiement, rollback | À faire |
@@ -19,7 +19,9 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Reste à vivre (`finance-core`) | Terminé (jalon 1) |
 | Récurrences (expansion des occurrences) | Terminé (jalon 1) |
 | Recalcul événementiel à chaque entrée/sortie (API + cache) | À faire |
-| Auth foyer : users, Argon2id, 2FA TOTP, rôles | À faire |
+| Auth foyer : users, Argon2id, 2FA TOTP, rôles OWNER/ADULT/CHILD | Terminé (jalon 2) |
+| Passkeys WebAuthn | À faire (reporté du jalon 2) |
+| Page de consultation du journal d'audit (API prête : `GET /household/audit`) | À faire |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | À faire |
 | CRUD revenus/dépenses ponctuels et récurrents | À faire |
 | UI PWA (React/Vite, offline, installable) | À faire |
@@ -32,16 +34,17 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Tâche | Statut |
 |---|---|
 | Modèle de menaces v0 | Terminé |
-| RLS PostgreSQL + garde `householdId` + tests IDOR | À faire |
+| Garde `householdId` (issu du JWT) + tests IDOR | Terminé (jalon 2) |
+| RLS PostgreSQL (défense en profondeur) | À faire (reporté du jalon 2) |
 | Chiffrement AES-256-GCM (IBAN, documents) | À faire |
-| Rate limiting, Helmet/CSP, audit log | À faire |
+| Rate limiting, Helmet/CSP, audit log | Terminé (jalon 2) |
 | Sauvegardes chiffrées + runbook de restauration | À faire |
 
 ## Tests
 | Tâche | Statut |
 |---|---|
 | Unitaires `finance-core` (100 %) | Terminé |
-| Intégration API (Testcontainers) | À faire |
+| Intégration API (Postgres réel : service CI / local ; Testcontainers non utilisable sans Docker) | En test (13 tests locaux verts, CI non exécutée) |
 | E2E Playwright | À faire |
 | Sécurité (SAST, DAST, dépendances, images) | À faire |
 
