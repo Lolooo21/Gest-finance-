@@ -1,11 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { PrivacyProvider } from "./privacy";
+import { AppProviders } from "./providers";
 
-type Handler = (method: string, url: string, body: unknown) => { status?: number; json?: unknown };
+type Handler = (method: string, url: string, body: unknown) => { status?: number; json?: unknown; network?: boolean; html?: boolean };
 
 function mockApi(handler: Handler) {
   const calls: { method: string; url: string; body: unknown }[] = [];
@@ -14,18 +13,14 @@ function mockApi(handler: Handler) {
     const method = init?.method ?? "GET";
     calls.push({ method, url, body });
     const r = handler(method, url, body);
+    if (r.network) throw new TypeError("Failed to fetch");
     const status = r.status ?? 200;
-    return { ok: status < 400, status, json: async () => r.json ?? {} } as Response;
+    return { ok: status < 400, status, json: async () => { if (r.html) throw new SyntaxError("Unexpected token <"); return r.json ?? {}; } } as Response;
   }));
   return calls;
 }
 
-const renderApp = () =>
-  render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <PrivacyProvider><App /></PrivacyProvider>
-    </QueryClientProvider>,
-  );
+const renderApp = () => render(<AppProviders retry={false}><App /></AppProviders>);
 
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
@@ -89,7 +84,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText("Libellé"), "x");
     await user.type(screen.getByLabelText("Montant"), "abc");
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Montant invalide");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Le montant est invalide");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
 });
@@ -127,6 +122,7 @@ describe("modification et 2FA", () => {
     }));
     renderApp();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Double authentification" }));
     await user.click(await screen.findByRole("button", { name: /Activer la double authentification/ }));
     expect(await screen.findByTestId("totp-secret")).toHaveTextContent("JBSWY3DPEHPK3PXP");
     await user.type(screen.getByLabelText("Code à 6 chiffres"), "123456");
@@ -253,5 +249,98 @@ describe("import d'une fiche de paie", () => {
     await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-"], "scan.pdf", { type: "application/pdf" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("OCR");
     expect(screen.queryByTestId("confidence")).not.toBeInTheDocument();
+  });
+});
+
+describe("gestion des erreurs et ergonomie", () => {
+  const rows = { tx: [{ id: "t1", accountId: "a1", amountCents: -4550, date: "2026-10-05", label: "Courses" }] };
+  const dash = (extra: Handler = () => ({})): Handler => (m, u, b) => {
+    const r = extra(m, u, b);
+    if (r.json !== undefined || r.status || r.network || r.html) return r;
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules") return { json: [] };
+    if (u.startsWith("/transactions")) return { json: rows.tx };
+    if (u === "/reminder") return { json: { enabled: false, weekday: 7, hour: 18, timezone: "Europe/Paris", lastDoneAt: null, due: false, pushConfigured: false, subscribed: false } };
+    return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("demande confirmation avant de supprimer et n'appelle l'API qu'après accord", async () => {
+    const calls = mockApi(dash((m) => (m === "DELETE" ? { status: 204 } : {})));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Supprimer Courses" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Supprimer l'opération « Courses » ?");
+    await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Supprimer Courses" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.url === "/transactions/t1")).toBe(true));
+    expect(await screen.findByRole("status")).toHaveTextContent("Opération supprimée.");
+  });
+
+  it("affiche une notification claire quand une action échoue (au lieu d'échouer en silence)", async () => {
+    mockApi(dash((m) => (m === "DELETE" ? { status: 403, json: { message: "Forbidden" } } : {})));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Supprimer Courses" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Vous n'avez pas les droits nécessaires pour cette action.");
+  });
+
+  it("explique un serveur injoignable et propose de réessayer", async () => {
+    mockApi(() => ({ network: true }));
+    renderApp();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Impossible de joindre le serveur");
+    expect(within(alert).getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+  });
+
+  it("ne montre jamais une page HTML d'erreur : message clair pour un 404 de route", async () => {
+    mockApi(dash((m, u) => (u === "/payslips/parse" ? { status: 404, html: true } : {})));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("introuvable sur le serveur");
+    expect(alert.textContent).not.toContain("<");
+  });
+
+  it("refuse un fichier qui n'est pas un PDF avant tout envoi", async () => {
+    const calls = mockApi(dash());
+    renderApp();
+    const user = userEvent.setup({ applyAccept: false });
+    await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["texte"], "photo.png", { type: "image/png" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("« photo.png » n'est pas un PDF");
+    expect(calls.some((c) => c.url === "/payslips/parse")).toBe(false);
+  });
+
+  it("ramène à la connexion avec une explication quand la session expire", async () => {
+    let expired = false;
+    mockApi((m, u, b) => {
+      if (u === "/reminder") expired = true;
+      if (expired && u !== "/auth/refresh" && u !== "/household/members") return { status: 401 };
+      if (u === "/auth/refresh") return { status: 401 };
+      return dash()(m, u, b);
+    });
+    renderApp();
+    expect(await screen.findByRole("heading", { name: "Connexion" })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Votre session a expiré");
+  });
+
+  it("rend les actions visibles : boutons libellés pour modifier, supprimer et naviguer", async () => {
+    mockApi(dash());
+    renderApp();
+    expect(await screen.findByRole("button", { name: "Ajouter une opération" })).toBeVisible();
+    for (const name of ["Importer une fiche de paie", "Bilan de la semaine", "Double authentification", "Déconnexion"]) {
+      expect(screen.getByRole("button", { name })).toBeVisible();
+    }
+    expect(await screen.findByRole("button", { name: "Modifier Courses" })).toHaveTextContent("Modifier");
+    expect(screen.getByRole("button", { name: "Supprimer Courses" })).toHaveTextContent("Supprimer");
   });
 });

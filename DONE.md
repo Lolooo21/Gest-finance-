@@ -141,3 +141,22 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `apps/api/src/app.ts` — logs `error`/`warn` activés hors test, filtre global enregistré.
 - Tests (+5, API : 54) : cause journalisée sans valeurs sensibles, réponse générique, statut 429 conservé, HttpException inchangée, message de base non migrée. Vérifié à la main : démarrage sur une base vide → message explicite.
 - `README.md` : section « Dépannage ».
+
+## Correctif et ergonomie — 404 à l'import du PDF, messages clairs, boutons visibles
+### Cause du 404
+- Le proxy de développement (`apps/web/vite.config.ts`) ne connaissait pas `/payslips`, `/reminder`, `/review`, `/push` : ces requêtes atteignaient Vite (404). Corrigé par `packages/shared/src/routes.ts` — `API_ROUTE_PREFIXES`, utilisé par le proxy et la liste de refus du service worker ; `apps/api/test/routes.test.ts` vérifie que chaque contrôleur a son préfixe dans la liste (test éprouvé en retirant `/payslips`). Vérifié sur les vrais serveurs : l'import répond 400 JSON au lieu de 404.
+
+### Messages d'erreur (`apps/web/src/`)
+- `errors.ts` — `friendlyMessage(status, serverMessage)` : réseau coupé, 400, 401 (session), 403 (droits), 404 (fonction introuvable → mise à jour/redémarrage), 409, 413, 422, 429, 5xx ; ignore les messages techniques anglais, les « Cannot POST … » et les pages HTML.
+- `api.ts` — `ApiError` porte désormais le message clair ; échec réseau = statut 0 ; événement `session-expired` quand le renouvellement échoue ; `apiUpload()` aligné.
+- `packages/shared` — messages de validation Zod en français (`z.setErrorMap`), `ZodPipe` sans doublons.
+- `App.tsx` : retour à la connexion avec explication à l'expiration de la session ; bandeau « Réessayer » si le serveur est injoignable.
+
+### Retours visibles et ergonomie
+- `ui.tsx` — `Button` (principal/secondaire/danger/discret, ≥ 44 px, chargement, focus visible), `Icon`, `ToastProvider`/`useToast` (succès/erreur, sans doublon), `ConfirmProvider`/`useConfirm` (dialogue accessible, Échap), `ErrorBanner`.
+- `providers.tsx` — `AppProviders` : toute mutation en échec affiche une notification sauf si elle gère son erreur en ligne (`meta.inline`).
+- `pages/Dashboard.tsx` — en-tête fixe (masquer les montants, déconnexion), actions rapides, `RowActions` (« Modifier » / « Supprimer » libellés), suppression avec confirmation, textes d'aide.
+- `pages/Payslip.tsx` — zone de dépôt, bouton « Choisir un PDF », `checkPdf()` (type, taille, vide) avant envoi, messages précis ; `pages/Weekly.tsx`, `pages/AuthPage.tsx` : boutons et messages harmonisés.
+
+### Tests
+- Front : 36 tests (+11) : `friendlyMessage`, confirmation avant suppression, notification sur échec, serveur injoignable, 404 HTML, fichier non PDF, session expirée, boutons visibles. API : 56 tests (+2, routes). Shared : 2 tests (messages en français).

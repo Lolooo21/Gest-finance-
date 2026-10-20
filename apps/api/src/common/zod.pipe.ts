@@ -6,7 +6,7 @@ export class ZodPipe<T> implements PipeTransform {
   transform(value: unknown): T {
     const result = this.schema.safeParse(value);
     if (!result.success) {
-      throw new BadRequestException(result.error.issues.map((i) => i.message));
+      throw new BadRequestException([...new Set(result.error.issues.map((i) => i.message))]);
     }
     return result.data;
   }

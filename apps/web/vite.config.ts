@@ -3,10 +3,12 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+// Import relatif (et non le paquet) : le fichier de config est empaqueté par esbuild, sans passer par les dépendances du workspace.
+import { API_ROUTE_PREFIXES } from "../../packages/shared/src/routes";
 
 // L'API est proxifiée sur la même origine : les cookies HttpOnly/SameSite=Strict fonctionnent sans CORS.
 const API = process.env.API_URL ?? "http://localhost:3000";
-const apiRoutes = ["/auth", "/household", "/accounts", "/transactions", "/recurring-rules", "/summary", "/health"];
+const apiRoutes = [...API_ROUTE_PREFIXES];
 
 export default defineConfig({
   plugins: [

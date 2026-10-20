@@ -1,5 +1,26 @@
 import { z } from "zod";
 
+/** Messages de validation en français pour l'utilisateur (les messages explicites des schémas restent prioritaires). */
+z.setErrorMap((issue, ctx) => {
+  switch (issue.code) {
+    case "invalid_type":
+      return { message: issue.received === "undefined" ? "Champ obligatoire" : "Valeur invalide" };
+    case "invalid_string":
+      if (issue.validation === "email") return { message: "Adresse e-mail invalide" };
+      if (issue.validation === "uuid") return { message: "Identifiant invalide" };
+      if (issue.validation === "url") return { message: "Adresse invalide" };
+      return { message: "Format invalide" };
+    case "too_small":
+      return { message: issue.type === "string" ? `${issue.minimum} caractère(s) minimum` : `Valeur trop petite (minimum ${issue.minimum})` };
+    case "too_big":
+      return { message: issue.type === "string" ? `${issue.maximum} caractère(s) maximum` : `Valeur trop grande (maximum ${issue.maximum})` };
+    case "invalid_enum_value":
+      return { message: "Valeur non autorisée" };
+    default:
+      return { message: ctx.defaultError };
+  }
+});
+
 export const Role = z.enum(["OWNER", "ADULT", "CHILD"]);
 export type Role = z.infer<typeof Role>;
 
@@ -121,3 +142,4 @@ export const PayslipConfirmDto = z.object({
   force: z.boolean().default(false),
 });
 export type PayslipConfirmDto = z.infer<typeof PayslipConfirmDto>;
+export * from "./routes.js";

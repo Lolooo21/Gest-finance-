@@ -1,29 +1,43 @@
+import { friendlyMessage } from "./errors";
+
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message);
+  /** `message` est déjà un texte clair, destiné à l'utilisateur. */
+  constructor(readonly status: number, serverMessage?: string) {
+    super(friendlyMessage(status, serverMessage));
   }
 }
 
 async function raw(method: string, path: string, body?: unknown) {
-  return fetch(path, {
-    method,
-    credentials: "same-origin",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  try {
+    return await fetch(path, {
+      method,
+      credentials: "same-origin",
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(0);
+  }
 }
+
+/** Lit le message d'erreur d'une réponse ; une réponse qui n'est pas du JSON (page HTML, texte) est ignorée. */
+async function errorFrom(res: Response): Promise<ApiError> {
+  const data = (await res.json().catch(() => null)) as { message?: string | string[] } | null;
+  const message = Array.isArray(data?.message) ? data.message.join(", ") : data?.message;
+  return new ApiError(res.status, message);
+}
+
+/** Signale au front qu'il faut se reconnecter (le renouvellement de session a échoué). */
+const sessionExpired = () => window.dispatchEvent(new Event("session-expired"));
 
 /** Appel API ; sur 401, une tentative de renouvellement de session puis un seul rejeu. */
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   let res = await raw(method, path, body);
   if (res.status === 401 && !path.startsWith("/auth/")) {
     if ((await raw("POST", "/auth/refresh")).ok) res = await raw(method, path, body);
+    if (res.status === 401) sessionExpired();
   }
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { message?: string | string[] };
-    const msg = Array.isArray(data.message) ? data.message.join(", ") : (data.message ?? "Erreur");
-    throw new ApiError(res.status, msg);
-  }
+  if (!res.ok) throw await errorFrom(res);
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
@@ -46,16 +60,18 @@ export interface PayslipExtraction {
 
 /** Envoi d'un fichier (multipart) : le navigateur fixe lui-même le Content-Type et sa frontière. */
 export async function apiUpload<T>(path: string, file: File): Promise<T> {
-  const send = () => {
+  const send = async () => {
     const form = new FormData();
     form.append("file", file);
-    return fetch(path, { method: "POST", credentials: "same-origin", body: form });
+    try {
+      return await fetch(path, { method: "POST", credentials: "same-origin", body: form });
+    } catch {
+      throw new ApiError(0);
+    }
   };
   let res = await send();
   if (res.status === 401 && (await raw("POST", "/auth/refresh")).ok) res = await send();
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { message?: string | string[] };
-    throw new ApiError(res.status, Array.isArray(data.message) ? data.message.join(", ") : (data.message ?? "Erreur"));
-  }
+  if (res.status === 401) sessionExpired();
+  if (!res.ok) throw await errorFrom(res);
   return (await res.json()) as T;
 }
