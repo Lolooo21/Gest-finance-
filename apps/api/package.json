@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
+    "predev": "prisma generate && prisma migrate deploy",
     "dev": "node --env-file=.env --watch --import @swc-node/register/esm-register src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",

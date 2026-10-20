@@ -186,5 +186,6 @@ pnpm test
 | `404` sur une fonction (import de PDF, rappel, bilan…) en développement | Le proxy du front n'envoyait pas cette route à l'API (corrigé : la liste des préfixes est partagée dans `packages/shared/src/routes.ts`, un test de l'API vérifie qu'elle est complète). Après un `git pull` : `pnpm install` puis relancez `pnpm dev` pour recharger la configuration du proxy |
 | `ECONNREFUSED` dans le terminal du front | L'API n'a pas démarré : lisez l'erreur affichée juste avant « Failed running » dans le terminal de l'API |
 | `Can't reach database server` | PostgreSQL n'est pas démarré : `docker compose -f infra/docker/compose.dev.yml up -d` (depuis la racine) |
+| `Cannot read properties of undefined (reading 'count')` au démarrage de l'API | Le client Prisma date d'avant une mise à jour du schéma. `pnpm dev` exécute désormais `prisma generate` puis `prisma migrate deploy` avant de démarrer l'API (script `predev`) ; l'API affiche aussi un message explicite si le client ou la base ne sont pas à jour |
 | `Cannot find package …` après un `git pull` | Dépendances manquantes : `pnpm install` |
 | `JWT_SECRET` ou `FIELD_ENCRYPTION_KEY` manquant | Vérifiez `apps/api/.env` (voir `.env.example`) |

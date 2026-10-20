@@ -45,13 +45,13 @@ describe("AllExceptionsFilter", () => {
 
 describe("PrismaService au démarrage", () => {
   const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot"];
-  const service = (failing?: { model: string; code?: string; message?: string }) => {
+  const service = (failing?: { model: string; code?: string; message?: string }, missing?: string) => {
     const s = new PrismaService();
     s.$connect = async () => undefined;
     for (const model of MODELS) {
       const fails = failing?.model === model;
       Object.defineProperty(s, model, {
-        value: { count: async () => { if (fails) throw Object.assign(new Error(failing.message ?? "x"), { code: failing.code }); return 0; } },
+        value: missing === model ? undefined : { count: async () => { if (fails) throw Object.assign(new Error(failing.message ?? "x"), { code: failing.code }); return 0; } },
       });
     }
     return s;
@@ -61,6 +61,10 @@ describe("PrismaService au démarrage", () => {
     await expect(service({ model: "user", code: "P2021" }).onModuleInit()).rejects.toThrow(/« user ».*prisma migrate deploy/);
     await expect(service({ model: "bankAccount", code: "P2021" }).onModuleInit()).rejects.toThrow(/« bankAccount »/);
     await expect(service({ model: "payslipImport", code: "P2022" }).onModuleInit()).rejects.toThrow(/prisma generate/);
+  });
+
+  it("explique qu'il faut régénérer le client Prisma quand un modèle est absent du client", async () => {
+    await expect(service(undefined, "marketSnapshot").onModuleInit()).rejects.toThrow(/« marketSnapshot ».*prisma generate/);
   });
 
   it("laisse passer les autres erreurs et démarre si le schéma est migré", async () => {

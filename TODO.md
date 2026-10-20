@@ -136,6 +136,26 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 | Simulateur de crédit conso / immo : mensualité, coût total, TAEG, assurance, tableau d'amortissement, capacité d'emprunt (taux d'endettement ~35 %), impact sur le reste à vivre | P2 | **Calcul faisable à 100 % hors ligne** (formules d'annuité, fonctions pures dans `finance-core`, partagées avec le suivi des crédits). Taux indicatifs : taux d'usure et taux moyens publiés par la Banque de France (source publique, à vérifier), ajustables à la main. Taux réels par banque non disponibles librement : l'utilisateur saisit l'offre reçue |
 | Comparateur de frais bancaires (banques en ligne et physiques) : coût annuel estimé selon l'usage du foyer (carte, retraits, virements, découvert, tenue de compte) | P3 | **Données moins faciles** : pas d'API ouverte unique ; les banques publient leurs tarifs en PDF (extrait standard des tarifs, format normalisé) et un comparateur public existe côté pouvoirs publics (à vérifier avant d'envisager un import). Approche : jeu de données **versionné et maintenu à la main** (`data/bank-fees.json`, date de mise à jour et source par banque, avertissement « indicatif »), puis calcul du coût annuel à partir de l'usage réel déduit des opérations importées. Pas de scraping |
 
+### Objectifs et bonnes pratiques d'épargne (ajout)
+| Idée | Prio | Notes |
+|---|---|---|
+| Objectifs de comportement mensuels : « pas de découvert ce mois-ci », « reste à vivre positif », « dépenses sous X € » | P1 | Évalués par une fonction pure dans `finance-core` (`projectBalance()` partagée avec le prévisionnel) : statut en bonne voie / à risque / raté, alerte si le solde projeté passe sous zéro, série de mois réussis |
+| Objectifs d'épargne typés : **épargne de secours**, **court terme** (voyage, travaux), **long terme** (retraite, études des enfants) | P1 | Chaque objectif : montant cible, date, comptes d'épargne liés, progression, versement mensuel conseillé calculé avec `projectSavings()` |
+| Épargne de secours : cible calculée automatiquement (3 à 6 mois de dépenses moyennes d'après l'historique), alerte si le fonds passe sous 3 mois | P1 | Supports suggérés : Livret A / LDDS (disponibles, garantis) via les fiches de l'onglet Actualités |
+| Bonnes pratiques guidées : ordre des priorités (secours → court terme → long terme), « payez-vous en premier » (virement d'épargne dès le salaire), répartition 50/30/20 en simple repère optionnel | P2 | Page d'aide courte, jamais présentée comme un conseil en investissement ; le long terme renvoie vers les fiches adaptées à l'horizon (PEA, assurance-vie, PEL…) |
+| Carte « Objectifs » sur le tableau de bord : statuts, jauges de progression, prochaine action recommandée | P1 | Rappel hebdomadaire : le bilan de la semaine affiche l'état des objectifs |
+| Modèles d'objectifs prédéfinis (fonds d'urgence, vacances, apport immobilier, rentrée scolaire) | P2 | Montant et durée proposés puis modifiables |
+
+### Argent de poche des enfants (ajout)
+| Idée | Prio | Notes |
+|---|---|---|
+| Sous-compte d'argent de poche par enfant avec versement automatique (hebdomadaire ou mensuel) | P2 | Réutilise `RecurringRule` ; solde virtuel suivi dans l'application, sans compte bancaire réel |
+| Vue enfant simplifiée : solde, historique, objectifs de l'enfant, saisie de ses dépenses | P2 | Étend le rôle `CHILD` (aujourd'hui lecture seule) : il ne voit que son propre argent de poche, jamais les finances du foyer |
+| Demandes de dépense ou de retrait de l'enfant, validées ou refusées par un parent | P2 | Notification aux parents (rappel/push existant), historique des décisions |
+| Objectifs d'épargne de l'enfant (jauge, date cible, « bravo » à l'atteinte) | P2 | Pédagogie : répartition dépenser / épargner / donner configurable par les parents |
+| Missions ou tâches rémunérées (optionnel) : un parent crée la tâche, valide, le montant est versé | P3 | |
+| Plafonds et règles fixés par les parents (montant maximum par dépense, par semaine) | P3 | Messages clairs pour l'enfant en cas de refus |
+
 ## Sélection MVP évolutif (P1 prioritaires)
 1. Import de relevés + catégorisation auto + doublons
 2. Reste à vivre prévisionnel

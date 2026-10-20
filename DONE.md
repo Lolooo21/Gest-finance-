@@ -201,3 +201,10 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `scripts/market-check.ts` : affiche la source utilisée ou toutes les URL testées avec le statut et l'extrait.
 - Tests API : 83 (+3 : pas d'`Accept: text/csv`, repli après un 404 dans l'ordre prévu, message détaillé quand tout échoue).
 - Non vérifié : la clé `0000` et le repli Eurostat n'ont pas pu être testés (BCE/Eurostat injoignables depuis le bac à sable) ; à confirmer avec `pnpm market:check`.
+
+## Correctif — démarrage de l'API avec un client Prisma obsolète
+- Symptôme (PC de l'utilisateur) : `Cannot read properties of undefined (reading 'count')` au démarrage : le client Prisma n'avait pas été régénéré après l'ajout de `MarketSnapshot`.
+- `PrismaService.onModuleInit` : un modèle absent du client déclenche le message explicite « modèle … : lancez `prisma migrate deploy` puis `prisma generate` ».
+- `apps/api/package.json` : script `predev` (`prisma generate && prisma migrate deploy`) : `pnpm dev` met le client et la base à jour automatiquement. Vérifié : `pnpm dev` génère, applique les migrations (5 trouvées) et l'API répond `/health`.
+- Test : 84 tests API (+1 : modèle absent du client).
+- `TODO.md` : ajout des objectifs (pas de découvert, épargne de secours, court et long terme, bonnes pratiques) et de la gestion de l'argent de poche des enfants.

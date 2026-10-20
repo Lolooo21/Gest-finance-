@@ -12,8 +12,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async onModuleInit() {
     await this.$connect();
     for (const model of MODELS) {
+      // Modèle absent du client : `prisma generate` n'a pas été relancé après une mise à jour du schéma.
+      const delegate = this[model] as { count: () => Promise<number> } | undefined;
+      if (!delegate) throw new Error(notMigrated(model));
       try {
-        await (this[model] as { count: () => Promise<number> }).count();
+        await delegate.count();
       } catch (e) {
         const code = (e as { code?: string }).code;
         if (code === "P2021" || code === "P2022") throw new Error(notMigrated(model));
