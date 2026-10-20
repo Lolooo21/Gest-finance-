@@ -6,7 +6,7 @@ import rateLimit from "@fastify/rate-limit";
 import { AppModule } from "./app.module.js";
 
 export async function createApp(opts: { rateLimitMax?: number } = {}): Promise<NestFastifyApplication> {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: false });
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), { logger: false, abortOnError: false });
   await app.register(helmet, { contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } } });
   await app.register(cookie);
   await app.register(rateLimit, { max: opts.rateLimitMax ?? 100, timeWindow: "1 minute" });
