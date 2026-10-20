@@ -29,6 +29,9 @@ erDiagram
     User ||--o{ PushSubscription : "appareils"
     BankAccount ||--o{ Transaction : "opérations"
     BankAccount ||--o{ RecurringRule : "récurrences"
+    BankAccount ||--o{ PayslipImport : "salaires importés"
+    Transaction ||--o| PayslipImport : "revenu créé"
+    Household ||--o{ PayslipImport : "possède"
 
     Household {
         uuid id PK
@@ -94,6 +97,17 @@ erDiagram
         date date
         string label
     }
+    PayslipImport {
+        uuid id PK
+        uuid householdId FK
+        uuid userId
+        uuid accountId FK
+        uuid transactionId FK,UK "revenu créé (null si supprimé)"
+        string periodMonth "AAAA-MM"
+        int netCents
+        int grossCents
+        string employer
+    }
     RecurringRule {
         uuid id PK
         uuid householdId FK
@@ -113,6 +127,7 @@ erDiagram
 - Une **règle récurrente** (`RecurringRule`) décrit un salaire, un loyer, un abonnement… (hebdomadaire, mensuel, annuel, avec fin optionnelle). Les occurrences ne sont pas stockées : `finance-core` les génère à la demande.
 - `ReminderSetting` (une ligne par utilisateur) décrit son rappel hebdomadaire : jour, heure, fuseau. Le **créneau** du rappel est le dernier instant où tombent ce jour et cette heure ; le bilan est « dû » si ce créneau est postérieur à l'activation (`since`) et au dernier bilan fait (`lastDoneAt`). `lastReminderAt` garantit une seule notification par créneau.
 - `PushSubscription` : un appareil abonné aux notifications. L'API n'envoie qu'aux services push connus des navigateurs (liste blanche anti-SSRF) ; la notification ne contient aucune donnée financière.
+- `PayslipImport` garde uniquement les **métadonnées** d'une fiche de paie validée (période, net, brut, employeur, lien vers l'opération créée), jamais le PDF : le fichier est lu en mémoire par le serveur puis jeté. Il sert à détecter les doublons (même compte, période et net, tant que l'opération existe).
 - `RefreshToken` stocke uniquement l'empreinte SHA-256 du jeton de session, avec rotation et révocation. `AuditLog` garde les actions (connexion, ajout…), sans montants ni secrets.
 
 **Reste à vivre** = revenus (récurrents + ponctuels) − charges fixes récurrentes − dépenses ponctuelles, sur la période demandée (`GET /summary?from&to`), recalculé à chaque lecture donc après chaque ajout, modification ou suppression.
@@ -130,11 +145,12 @@ erDiagram
 | Reste à vivre | Calcul du mois en cours, recalculé après chaque changement |
 | Rappel hebdomadaire | Jour, heure et fuseau au choix ; bannière « c'est l'heure de faire les comptes » dans l'appli ; notification push (si clés VAPID configurées) vérifiée chaque minute par un planificateur interne, une seule fois par créneau, sans rappel rétroactif |
 | Bilan de la semaine | Écran en un coup d'œil : entrées et sorties des 7 derniers jours, récurrences échues, échéances des 7 jours à venir, reste à vivre du mois ; bouton « J'ai fait mes comptes » qui éteint le rappel ; ouvert directement depuis la notification |
+| Fiches de paie | Import d'un PDF numérique (5 Mo max, vérifié par signature) : le serveur lit le texte en mémoire et **propose** net à payer (net payé après prélèvement à la source de préférence), brut, période, employeur, avec un indice de fiabilité et des avertissements ; vous corrigez puis validez, ce qui crée le revenu (« Salaire AAAA-MM ») ; détection des doublons (409, « enregistrer quand même » possible) ; récurrence mensuelle optionnelle démarrant le mois suivant (pas de double comptage) ; PDF jamais conservé ; scans refusés avec un message clair (OCR à venir) |
 | Confidentialité | Bouton « Masquer les montants » (mémorisé sur l'appareil) |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
-| Tests | `finance-core` (13 tests, 100 %), API sur PostgreSQL réel (40 tests), front (22 tests) |
+| Tests | `finance-core` (32 tests, 100 %), API sur PostgreSQL réel (49 tests), front (25 tests) |
 
-À venir (voir `TODO.md`) : lecture des fiches de paie (jalon 6), actualités financières, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys, RLS PostgreSQL.
+À venir (voir `TODO.md`) : actualités financières (jalon 7), OCR des scans, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys, RLS PostgreSQL.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker.

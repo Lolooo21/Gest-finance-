@@ -109,3 +109,15 @@ export type PushUnsubscribeDto = z.infer<typeof PushUnsubscribeDto>;
 
 export const WeeklyReviewQuery = z.object({ to: isoDate.optional() });
 export type WeeklyReviewQuery = z.infer<typeof WeeklyReviewQuery>;
+
+export const PayslipConfirmDto = z.object({
+  accountId: z.string().uuid(),
+  netToPayCents: z.number().int().positive().max(2_000_000_000),
+  grossCents: z.number().int().positive().max(2_000_000_000).nullable().optional(),
+  periodMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "période AAAA-MM"),
+  employer: z.string().max(80).nullable().optional(),
+  paymentDate: isoDate,
+  createRecurring: z.boolean().default(false),
+  force: z.boolean().default(false),
+});
+export type PayslipConfirmDto = z.infer<typeof PayslipConfirmDto>;

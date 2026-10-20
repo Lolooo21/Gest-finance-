@@ -36,7 +36,11 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Rappel : test réel des notifications sur appareil (clés VAPID, navigateur) | À faire — non vérifié ici |
 | Rappel : écarts vs budget dans le bilan (dépend des enveloppes) | À faire |
 | Documents : upload, antivirus, chiffrement | À faire |
-| Lecture fiches de paie (PDF, OCR repli, validation humaine) | À faire |
+| Lecture des fiches de paie (PDF numérique, parseur générique, validation humaine, anti-doublon, sans conservation) | Terminé (jalon 6) ; à confronter à de vraies fiches |
+| Fiches de paie : OCR des scans et photos (Tesseract) | À faire |
+| Fiches de paie : parseurs par employeur / logiciel de paie selon vos vrais PDF | À faire |
+| Fiches de paie : isoler l'extraction PDF dans un processus ou worker avec délai maximal | À faire |
+| Fiches de paie : conservation chiffrée du PDF dans le coffre-fort | À faire |
 | Page actualités financières (taux, actifs d'épargne) | À faire |
 
 ## Sécurité

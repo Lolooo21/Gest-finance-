@@ -22,6 +22,7 @@ model Household {
   accounts  BankAccount[]
   transactions Transaction[]
   recurringRules RecurringRule[]
+  payslipImports PayslipImport[]
 }
 
 model User {
@@ -90,6 +91,7 @@ model BankAccount {
   createdAt           DateTime @default(now())
   transactions        Transaction[]
   recurringRules      RecurringRule[]
+  payslipImports      PayslipImport[]
 
   @@index([householdId])
 }
@@ -105,6 +107,7 @@ model Transaction {
   date        DateTime @db.Date
   label       String
   createdAt   DateTime @default(now())
+  payslipImport PayslipImport?
 
   @@index([householdId, date])
   @@index([accountId])
@@ -150,4 +153,24 @@ model PushSubscription {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+/// Métadonnées d'une fiche de paie importée (le PDF n'est jamais conservé).
+model PayslipImport {
+  id            String   @id @default(uuid())
+  householdId   String
+  household     Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId        String
+  accountId     String
+  account       BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// AAAA-MM
+  periodMonth   String
+  netCents      Int
+  grossCents    Int?
+  employer      String?
+  transactionId String?  @unique
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+
+  @@index([householdId, accountId, periodMonth])
 }

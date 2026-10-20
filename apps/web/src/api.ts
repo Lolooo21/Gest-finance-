@@ -39,3 +39,23 @@ export interface WeeklyReview {
   transactions: (ReviewLine & { id: string })[]; recurringInPeriod: ReviewLine[]; upcoming: ReviewLine[];
   month: Summary;
 }
+
+export interface PayslipExtraction {
+  netToPayCents: number | null; grossCents: number | null; periodMonth: string | null; employer: string | null; confidence: number; warnings: string[];
+}
+
+/** Envoi d'un fichier (multipart) : le navigateur fixe lui-même le Content-Type et sa frontière. */
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const send = () => {
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(path, { method: "POST", credentials: "same-origin", body: form });
+  };
+  let res = await send();
+  if (res.status === 401 && (await raw("POST", "/auth/refresh")).ok) res = await send();
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { message?: string | string[] };
+    throw new ApiError(res.status, Array.isArray(data.message) ? data.message.join(", ") : (data.message ?? "Erreur"));
+  }
+  return (await res.json()) as T;
+}

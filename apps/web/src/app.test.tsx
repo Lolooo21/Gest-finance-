@@ -10,7 +10,7 @@ type Handler = (method: string, url: string, body: unknown) => { status?: number
 function mockApi(handler: Handler) {
   const calls: { method: string; url: string; body: unknown }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    const body = init?.body instanceof FormData ? { file: (init.body.get("file") as File | null)?.name } : init?.body ? JSON.parse(String(init.body)) : undefined;
     const method = init?.method ?? "GET";
     calls.push({ method, url, body });
     const r = handler(method, url, body);
@@ -184,5 +184,74 @@ describe("rappel hebdomadaire", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
     expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ enabled: true, weekday: 1, hour: 9, timezone: expect.any(String) });
     expect(await screen.findByText(/Notifications push non configurées/)).toBeInTheDocument();
+  });
+});
+
+describe("import d'une fiche de paie", () => {
+  const extraction = { netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-09", employer: "ACME Conseil SAS", confidence: 0.9, warnings: ["Salaire brut introuvable."] };
+  const payslipApi = (confirm: { status?: number; json?: unknown } = { status: 201, json: { recurringStart: null } }): Handler => (m, u) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    if (u === "/reminder") return { json: { enabled: false, weekday: 7, hour: 18, timezone: "Europe/Paris", lastDoneAt: null, due: false, pushConfigured: false, subscribed: false } };
+    if (u === "/payslips/parse") return { json: extraction };
+    if (u === "/payslips/confirm") return confirm;
+    return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  async function openAndUpload(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
+    return screen.findByTestId("confidence");
+  }
+
+  it("préremplit les valeurs lues, affiche les avertissements et n'enregistre qu'après validation", async () => {
+    const calls = mockApi(payslipApi());
+    renderApp();
+    const user = userEvent.setup();
+    expect((await openAndUpload(user)).textContent).toBe("90 %");
+    expect(screen.getByRole("note")).toHaveTextContent("Salaire brut introuvable");
+    expect(screen.getByLabelText(/Net à payer/)).toHaveValue("2285,40");
+    expect(screen.getByLabelText(/Période/)).toHaveValue("2026-09");
+    expect(calls.some((c) => c.url === "/payslips/confirm")).toBe(false);
+
+    await waitFor(() => expect(screen.getByLabelText(/Compte crédité/)).toHaveTextContent("Courant"));
+    await user.selectOptions(screen.getByLabelText(/Compte crédité/), "a1");
+    await user.clear(screen.getByLabelText(/Net à payer/));
+    await user.type(screen.getByLabelText(/Net à payer/), "2 290,00");
+    await user.click(screen.getByLabelText(/récurrence mensuelle/));
+    await user.click(screen.getByRole("button", { name: "Valider et enregistrer le revenu" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/payslips/confirm")).toBe(true));
+    expect(calls.find((c) => c.url === "/payslips/confirm")?.body).toMatchObject({
+      accountId: "a1", netToPayCents: 229_000, grossCents: 312_050, periodMonth: "2026-09", employer: "ACME Conseil SAS", createRecurring: true, force: false,
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("Revenu enregistré");
+  });
+
+  it("propose « Enregistrer quand même » sur un doublon et renvoie force: true", async () => {
+    let attempts = 0;
+    const calls = mockApi((m, u, b) => {
+      if (u === "/payslips/confirm") return ++attempts === 1 ? { status: 409, json: { message: "Cette fiche de paie semble déjà importée." } } : { status: 201, json: { recurringStart: null } };
+      return payslipApi()(m, u, b);
+    });
+    renderApp();
+    const user = userEvent.setup();
+    await openAndUpload(user);
+    await waitFor(() => expect(screen.getByLabelText(/Compte crédité/)).toHaveTextContent("Courant"));
+    await user.selectOptions(screen.getByLabelText(/Compte crédité/), "a1");
+    await user.click(screen.getByRole("button", { name: "Valider et enregistrer le revenu" }));
+    await user.click(await screen.findByRole("button", { name: "Enregistrer quand même" }));
+    await waitFor(() => expect(calls.filter((c) => c.url === "/payslips/confirm")).toHaveLength(2));
+    expect(calls.filter((c) => c.url === "/payslips/confirm")[1]?.body).toMatchObject({ force: true });
+  });
+
+  it("affiche le message du serveur si le PDF est un scan", async () => {
+    mockApi((m, u, b) => (u === "/payslips/parse" ? { status: 422, json: { message: "Aucun texte exploitable : OCR pas encore disponible." } } : payslipApi()(m, u, b)));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-"], "scan.pdf", { type: "application/pdf" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("OCR");
+    expect(screen.queryByTestId("confidence")).not.toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { api, ApiError, type Account, type Reminder, type Rule, type Summary, type Tx } from "../api";
 import { centsToInput, monthRange, parseEuros, todayIso } from "../money";
 import { Money, usePrivacy } from "../privacy";
+import { PayslipImport } from "./Payslip";
 import { ReminderSettings, WeeklyReviewPanel } from "./Weekly";
 
 const FREQ = { WEEKLY: "chaque semaine", MONTHLY: "chaque mois", YEARLY: "chaque année" } as const;
@@ -79,6 +80,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         <h2 className="mb-2 font-medium">Ajouter une entrée ou une sortie</h2>
         <EntryForm accounts={accounts.data ?? []} onDone={refresh} />
       </section>
+
+      <PayslipImport accounts={accounts.data ?? []} />
 
       <section className={card}>
         <h2 className="mb-2 font-medium">Récurrences</h2>
