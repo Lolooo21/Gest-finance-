@@ -8,6 +8,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
+    "pretest": "prisma generate",
     "test": "vitest run"
   },
   "dependencies": {
