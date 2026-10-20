@@ -37,3 +37,13 @@ describe("urlBase64ToUint8Array", () => {
     expect(Array.from(urlBase64ToUint8Array("-_8"))).toEqual([251, 255]);
   });
 });
+
+import { detected } from "./pages/Payslip";
+
+describe("detected", () => {
+  it("indique ce qui manque dans la lecture d'une fiche", () => {
+    const r = detected({ netToPayCents: null, grossCents: 312_050, periodMonth: null, employer: "ACME", confidence: 0.3, warnings: [] });
+    expect(r.filter((d) => !d.found).map((d) => d.name)).toEqual(["Net à payer", "Période"]);
+    expect(r.filter((d) => d.found).map((d) => d.name)).toEqual(["Brut", "Employeur"]);
+  });
+});

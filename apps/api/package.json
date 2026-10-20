@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
+    "payslip:debug": "node --import @swc-node/register/esm-register scripts/payslip-debug.ts",
     "pretest": "prisma generate",
     "test": "vitest run"
   },

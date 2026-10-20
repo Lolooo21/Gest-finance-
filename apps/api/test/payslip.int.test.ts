@@ -27,14 +27,14 @@ const PAYSLIP = [
   "Salaire brut 3 120,50", "Net a payer avant impot sur le revenu 2 430,40", "Prelevement a la source 145,00", "Net paye 2 285,40",
 ];
 
-function upload(c: { access: string } | undefined, file: Buffer, type = "application/pdf") {
+function upload(c: { access: string } | undefined, file: Buffer, type = "application/pdf", target: NestFastifyApplication = app) {
   const boundary = "----testboundary";
   const body = Buffer.concat([
     Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="x.pdf"\r\nContent-Type: ${type}\r\n\r\n`),
     file,
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ]);
-  return app.inject({ method: "POST", url: "/payslips/parse", payload: body, headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, cookies: c });
+  return target.inject({ method: "POST", url: "/payslips/parse", payload: body, headers: { "content-type": `multipart/form-data; boundary=${boundary}` }, cookies: c });
 }
 
 const confirmBody = (accountId: string, extra: object = {}) => ({
@@ -80,10 +80,13 @@ describe("lecture d'une fiche de paie", () => {
   });
 
   it("limite le nombre d'imports par minute", async () => {
-    const c = await register();
+    // Application dédiée : le compteur de débit ne doit pas fausser les autres tests du fichier.
+    const limited = await startApp();
+    const c = { access: sessionCookies(await post(limited, "/auth/register", owner(9))).access! };
     const codes: number[] = [];
-    for (let i = 0; i < 12; i++) codes.push((await upload(c, Buffer.from("x"))).statusCode);
+    for (let i = 0; i < 12; i++) codes.push((await upload(c, Buffer.from("x"), "application/pdf", limited)).statusCode);
     expect(codes).toContain(429);
+    await limited.close();
   });
 });
 
@@ -138,5 +141,40 @@ describe("validation et enregistrement", () => {
       expect((await post(app, "/payslips/confirm", confirmBody(own, bad), a)).statusCode).toBe(400);
     }
     expect(await app.get(PrismaService).transaction.count()).toBe(0);
+  });
+});
+
+describe("lecture de PDF aux mises en page difficiles", () => {
+  /** Dessine chaque fragment à une position précise (x, y), comme un tableau écrit colonne par colonne. */
+  async function tablePdf(cells: { text: string; x: number; y: number }[]): Promise<Buffer> {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const page = doc.addPage();
+    for (const c of cells) page.drawText(c.text, { x: c.x, y: c.y, font, size: 11 });
+    return Buffer.from(await doc.save());
+  }
+
+  it("retrouve le montant d'un libellé même quand les colonnes sont écrites séparément et dans le désordre", async () => {
+    const c = await register();
+    // Les montants sont écrits AVANT les libellés dans le flux du PDF, comme beaucoup de logiciels de paie.
+    const pdf = await tablePdf([
+      { text: "3 120,50", x: 400, y: 700 }, { text: "2 285,40", x: 400, y: 640 },
+      { text: "Salaire brut", x: 40, y: 700 }, { text: "Net paye", x: 40, y: 640 },
+      { text: "Periode du 01/03/2026 au 31/03/2026", x: 40, y: 760 },
+      { text: "ACME CONSEIL SAS", x: 40, y: 790 },
+    ]);
+    const r = (await upload(c, pdf)).json();
+    expect(r).toMatchObject({ netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-03", employer: "ACME CONSEIL SAS" });
+    expect(r.confidence).toBe(1);
+  });
+
+  it("lit les montants écrits avec des espaces insécables (U+00A0)", async () => {
+    const c = await register();
+    const pdf = await tablePdf([
+      { text: "Net paye : 2 285,40", x: 40, y: 700 },
+      { text: "Salaire brut 3 120,50", x: 40, y: 670 },
+      { text: "Mois de mars 2026", x: 40, y: 730 },
+    ]);
+    expect((await upload(c, pdf)).json()).toMatchObject({ netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-03" });
   });
 });

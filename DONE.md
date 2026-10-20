@@ -160,3 +160,12 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 
 ### Tests
 - Front : 36 tests (+11) : `friendlyMessage`, confirmation avant suppression, notification sur échec, serveur injoignable, 404 HTML, fichier non PDF, session expirée, boutons visibles. API : 56 tests (+2, routes). Shared : 2 tests (messages en français).
+
+## Amélioration — fiabilité de la lecture des fiches de paie
+- **Bug corrigé** (`packages/finance-core/src/payslip.ts`, `normalize`) : les espaces insécables (U+00A0) et fines insécables (U+202F), très fréquents dans les PDF français (« 2 285,40 »), n'étaient pas reconnus comme séparateurs de milliers : net et brut restaient introuvables (fiabilité ~30 %). Toutes les espaces typographiques sont maintenant normalisées.
+- `apps/api/src/payslip/pdf-text.ts` — `rebuildLines()` : reconstruit les lignes par position (x, y) ; un libellé et son montant se retrouvent côte à côte même si le PDF écrit les colonnes séparément ou dans le désordre.
+- `parsePayslip()` : libellés élargis (« net à verser », « net perçu », « rémunération brute »), plage de dates sans le mot « période » (du…au / tiret, durée ≤ 35 jours), mois en lettres avec tiret ou barre, employeur déduit d'une ligne portant une forme juridique (SAS, SARL, mairie…) à défaut de libellé ; « net social » et « net imposable » jamais retenus.
+- `apps/api/scripts/payslip-debug.ts` (`pnpm payslip:debug fichier.pdf [--text] [--anonymize]`) : diagnostic local sans envoi ni enregistrement, avec masquage des chiffres pour partager la structure d'une fiche.
+- Front : liste « Éléments détectés » (✓/✗) sous la fiabilité, pour comprendre ce qui manque.
+- Tests : finance-core 38 (+6, espaces insécables, colonnes espacées, plages de dates, mois-année, employeur, net après impôt), API 61 (+5 : colonnes écrites dans le désordre dans un vrai PDF, U+00A0, `rebuildLines`), front 37.
+- Limite : non validé sur de vraies fiches de paie ; le diagnostic local sert à adapter la lecture à votre logiciel de paie.

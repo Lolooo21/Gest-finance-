@@ -19,9 +19,18 @@ const MONTHS: Record<string, number> = {
   janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12,
 };
 
-/** Minuscules, sans accents, espaces insécables normalisés. */
+/**
+ * Minuscules, sans accents. Tous les espaces typographiques (insécable U+00A0, fine insécable U+202F, etc.)
+ * deviennent des espaces simples, et les suites d'espaces sont réduites : les PDF français écrivent « 2 285,40 »
+ * avec une espace insécable, que la lecture doit reconnaître comme un séparateur de milliers.
+ */
 const normalize = (s: string) =>
-  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[  ]/g, " ");
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000\ufeff]/g, " ")
+    .replace(/[^\S\n]+/g, " ");
 
 const AMOUNT = String.raw`(\d{1,3}(?:[ .]\d{3})+,\d{2}|\d+,\d{2}|\d{1,3}(?:[ ,]\d{3})+\.\d{2}|\d+\.\d{2})`;
 
@@ -50,18 +59,26 @@ function amountAfter(text: string, labels: string[]): { cents: number; label: st
 
 function findPeriod(text: string): string | null {
   const pad = (n: number) => String(n).padStart(2, "0");
-  const range = /periode\s+du\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+au\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(text);
-  if (range) return `${range[6]}-${pad(Number(range[5]))}`;
-  const slash = /(?:periode|paie|bulletin)[^\d\n]{0,25}(\d{1,2})\/(\d{4})/.exec(text);
+  // « du 01/03/2026 au 31/03/2026 », « 01/03/2026 - 31/03/2026 » : une plage d'environ un mois, avec ou sans le mot « période ».
+  for (const m of text.matchAll(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(?:au|a|-|–)\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/g)) {
+    const start = Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    const end = Date.UTC(Number(m[6]), Number(m[5]) - 1, Number(m[4]));
+    const days = (end - start) / 86_400_000;
+    if (days >= 0 && days <= 35) return `${m[6]}-${pad(Number(m[5]))}`;
+  }
+  const slash = /(?:periode|paie|bulletin|salaire|mois)[^\d\n]{0,25}(\d{1,2})\/(\d{4})/.exec(text);
   if (slash && Number(slash[1]) >= 1 && Number(slash[1]) <= 12) return `${slash[2]}-${pad(Number(slash[1]))}`;
-  const named = new RegExp(`(?:mois\\s+de|bulletin\\s+de\\s+paie|periode|paie)[^\\d\\n]{0,25}?(${Object.keys(MONTHS).join("|")})\\s+(\\d{4})`).exec(text);
+  const named = new RegExp(`(?:mois|bulletin|periode|paie|salaire)[^\\d\\n]{0,30}?(${Object.keys(MONTHS).join("|")})[ \\-/]*(\\d{4})`).exec(text);
   if (named) return `${named[2]}-${pad(MONTHS[named[1]!]!)}`;
   return null;
 }
 
+const LEGAL_FORM = /^\s*([^\n\d]{0,60}\b(?:sas|sasu|sarl|eurl|sci|scop|selarl|association|mairie|commune|ets|etablissements?)\b[^\n\d]{0,40})$/im;
+
 function findEmployer(original: string): string | null {
-  const m = /(?:employeur|raison\s+sociale|entreprise|soci[eé]t[eé])\s*:?\s*([^\n\d]{2,80})/i.exec(original);
-  const name = m?.[1]?.replace(/\s+/g, " ").trim();
+  const labelled = /(?:employeur|raison\s+sociale|entreprise|soci[eé]t[eé])\s*:?\s*([^\n\d]{2,80})/i.exec(original);
+  const fallback = LEGAL_FORM.exec(original.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const name = (labelled?.[1] ?? fallback?.[1])?.replace(/\s+/g, " ").trim();
   return name && name.length >= 2 ? name.slice(0, 80) : null;
 }
 
@@ -69,11 +86,11 @@ export function parsePayslip(original: string): PayslipExtraction {
   const text = normalize(original);
   const warnings: string[] = [];
 
-  const net = amountAfter(text, ["net paye", "net a payer apres impot", "net a payer au salarie", "net a payer avant impot", "net a payer", "net verse"]);
+  const net = amountAfter(text, ["net paye", "net a payer apres impot", "net a payer au salarie", "net a verser", "net a payer avant impot", "net a payer", "net verse", "net percu"]);
   if (!net) warnings.push("Net à payer introuvable : saisissez-le manuellement.");
   else if (net.label === "net a payer avant impot") warnings.push("Seul le net avant impôt sur le revenu a été trouvé : le montant réellement versé peut être inférieur.");
 
-  const gross = amountAfter(text, ["salaire brut", "total brut", "brut mensuel", "\\bbrut\\b"]);
+  const gross = amountAfter(text, ["salaire brut", "total brut", "remuneration brute", "brut mensuel", "\\bbrut\\b"]);
   if (!gross) warnings.push("Salaire brut introuvable.");
 
   const periodMonth = findPeriod(text);

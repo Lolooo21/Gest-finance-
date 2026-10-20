@@ -41,7 +41,8 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Documents : upload, antivirus, chiffrement | À faire |
 | Lecture des fiches de paie (PDF numérique, parseur générique, validation humaine, anti-doublon, sans conservation) | Terminé (jalon 6) ; à confronter à de vraies fiches |
 | Fiches de paie : OCR des scans et photos (Tesseract) | À faire |
-| Fiches de paie : parseurs par employeur / logiciel de paie selon vos vrais PDF | À faire |
+| Fiches de paie : lecture robuste (espaces insécables, position des fragments, libellés élargis, plage de dates, employeur par forme juridique) | Terminé |
+| Fiches de paie : parseurs par employeur / logiciel de paie selon vos vrais PDF | En cours : dépend de vos vrais PDF (utiliser `pnpm payslip:debug --anonymize`) |
 | Fiches de paie : isoler l'extraction PDF dans un processus ou worker avec délai maximal | À faire |
 | Fiches de paie : conservation chiffrée du PDF dans le coffre-fort | À faire |
 | Page actualités financières (taux, actifs d'épargne) | À faire |

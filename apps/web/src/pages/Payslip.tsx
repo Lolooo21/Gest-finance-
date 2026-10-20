@@ -6,6 +6,14 @@ import { Button, cardClass, fieldClass, Icon, useToast } from "../ui";
 
 export const MAX_PDF_MB = 5;
 
+/** Ce que la lecture a trouvé ou non : explique le pourcentage de fiabilité et ce qu'il reste à saisir. */
+export const detected = (e: PayslipExtraction) => [
+  { name: "Net à payer", found: e.netToPayCents !== null },
+  { name: "Brut", found: e.grossCents !== null },
+  { name: "Période", found: e.periodMonth !== null },
+  { name: "Employeur", found: e.employer !== null },
+];
+
 /** Contrôle avant envoi : évite un aller-retour réseau pour un fichier manifestement refusé. */
 export function checkPdf(file: File): string | null {
   if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) return `« ${file.name} » n'est pas un PDF. Choisissez le PDF de votre fiche de paie.`;
@@ -97,7 +105,14 @@ export function PayslipImport({ accounts, onClose }: { accounts: Account[]; onCl
 
       {extraction && (
         <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); send(e.currentTarget, false); }}>
-          <p className="text-sm text-slate-700 sm:col-span-2">Fiabilité de la lecture : <strong data-testid="confidence">{Math.round(extraction.confidence * 100)} %</strong>. Vérifiez chaque valeur avant de valider.</p>
+          <div className="sm:col-span-2">
+            <p className="text-sm text-slate-700">Fiabilité de la lecture : <strong data-testid="confidence">{Math.round(extraction.confidence * 100)} %</strong>. Vérifiez chaque valeur avant de valider.</p>
+            <ul aria-label="Éléments détectés" className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {detected(extraction).map((d) => (
+                <li key={d.name} className={d.found ? "text-emerald-800" : "text-red-800"}>{d.found ? "✓" : "✗"} {d.name}{d.found ? "" : " non détecté : à saisir"}</li>
+              ))}
+            </ul>
+          </div>
           {extraction.warnings.map((w) => <p key={w} role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 sm:col-span-2">{w}</p>)}
           <label className={label}>Net à payer (€)<input name="net" required defaultValue={extraction.netToPayCents ? centsToInput(extraction.netToPayCents) : ""} className={fieldClass} inputMode="decimal" /></label>
           <label className={label}>Brut (€, optionnel)<input name="gross" defaultValue={extraction.grossCents ? centsToInput(extraction.grossCents) : ""} className={fieldClass} inputMode="decimal" /></label>

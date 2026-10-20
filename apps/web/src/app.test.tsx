@@ -207,6 +207,8 @@ describe("import d'une fiche de paie", () => {
     const user = userEvent.setup();
     expect((await openAndUpload(user)).textContent).toBe("90 %");
     expect(screen.getByRole("note")).toHaveTextContent("Salaire brut introuvable");
+    const found = within(screen.getByRole("list", { name: "Éléments détectés" })).getAllByRole("listitem").map((li) => li.textContent);
+    expect(found).toEqual(["✓ Net à payer", "✓ Brut", "✓ Période", "✓ Employeur"]);
     expect(screen.getByLabelText(/Net à payer/)).toHaveValue("2285,40");
     expect(screen.getByLabelText(/Période/)).toHaveValue("2026-09");
     expect(calls.some((c) => c.url === "/payslips/confirm")).toBe(false);
