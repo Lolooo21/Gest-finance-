@@ -193,3 +193,11 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Tests
 - API 80 (+19 : analyse CSV, taux et périodes, fiches, rafraîchissement avec `fetch` simulé : succès, échec partiel, réponses invraisemblables/malformées/démesurées, hôtes et options d'appel, fréquence, état des indicateurs, authentification, rôle enfant) ; front 47 (+10) ; finance-core 49 (+11).
 - Non vérifié : les appels réels à la BCE et à Eurostat (réseau du bac à sable bloqué) ; la structure SDMX-CSV est gérée de façon tolérante, `pnpm market:check` permet de le contrôler chez vous.
+
+## Correctif — indicateurs OAT (404) et inflation (406)
+- Constat (`pnpm market:check` chez l'utilisateur) : le taux de dépôt BCE fonctionne (2,50 %, période 2026-09-16) ; l'OAT renvoyait 404 (clé de série `…CI.0.EUR…` incorrecte) et l'inflation 406 (en-tête `Accept: text/csv` en contradiction avec `format=SDMX-CSV` chez Eurostat).
+- `fetch-indicator.ts` : en-tête `Accept: */*` (le format est fixé par l'URL) ; `fetchIndicator()` essaie les adresses candidates dans l'ordre et renvoie l'adresse utilisée ; une erreur HTTP est suivie d'un extrait de la réponse (200 caractères, balises retirées) ; si toutes les adresses échouent, l'erreur détaille chaque tentative (hôte, chemin, statut, extrait).
+- `indicators.ts` : `urls: string[]` ; OAT 10 ans : BCE `IRS/M.FR.L.L40.CI.0000.EUR.N.Z` (maturité `0000`), repli Eurostat `irt_lt_mcby_m/M.MCBY.FR`.
+- `scripts/market-check.ts` : affiche la source utilisée ou toutes les URL testées avec le statut et l'extrait.
+- Tests API : 83 (+3 : pas d'`Accept: text/csv`, repli après un 404 dans l'ordre prévu, message détaillé quand tout échoue).
+- Non vérifié : la clé `0000` et le repli Eurostat n'ont pas pu être testés (BCE/Eurostat injoignables depuis le bac à sable) ; à confirmer avec `pnpm market:check`.

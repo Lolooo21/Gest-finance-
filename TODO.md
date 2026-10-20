@@ -46,6 +46,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Fiches de paie : isoler l'extraction PDF dans un processus ou worker avec délai maximal | À faire |
 | Fiches de paie : conservation chiffrée du PDF dans le coffre-fort | À faire |
 | Page actualités financières : taux réglementés, indicateurs de marché automatiques, fiches d'épargne, simulateur d'intérêts | Terminé (jalon 7) ; appels réels BCE/Eurostat à vérifier chez vous (`pnpm market:check`) |
+| Actualités : confirmer chez vous les 3 indicateurs avec `pnpm market:check` (taux de dépôt BCE vérifié ; OAT et inflation corrigés, à confirmer) | En test |
 | Actualités : taux réglementés à mettre à jour à chaque arrêté (1er février / 1er août) ; taux du CEL non renseigné | À faire (récurrent) |
 | Actualités : historique et graphiques des indicateurs, alerte quand un taux change | À faire |
 | Actualités : comparaison des taux de crédit et simulateur de crédit conso/immo | À faire |

@@ -49,6 +49,7 @@ describe("MarketService.refresh", () => {
       expect(init.signal).toBeInstanceOf(AbortSignal);
       expect(init).not.toHaveProperty("credentials");
       expect(JSON.stringify(init.headers)).not.toMatch(/cookie|authorization/i);
+      expect((init.headers as Record<string, string>).Accept).toBe("*/*");
     }
   });
 
@@ -61,7 +62,7 @@ describe("MarketService.refresh", () => {
     });
     const report = await market.refresh(new Date("2026-10-21T08:00:00Z"), flaky);
     expect(report.ok).toEqual(["FR_10Y_YIELD"]);
-    expect(report.failed.map((f) => [f.key, f.reason])).toEqual([["ECB_DEPOSIT_RATE", "Réponse HTTP 503"], ["FR_INFLATION", "redirect mode is set to error"]]);
+    expect(report.failed.map((f) => [f.key, f.reason])).toEqual([["ECB_DEPOSIT_RATE", "Réponse HTTP 503 : boom"], ["FR_INFLATION", "redirect mode is set to error"]]);
     const views = await market.indicators(new Date("2026-10-21T09:00:00Z"));
     expect(views.find((v) => v.key === "ECB_DEPOSIT_RATE")).toMatchObject({ valueBp: 175, status: "ok" });
     expect(views.find((v) => v.key === "FR_10Y_YIELD")).toMatchObject({ valueBp: 360, observedAt: "2026-10" });
@@ -81,6 +82,38 @@ describe("MarketService.refresh", () => {
       ["FR_INFLATION", expect.stringContaining("Format inattendu")],
     ]);
     expect(await prisma.marketSnapshot.count()).toBe(0);
+  });
+});
+
+describe("adresses candidates et diagnostic", () => {
+  it("ne contredit jamais le paramètre format par un en-tête Accept restrictif (Eurostat répondait 406)", async () => {
+    const f = good() as unknown as ReturnType<typeof vi.fn>;
+    await market.refresh(NOW, f as unknown as typeof fetch);
+    for (const [, init] of f.mock.calls as [URL, RequestInit][]) expect(JSON.stringify(init.headers)).not.toContain("text/csv");
+  });
+
+  it("bascule sur l'adresse suivante quand la première répond 404, et garde l'ordre prévu", async () => {
+    const f = fakeFetch((url) => {
+      if (url.pathname.includes("/IRS/")) return new Response("Series not found", { status: 404 });
+      if (url.pathname.includes("DFR")) return ok(csv("2026-09-16", "2.50"));
+      if (url.pathname.includes("prc_hicp")) return ok(csv("2026-09", "1.2"));
+      return ok(csv("2026-09", "3.30"));
+    });
+    const report = await market.refresh(NOW, f);
+    expect(report).toEqual({ ok: ["ECB_DEPOSIT_RATE", "FR_10Y_YIELD", "FR_INFLATION"], failed: [] });
+    const paths = (f as unknown as ReturnType<typeof vi.fn>).mock.calls.map((call) => (call[0] as URL).pathname);
+    expect(paths.findIndex((p: string) => p.includes("/IRS/"))).toBeLessThan(paths.findIndex((p: string) => p.includes("irt_lt_mcby_m")));
+    expect((await prisma.marketSnapshot.findFirstOrThrow({ where: { key: "FR_10Y_YIELD" } })).valueBp).toBe(330);
+  });
+
+  it("détaille chaque tentative (hôte, chemin, statut, extrait) quand toutes les adresses échouent", async () => {
+    const f = fakeFetch((url) => (url.pathname.includes("DFR") ? ok(csv("2026-09-16", "2.50")) : url.pathname.includes("prc_hicp") ? ok(csv("2026-09", "1.2")) : new Response("<html><body>Not   Found</body></html>", { status: 404 })));
+    const report = await market.refresh(NOW, f);
+    const failure = report.failed.find((x) => x.key === "FR_10Y_YIELD")!;
+    expect(failure.reason).toContain("data-api.ecb.europa.eu/service/data/IRS/M.FR.L.L40.CI.0000.EUR.N.Z : Réponse HTTP 404 : Not Found");
+    expect(failure.reason).toContain("ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/irt_lt_mcby_m");
+    expect(failure.reason).toContain(" | ");
+    expect(failure.reason).not.toContain("<");
   });
 });
 

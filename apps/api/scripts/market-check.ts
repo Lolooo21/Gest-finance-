@@ -15,10 +15,11 @@ for (const indicator of INDICATORS) {
   try {
     const r = await fetchIndicator(indicator);
     console.log(`✓ ${indicator.label} : ${pct(r.valueBp)} (période ${r.period})`);
+    console.log(`  Source utilisée : ${r.url}`);
   } catch (e) {
     failures++;
     console.log(`✗ ${indicator.label} : ${e instanceof Error ? e.message : e}`);
-    console.log(`  URL testée : ${indicator.url}`);
+    for (const url of indicator.urls) console.log(`  URL testée : ${url}`);
   }
 }
 
