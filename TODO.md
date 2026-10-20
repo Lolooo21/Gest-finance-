@@ -52,6 +52,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Chiffrement AES-256-GCM de l'IBAN | Terminé (jalon 3) |
 | Chiffrement des documents | À faire (avec le coffre-fort) |
 | Rate limiting, Helmet/CSP, audit log | Terminé (jalon 2) |
+| Journalisation des erreurs 5xx sans fuite de données + diagnostic de base non migrée au démarrage | Terminé |
 | Sauvegardes chiffrées + runbook de restauration | À faire |
 
 ## Tests

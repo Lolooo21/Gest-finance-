@@ -134,3 +134,10 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - API : 49 tests (+9 : extraction depuis un vrai PDF généré, rien d'enregistré au parse, fichier non-PDF/corrompu/scan/non multipart, plus de 5 Mo, session et rôle enfant, limitation de débit, création du revenu et reste à vivre, audit sans montant, doublon/force/réimport après suppression, récurrence sans double comptage, IDOR et valeurs invalides).
 - Front : 25 tests (+3 : préremplissage et validation, doublon avec force, scan refusé).
 - Non vérifié : lecture de vraies fiches de paie (le parseur n'a été testé que sur des textes fictifs) ; à confronter à vos PDF.
+
+## Correctif — Erreurs 500 invisibles (inscription en échec sur le PC)
+- `apps/api/src/common/all-exceptions.filter.ts` — `AllExceptionsFilter` : journalise les erreurs inattendues (nom, code, dernière ligne du message = la cause, 6 lignes de pile) sans corps de requête, en-têtes, cookies ni valeurs SQL ; répond un message générique au client ; conserve le statut des erreurs client de Fastify (429, 413, 400) ; laisse les `HttpException` suivre leur chemin normal. Auparavant `logger: false` rendait ces erreurs muettes.
+- `apps/api/src/prisma/prisma.service.ts` — `onModuleInit` vérifie le schéma au démarrage : si les tables ou colonnes manquent (P2021/P2022), l'API s'arrête avec « lancez prisma migrate deploy puis prisma generate ».
+- `apps/api/src/app.ts` — logs `error`/`warn` activés hors test, filtre global enregistré.
+- Tests (+5, API : 54) : cause journalisée sans valeurs sensibles, réponse générique, statut 429 conservé, HttpException inchangée, message de base non migrée. Vérifié à la main : démarrage sur une base vide → message explicite.
+- `README.md` : section « Dépannage ».
