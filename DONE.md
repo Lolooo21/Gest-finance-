@@ -49,3 +49,29 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 
 ### Infra
 - Schéma Prisma + migration `init` (Household, User, RefreshToken, AuditLog) ; CI avec service Postgres, `prisma generate` et `migrate deploy`.
+
+## Jalon 3 — Comptes, opérations, récurrences et front PWA
+### API (`apps/api/src`)
+- `crypto/crypto.service.ts` — `CryptoService.encrypt/decrypt` : AES-256-GCM avec IV aléatoire, clé `FIELD_ENCRYPTION_KEY` (32 octets) ; l'altération des données est détectée.
+- `accounts/accounts.controller.ts` — `GET /accounts` (solde courant = solde initial + opérations, IBAN masqué `FR76••••0189`), `POST /accounts` (IBAN chiffré avant stockage), `DELETE /accounts/:id`.
+- `transactions/transactions.controller.ts` — `GET /transactions`, `POST /transactions` (vérifie que le compte appartient au foyer), `DELETE /transactions/:id`. Montants en centimes signés.
+- `recurring/recurring.controller.ts` — `GET/POST/DELETE /recurring-rules` (hebdo, mensuel, annuel, date de fin optionnelle).
+- `summary/summary.controller.ts` — `GET /summary?from&to` : appelle `resteAVivre()` de `finance-core` sur les règles et opérations du foyer ; recalculé à chaque lecture.
+- Écriture réservée à OWNER/ADULT, lecture pour tous (CHILD en lecture seule). Toutes les requêtes sont filtrées par le foyer du jeton.
+- Script `pnpm dev` (API, avec `--env-file=.env` et rechargement automatique).
+- Schémas Zod partagés : `AccountDto`, `TransactionDto`, `RecurringRuleDto`, `SummaryQuery`.
+- Migration Prisma `comptes_transactions` (BankAccount, Transaction, RecurringRule).
+
+### Front (`apps/web/src`)
+- `api.ts` — `api()` : appel same-origin, renouvelle la session sur 401 puis rejoue une fois ; `ApiError`.
+- `money.ts` — `parseEuros()` (saisie « 12,50 » → centimes, rejette les valeurs invalides), `formatCents()`, `monthRange()`, `todayIso()`.
+- `privacy.tsx` — `PrivacyProvider`, `Money` : mode confidentialité (montants masqués), mémorisé sur l'appareil.
+- `pages/AuthPage.tsx` — inscription et connexion (champ code 2FA).
+- `pages/Dashboard.tsx` — reste à vivre du mois, comptes, formulaire d'entrée/sortie ponctuelle ou récurrente, récurrences, dernières opérations, suppressions.
+- `App.tsx` — sonde de session (`/household/members`), écran de connexion ou tableau de bord.
+- PWA : manifeste, service worker (jamais de cache des appels API), proxy Vite same-origin pour que les cookies fonctionnent.
+
+### Tests
+- API : 25 tests (chiffrement IBAN en base, IDOR comptes/opérations/résumé, enfant en lecture seule, recalcul du reste à vivre après chaque ajout, validation des périodes).
+- Front : 16 tests (saisie en euros, connexion, mode confidentialité, envoi d'une sortie en centimes négatifs, montant invalide sans appel API).
+- Vérification manuelle de bout en bout via le proxy Vite : inscription, compte, règle, résumé, refresh.

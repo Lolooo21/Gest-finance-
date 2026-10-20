@@ -19,6 +19,9 @@ model Household {
   createdAt DateTime @default(now())
   users     User[]
   audits    AuditLog[]
+  accounts  BankAccount[]
+  transactions Transaction[]
+  recurringRules RecurringRule[]
 }
 
 model User {
@@ -60,4 +63,63 @@ model AuditLog {
   createdAt   DateTime @default(now())
 
   @@index([householdId, createdAt])
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+}
+
+enum Frequency {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+model BankAccount {
+  id                  String   @id @default(uuid())
+  householdId         String
+  household           Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name                String
+  type                AccountType
+  initialBalanceCents Int
+  /// IBAN chiffré AES-256-GCM (format iv.tag.données en base64)
+  ibanEncrypted       String?
+  createdAt           DateTime @default(now())
+  transactions        Transaction[]
+  recurringRules      RecurringRule[]
+
+  @@index([householdId])
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Montant signé en centimes : positif = entrée, négatif = sortie
+  amountCents Int
+  date        DateTime @db.Date
+  label       String
+  createdAt   DateTime @default(now())
+
+  @@index([householdId, date])
+  @@index([accountId])
+}
+
+model RecurringRule {
+  id          String   @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  label       String
+  amountCents Int
+  frequency   Frequency
+  start       DateTime @db.Date
+  end         DateTime? @db.Date
+  createdAt   DateTime @default(now())
+
+  @@index([householdId])
 }

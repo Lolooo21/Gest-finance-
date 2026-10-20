@@ -18,13 +18,17 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 |---|---|
 | Reste à vivre (`finance-core`) | Terminé (jalon 1) |
 | Récurrences (expansion des occurrences) | Terminé (jalon 1) |
-| Recalcul événementiel à chaque entrée/sortie (API + cache) | À faire |
+| Recalcul du reste à vivre à chaque entrée/sortie (`GET /summary`, recalculé à la lecture ; cache/événements à faire si besoin de perf) | Terminé (jalon 3) |
 | Auth foyer : users, Argon2id, 2FA TOTP, rôles OWNER/ADULT/CHILD | Terminé (jalon 2) |
 | Passkeys WebAuthn | À faire (reporté du jalon 2) |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | À faire |
-| Comptes bancaires (solde, opérations, IBAN chiffré) | À faire |
-| CRUD revenus/dépenses ponctuels et récurrents | À faire |
-| UI PWA (React/Vite, offline, installable) | À faire |
+| Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
+| Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) |
+| Modification d'un compte, d'une opération ou d'une règle (PUT/PATCH) | À faire |
+| Interface 2FA (activation TOTP depuis l'UI ; l'API existe) | À faire |
+| Génération automatique des opérations récurrentes dans l'historique et le solde | À faire |
+| UI PWA (React/Vite, installable) : connexion, inscription, tableau de bord | Terminé (jalon 3) ; lecture hors-ligne à faire |
+| Mode confidentialité (masquer les montants) | Terminé (jalon 3) |
 | Rappel hebdomadaire « faire les comptes » (BullMQ + Web Push) | À faire |
 | Documents : upload, antivirus, chiffrement | À faire |
 | Lecture fiches de paie (PDF, OCR repli, validation humaine) | À faire |
@@ -36,7 +40,8 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Modèle de menaces v0 | Terminé |
 | Garde `householdId` (issu du JWT) + tests IDOR | Terminé (jalon 2) |
 | RLS PostgreSQL (défense en profondeur) | À faire (reporté du jalon 2) |
-| Chiffrement AES-256-GCM (IBAN, documents) | À faire |
+| Chiffrement AES-256-GCM de l'IBAN | Terminé (jalon 3) |
+| Chiffrement des documents | À faire (avec le coffre-fort) |
 | Rate limiting, Helmet/CSP, audit log | Terminé (jalon 2) |
 | Sauvegardes chiffrées + runbook de restauration | À faire |
 
@@ -44,7 +49,8 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Tâche | Statut |
 |---|---|
 | Unitaires `finance-core` (100 %) | Terminé |
-| Intégration API (Postgres réel : service CI / local ; Testcontainers non utilisable sans Docker) | En test (13 tests locaux verts, CI non exécutée) |
+| Intégration API (Postgres réel) | Terminé en local (25 tests API) ; CI GitHub à vérifier |
+| Tests du front (Vitest + Testing Library) | Terminé (16 tests) |
 | E2E Playwright | À faire |
 | Sécurité (SAST, DAST, dépendances, images) | À faire |
 

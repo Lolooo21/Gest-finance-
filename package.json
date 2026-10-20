@@ -6,6 +6,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "build": "pnpm -r build",
+    "dev": "pnpm --parallel --filter @gest-finance/api --filter @gest-finance/web dev",
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test"
