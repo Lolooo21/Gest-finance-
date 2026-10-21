@@ -27,23 +27,24 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-fastify": "^11.2.7",
     "@prisma/client": "^6.0.0",
+    "@swc-node/register": "^1.12.1",
+    "@swc/core": "^1.7.0",
     "argon2": "^0.41.0",
     "otplib": "^12.0.1",
     "pdfjs-dist": "4.10.38",
+    "prisma": "^6.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "web-push": "^3.6.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@swc-node/register": "^1.12.1",
-    "@swc/core": "^1.7.0",
     "@types/node": "^22.20.5",
     "@types/web-push": "^3.6.4",
     "fastify": "^5.11.3",
     "pdf-lib": "^1.17.1",
-    "prisma": "^6.0.0",
     "unplugin-swc": "^1.5.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "yaml": "^2.6.0"
   }
 }

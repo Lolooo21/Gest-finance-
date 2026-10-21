@@ -208,3 +208,27 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `apps/api/package.json` : script `predev` (`prisma generate && prisma migrate deploy`) : `pnpm dev` met le client et la base à jour automatiquement. Vérifié : `pnpm dev` génère, applique les migrations (5 trouvées) et l'API répond `/health`.
 - Test : 84 tests API (+1 : modèle absent du client).
 - `TODO.md` : ajout des objectifs (pas de découvert, épargne de secours, court et long terme, bonnes pratiques) et de la gestion de l'argent de poche des enfants.
+
+## Jalon 8a — Production : images, déploiement privé, sauvegardes, CI/CD
+### Configuration de l'API (`apps/api/src/`)
+- `secrets.ts` — `loadSecretsFromFiles()` : pour `JWT_SECRET`, `FIELD_ENCRYPTION_KEY`, `DATABASE_URL`, `VAPID_PRIVATE_KEY`, lit `<NOM>_FILE` (secrets Docker), sans écraser une variable déjà définie, erreurs sans valeur.
+- `config.ts` — `assertProductionConfig()` : en production, refuse de démarrer si secrets absents, courts, invalides ou égaux aux valeurs de `.env.example` (message sans aucune valeur) ; `COOKIE_SECURE=0` interdit.
+- `bootstrap.ts` (premier import de `main.ts`), `app.ts` : `TRUST_PROXY=1` ; cookies `Secure` en production. Vérifié en vrai : démarrage avec secrets en fichiers, cookie `Secure; HttpOnly; SameSite=Strict`, refus avec la configuration d'exemple.
+- `apps/api/package.json` : `@swc-node/register`, `@swc/core`, `prisma` en dépendances d'exécution.
+
+### Images et pile (`infra/`)
+- `docker/api.Dockerfile` (structure de dossiers identique au développement, `prisma generate`, utilisateur `node`, `HEALTHCHECK`, tini), `docker/proxy.Dockerfile` (build du front + Caddy non root), `caddy/Caddyfile` (HTTP interne, CSP stricte, HSTS, relais des 13 préfixes d'API, repli SPA, `sw.js` non mis en cache), `.dockerignore`.
+- `docker/compose.prod.yml` : postgres, migrate (one-shot), api, proxy, tailscale (profil `prod`, mode userspace sans privilège), backup ; aucun port publié ; réseaux `backend` et `frontend` internes ; `read_only`, `cap_drop: ALL`, `no-new-privileges`, limites de ressources ; secrets en fichiers. `compose.ci.yml` (proxy sur 127.0.0.1:8080, sans Tailscale), `tailscale/serve.json`.
+
+### Sauvegardes (`infra/backup/`)
+- `backup.sh` : `pg_dump` → contrôle → chiffrement age avec la clé publique (refuse une clé privée) → copie locale (7) → envoi rclone S3 (35 jours + 12 mensuelles) → `last-success.txt` ; `scheduler.sh` (tous les jours à 03:30 UTC) ; `restore.sh` : déchiffrement avec la clé privée fournie au moment de la restauration, refus de la cible de production sans `RESTORE_FORCE=yes`, comptage des lignes ; `test-backup.sh` : test de bout en bout.
+- Vérifié sur un vrai PostgreSQL : fichier sans en-tête pg_dump en clair, restauration impossible avec une mauvaise clé, cible de production bloquée, comptes de lignes identiques après restauration.
+
+### Scripts et CI
+- `infra/scripts/init-secrets.sh` (aléatoire fort, droits 600, jamais d'écrasement, mode `--ci`), `smoke.sh` (santé, en-têtes, routage de chaque préfixe en JSON, parcours inscription → compte → résumé ; vérifié contre l'API locale).
+- Workflows : `ci.yml` (+ build du front, audit, test de sauvegarde), `security.yml` (Semgrep, CodeQL, Trivy, hadolint), `docker.yml` (build des images, pile + test de fumée, sauvegarde chiffrée, Trivy des images), `release.yml` (GHCR, provenance, SBOM, cosign), `dependabot.yml`.
+
+### Tests et documentation
+- API : 113 tests (+29 : secrets, configuration de production, 21 tests d'infrastructure : aucun port publié, durcissement, secrets hors environnement, réseaux, ordre de démarrage, Caddyfile couvrant tous les préfixes, scripts valides, workflows).
+- `docs/deploiement.md` (pas à pas VPS + Tailscale + S3 + restauration), `docs/threat-model.md`, README.
+- **Non exécuté ici** (pas de démon Docker dans le bac à sable) : construction des images, démarrage de la pile, Tailscale, envoi S3. Vérifiés par la CI GitHub et par le premier déploiement.

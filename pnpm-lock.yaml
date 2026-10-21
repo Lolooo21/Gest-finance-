@@ -53,6 +53,12 @@ importers:
       '@prisma/client':
         specifier: ^6.0.0
         version: 6.19.3(prisma@6.19.3(magicast@0.3.5)(typescript@5.9.3))(typescript@5.9.3)
+      '@swc-node/register':
+        specifier: ^1.12.1
+        version: 1.12.1(@swc/core@1.16.18)(@swc/types@0.1.28)(typescript@5.9.3)
+      '@swc/core':
+        specifier: ^1.7.0
+        version: 1.16.18
       argon2:
         specifier: ^0.41.0
         version: 0.41.1
@@ -62,6 +68,9 @@ importers:
       pdfjs-dist:
         specifier: 4.10.38
         version: 4.10.38
+      prisma:
+        specifier: ^6.0.0
+        version: 6.19.3(magicast@0.3.5)(typescript@5.9.3)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -75,12 +84,6 @@ importers:
         specifier: ^3.23.8
         version: 3.25.76
     devDependencies:
-      '@swc-node/register':
-        specifier: ^1.12.1
-        version: 1.12.1(@swc/core@1.16.18)(@swc/types@0.1.28)(typescript@5.9.3)
-      '@swc/core':
-        specifier: ^1.7.0
-        version: 1.16.18
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -93,15 +96,15 @@ importers:
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
-      prisma:
-        specifier: ^6.0.0
-        version: 6.19.3(magicast@0.3.5)(typescript@5.9.3)
       unplugin-swc:
         specifier: ^1.5.0
         version: 1.6.0(@swc/core@1.16.18)(esbuild@0.21.5)(rollup@4.64.5)(vite@5.4.21(@types/node@22.20.5)(lightningcss@1.32.0)(terser@5.51.2))
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.5)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.51.2)
+      yaml:
+        specifier: ^2.6.0
+        version: 2.9.1
 
   apps/web:
     dependencies:
@@ -4099,6 +4102,11 @@ packages:
 
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
+
+  yaml@2.9.1:
+    resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
 
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
@@ -8337,6 +8345,8 @@ snapshots:
   xmlchars@2.2.0: {}
 
   yallist@3.1.1: {}
+
+  yaml@2.9.1: {}
 
   yocto-queue@0.1.0: {}
 

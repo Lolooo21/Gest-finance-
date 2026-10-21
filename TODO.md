@@ -9,9 +9,16 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Compose dev (Postgres, Redis) | Terminé (non démarré/testé) |
 | CI de base (lint, typecheck, tests, audit, Gitleaks) | En test (jamais exécutée sur GitHub) |
 | Push GitHub | Terminé |
-| Dockerfiles multi-stage non-root, compose prod + Caddy | À faire |
-| CI complète : CodeQL, Semgrep, Trivy, e2e Playwright, ZAP | À faire |
-| CD : build images GHCR signées, déploiement, rollback | À faire |
+| Dockerfiles multi-stage non-root, compose prod + Caddy + Tailscale | Terminé (jalon 8a) ; construction vérifiée par la CI GitHub, pas en local |
+| Premier déploiement réel sur un VPS suivant `docs/deploiement.md` | À faire (utilisateur) |
+| Sauvegardes chiffrées (age) + envoi S3 + restauration testée + runbook | Terminé (jalon 8a) |
+| Sauvegardes : afficher la date de la dernière sauvegarde dans l'application et alerter si trop ancienne | À faire |
+| CI complète : Semgrep, CodeQL (dépôt public), Trivy, hadolint, Gitleaks, build des images + test de fumée | Terminé (jalon 8a) ; résultats de la première exécution à relever |
+| CI : e2e Playwright et ZAP baseline | À faire |
+| Publication des images GHCR signées (tags `v*`) | Terminé (jalon 8a), non exécutée |
+| CD : déploiement automatique via Tailscale, rollback | À faire |
+| Production : désactiver l'inscription publique une fois le foyer créé | À faire |
+| Production : rotation des secrets, épinglage des images par empreinte, compilation de l'API (sans chargeur swc) | À faire |
 
 ## Features
 | Feature | Statut |
@@ -57,7 +64,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 |---|---|
 | Modèle de menaces v0 | Terminé |
 | Garde `householdId` (issu du JWT) + tests IDOR | Terminé (jalon 2) |
-| RLS PostgreSQL (défense en profondeur) | À faire (reporté du jalon 2) |
+| RLS PostgreSQL (défense en profondeur) | À faire : jalon 8b |
 | Chiffrement AES-256-GCM de l'IBAN | Terminé (jalon 3) |
 | Chiffrement des documents | À faire (avec le coffre-fort) |
 | Rate limiting, Helmet/CSP, audit log | Terminé (jalon 2) |
