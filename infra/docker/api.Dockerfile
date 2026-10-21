@@ -34,9 +34,9 @@ RUN pnpm --filter @gest-finance/api exec prisma generate \
     && find /app/node_modules/.pnpm -path '*@prisma/engines/schema-engine-*' | grep .
 
 FROM node:22.12-bookworm-slim AS runtime
-# OpenSSL est requis par le moteur Prisma ; tini gère les signaux et les processus orphelins.
+# OpenSSL est requis par le moteur Prisma. La gestion des signaux et des processus orphelins est confiée à `init: true` (compose) ou `docker run --init`.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl ca-certificates tini \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     PORT=3000 \
@@ -50,5 +50,4 @@ USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=4s --start-period=40s --retries=5 \
     CMD ["node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "--import", "@swc-node/register/esm-register", "src/main.ts"]
