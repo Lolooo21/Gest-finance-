@@ -38,14 +38,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Dépendances, secrets et configuration (Dockerfile, compose)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scanners: vuln,secret,misconfig
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          skip-dirs: node_modules
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.58.1 fs \
+            --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            --skip-dirs node_modules --skip-dirs secrets .
   hadolint:
     runs-on: ubuntu-latest
     timeout-minutes: 5

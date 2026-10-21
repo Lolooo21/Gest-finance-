@@ -45,19 +45,12 @@ jobs:
           if age -d -i /tmp/mauvaise.txt -o /tmp/out.dump /tmp/test.dump.age 2>/dev/null; then echo "ÉCHEC : déchiffrement avec une mauvaise clé"; exit 1; fi
           echo "OK : sauvegarde chiffrée, illisible sans la clé privée."
       - name: Scan Trivy des images (gravité haute ou critique, correctifs disponibles)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: ghcr.io/lolooo21/gest-finance-api:local
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-      - name: Scan Trivy de l'image proxy
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: ghcr.io/lolooo21/gest-finance-proxy:local
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+        run: |
+          for image in ghcr.io/lolooo21/gest-finance-api:local ghcr.io/lolooo21/gest-finance-proxy:local ghcr.io/lolooo21/gest-finance-backup:local; do
+            echo "== $image"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image \
+              --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
+          done
       - name: Arrêt
         if: always()
         run: docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml down -v
