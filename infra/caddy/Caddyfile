@@ -1,0 +1,47 @@
+{
+	# HTTP interne : le HTTPS (certificat *.ts.net) est terminé par Tailscale devant ce proxy.
+	auto_https off
+	admin off
+}
+
+:8080 {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		-Server
+	}
+
+	# Routes de l'API (liste à tenir à jour avec packages/shared/src/routes.ts : un test le vérifie).
+	@api path /auth /auth/* /household /household/* /accounts /accounts/* /transactions /transactions/* /recurring-rules /recurring-rules/* /summary /summary/* /reminder /reminder/* /push /push/* /review /review/* /payslips /payslips/* /market /market/* /savings /savings/* /health /health/*
+	handle @api {
+		reverse_proxy api:3000 {
+			header_up X-Forwarded-For {remote_host}
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 30s
+			}
+		}
+	}
+
+	# Application (PWA) : le service worker et le manifeste ne doivent jamais rester en cache.
+	handle {
+		root * /srv
+		@nocache path /sw.js /registerSW.js /manifest.webmanifest /index.html
+		header @nocache Cache-Control "no-cache"
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Un 502 de l'API ne doit jamais afficher de détail interne.
+	handle_errors {
+		respond "Service momentanément indisponible." {http.error.status_code}
+	}
+}

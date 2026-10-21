@@ -1,3 +1,4 @@
+import "./bootstrap.js";
 import "reflect-metadata";
 import { createApp } from "./app.js";
 

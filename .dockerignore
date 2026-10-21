@@ -1,0 +1,24 @@
+# Jamais dans une image : secrets, configuration locale, historique, dépendances (réinstallées), tests, sorties de build
+.env
+.env.*
+**/.env
+**/.env.*
+secrets/
+.git/
+.github/
+.claude/
+node_modules/
+**/node_modules/
+**/dist/
+**/coverage/
+**/test/
+**/*.test.ts
+**/*.test.tsx
+docs/
+*.md
+!README.md
+infra/
+!infra/caddy/
+!infra/docker/
+TODO.md
+DONE.md

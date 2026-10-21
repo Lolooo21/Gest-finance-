@@ -1,0 +1,44 @@
+name: Publication des images
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # signature cosign « sans clé » (OIDC)
+      attestations: write
+    strategy:
+      matrix:
+        include:
+          - { name: api, dockerfile: infra/docker/api.Dockerfile, context: . }
+          - { name: proxy, dockerfile: infra/docker/proxy.Dockerfile, context: . }
+          - { name: backup, dockerfile: infra/backup/Dockerfile, context: infra/backup }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gest-finance-${{ matrix.name }}
+          tags: type=semver,pattern={{version}}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+      - uses: sigstore/cosign-installer@v3
+      - name: Signer l'image (sans clé, identité GitHub)
+        run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/gest-finance-${{ matrix.name }}@${{ steps.build.outputs.digest }}"

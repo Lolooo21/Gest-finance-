@@ -1,0 +1,147 @@
+# Pile de production : AUCUN port n'est publié sur Internet. L'accès se fait par Tailscale (VPN privé, HTTPS *.ts.net).
+#
+#   sh infra/scripts/init-secrets.sh                              # une seule fois : crée ./secrets
+#   docker compose -f infra/docker/compose.prod.yml --profile prod up -d --build
+#
+# Réseaux : backend (interne, sans Internet) : postgres, migrate, api, backup · frontend (interne) : proxy, api, tailscale
+#           egress : seuls api (indicateurs de marché, notifications), backup (stockage S3) et tailscale sortent.
+name: gest-finance
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:16.15-alpine
+    user: "70:70"
+    environment:
+      POSTGRES_USER: gest
+      POSTGRES_DB: gest_finance
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --data-checksums"
+    secrets: [postgres_password]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    tmpfs: ["/tmp", "/run/postgresql"]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gest -d gest_finance"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy: { resources: { limits: { memory: 512M, cpus: "1.0", pids: 200 } } }
+
+  migrate:
+    <<: *hardening
+    image: ghcr.io/lolooo21/gest-finance-api:${GEST_VERSION:-local}
+    build: { context: ../.., dockerfile: infra/docker/api.Dockerfile }
+    restart: "no"
+    working_dir: /app/apps/api
+    # Prisma lit DATABASE_URL dans l'environnement : on l'extrait du secret, sans jamais l'écrire dans l'image.
+    entrypoint: ["/bin/sh", "-c", "DATABASE_URL=\"$$(cat /run/secrets/database_url)\" exec node_modules/.bin/prisma migrate deploy"]
+    command: []
+    secrets: [database_url]
+    tmpfs: ["/tmp"]
+    networks: [backend]
+    depends_on:
+      postgres: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 512M, cpus: "1.0", pids: 200 } } }
+
+  api:
+    <<: *hardening
+    image: ghcr.io/lolooo21/gest-finance-api:${GEST_VERSION:-local}
+    build: { context: ../.., dockerfile: infra/docker/api.Dockerfile }
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY: "1"
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      FIELD_ENCRYPTION_KEY_FILE: /run/secrets/field_encryption_key
+      DATABASE_URL_FILE: /run/secrets/database_url
+    secrets: [jwt_secret, field_encryption_key, database_url]
+    # Docker monte les tmpfs en « noexec » : SWC (compilateur TypeScript chargé au démarrage) extrait son module natif dans /tmp
+    # et doit pouvoir l'exécuter. Exception limitée à ce conteneur, avec nosuid/nodev et une taille bornée.
+    tmpfs: ["/tmp:rw,exec,nosuid,nodev,size=128m"]
+    networks: [backend, frontend, egress]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    deploy: { resources: { limits: { memory: 768M, cpus: "1.0", pids: 300 } } }
+
+  proxy:
+    <<: *hardening
+    image: ghcr.io/lolooo21/gest-finance-proxy:${GEST_VERSION:-local}
+    build: { context: ../.., dockerfile: infra/docker/proxy.Dockerfile }
+    tmpfs: ["/tmp"]
+    networks: [frontend]
+    depends_on:
+      api: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 128M, cpus: "0.5", pids: 100 } } }
+
+  # Accès privé : Tailscale publie le proxy en HTTPS sur votre réseau privé uniquement (mode « userspace », sans privilèges).
+  tailscale:
+    <<: *hardening
+    profiles: [prod]
+    image: tailscale/tailscale:v1.104.2
+    hostname: gest-finance
+    environment:
+      TS_HOSTNAME: gest-finance
+      TS_AUTHKEY: file:/run/secrets/ts_authkey
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+    secrets: [ts_authkey]
+    volumes:
+      - tsstate:/var/lib/tailscale
+      - ../tailscale/serve.json:/config/serve.json:ro
+    tmpfs: ["/tmp"]
+    networks: [frontend, egress]
+    depends_on:
+      proxy: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 256M, cpus: "0.5", pids: 150 } } }
+
+  # Sauvegarde quotidienne chiffrée (age) puis envoi vers le stockage S3 : voir docs/deploiement.md.
+  backup:
+    <<: *hardening
+    image: ghcr.io/lolooo21/gest-finance-backup:${GEST_VERSION:-local}
+    build: { context: ../backup }
+    environment:
+      BACKUP_TIME: "03:30"
+      BACKUP_REMOTE: ${BACKUP_REMOTE:-}
+      PGHOST: postgres
+      PGUSER: gest
+      PGDATABASE: gest_finance
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      AGE_RECIPIENT_FILE: /run/secrets/age_recipient
+      RCLONE_CONFIG: /run/secrets/rclone_conf
+    secrets: [postgres_password, age_recipient, rclone_conf]
+    volumes: [backups:/backups]
+    tmpfs: ["/tmp"]
+    networks: [backend, egress]
+    depends_on:
+      postgres: { condition: service_healthy }
+    deploy: { resources: { limits: { memory: 256M, cpus: "0.5", pids: 100 } } }
+
+secrets:
+  postgres_password: { file: ../../secrets/postgres_password }
+  database_url: { file: ../../secrets/database_url }
+  jwt_secret: { file: ../../secrets/jwt_secret }
+  field_encryption_key: { file: ../../secrets/field_encryption_key }
+  ts_authkey: { file: ../../secrets/ts_authkey }
+  age_recipient: { file: ../../secrets/age_recipient }
+  rclone_conf: { file: ../../secrets/rclone_conf }
+
+volumes:
+  pgdata:
+  tsstate:
+  backups:
+
+networks:
+  backend: { internal: true }
+  frontend: { internal: true }
+  egress: {}

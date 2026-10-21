@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1.7
+# Image du proxy : construit le front (PWA) puis le sert avec Caddy, qui relaie l'API. HTTP interne seulement :
+# le HTTPS est assuré en amont par Tailscale.
+
+FROM node:22.23.3-bookworm-slim AS web-build
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+# pnpm via npm : le Corepack livré avec cette version de Node ne connaît pas les clés de signature actuelles du registre (erreur « Cannot find matching keyid »).
+RUN npm install --global --no-fund --no-audit pnpm@10.28.0
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/finance-core/package.json packages/finance-core/package.json
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --filter "@gest-finance/web..."
+COPY packages packages
+COPY apps/web apps/web
+RUN pnpm --filter @gest-finance/web build
+
+# Caddy recompilé avec un Go à jour : le binaire officiel 2.11.7 embarque une bibliothèque standard Go signalée par Trivy (5 CVE HIGH net/http, crypto/tls).
+FROM golang:1.27-alpine3.23 AS caddy-build
+ENV CGO_ENABLED=0
+WORKDIR /build
+# golang.org/x/net est relevé (0.60.0 : correctif CVE-2026-78669, HTTP/2) par-dessus la version choisie par Caddy 2.11.7.
+RUN go mod init caddy-build \
+    && printf 'package main\n\nimport (\n\tcaddycmd "github.com/caddyserver/caddy/v2/cmd"\n\t_ "github.com/caddyserver/caddy/v2/modules/standard"\n)\n\nfunc main() { caddycmd.Main() }\n' > main.go \
+    && go get github.com/caddyserver/caddy/v2@v2.11.7 golang.org/x/net@v0.60.0 \
+    && go mod tidy \
+    && go build -trimpath -ldflags "-s -w" -o /go/bin/caddy .
+
+FROM alpine:3.23 AS runtime
+RUN apk add --no-cache ca-certificates mailcap
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
+# Binaire sans capacité de fichier (cap_net_bind_service) : compatible avec « cap_drop: ALL » et « no-new-privileges » ; le port 8080 n'en a pas besoin.
+COPY --from=caddy-build /go/bin/caddy /usr/local/bin/caddy
+COPY --from=web-build /app/apps/web/dist /srv
+COPY infra/caddy/Caddyfile /etc/caddy/Caddyfile
+ENV XDG_DATA_HOME=/tmp/caddy-data \
+    XDG_CONFIG_HOME=/tmp/caddy-config
+USER app
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \
+    CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+CMD ["/usr/local/bin/caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

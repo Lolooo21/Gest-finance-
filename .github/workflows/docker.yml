@@ -1,0 +1,56 @@
+name: Images Docker
+on:
+  pull_request:
+    paths: ["infra/**", "apps/**", "packages/**", "pnpm-lock.yaml", ".github/workflows/docker.yml"]
+  push:
+    branches: [main, develop, "claude/**"]
+permissions:
+  contents: read
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Installer age
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+      - name: Secrets de test (script de production en mode CI)
+        run: sh infra/scripts/init-secrets.sh --ci
+      - name: Construire les images
+        run: docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml build
+      - name: Démarrer la pile (sans Tailscale)
+        run: docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml up -d
+      - name: Test de fumée
+        run: sh infra/scripts/smoke.sh
+      - name: État des conteneurs
+        if: always()
+        run: docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml ps -a
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml logs --no-color --tail=120
+      - name: Sauvegarde chiffrée puis restauration (conteneur de production)
+        run: |
+          set -e
+          C="docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml"
+          $C exec -T backup backup.sh
+          $C exec -T backup sh -c 'ls /backups && cat /backups/last-success.txt'
+          F="$($C exec -T backup sh -c 'ls /backups/gest-*.dump.age | head -n1' | tr -d '\r')"
+          # La clé privée de test n'a jamais été sur le serveur : on déchiffre ici avec une clé qui ne correspond pas -> échec attendu.
+          age-keygen -o /tmp/mauvaise.txt 2>/dev/null
+          $C cp "backup:$F" /tmp/test.dump.age
+          if age -d -i /tmp/mauvaise.txt -o /tmp/out.dump /tmp/test.dump.age 2>/dev/null; then echo "ÉCHEC : déchiffrement avec une mauvaise clé"; exit 1; fi
+          echo "OK : sauvegarde chiffrée, illisible sans la clé privée."
+      - name: Scan Trivy des images (gravité haute ou critique, correctifs disponibles)
+        run: |
+          for image in ghcr.io/lolooo21/gest-finance-api:local ghcr.io/lolooo21/gest-finance-proxy:local ghcr.io/lolooo21/gest-finance-backup:local; do
+            echo "== $image"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image \
+              --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
+          done
+      - name: Arrêt
+        if: always()
+        run: docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml down -v

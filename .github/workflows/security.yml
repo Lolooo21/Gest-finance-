@@ -1,0 +1,58 @@
+name: Sécurité
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: "17 4 * * 1" # chaque lundi : nouvelles vulnérabilités sur du code inchangé
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: { image: "semgrep/semgrep:1.99.0" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Analyse statique (TypeScript, Node, secrets, Docker)
+        run: semgrep scan --error --metrics=off --config p/typescript --config p/nodejs --config p/secrets --config p/dockerfile --exclude node_modules --exclude "**/test/**" --exclude "**/*.test.*" .
+  codeql:
+    # CodeQL est gratuit sur les dépôts publics ; sur un dépôt privé il exige GitHub Advanced Security.
+    if: ${{ !github.event.repository.private || vars.ENABLE_CODEQL == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: javascript-typescript, queries: security-extended }
+      - uses: github/codeql-action/analyze@v3
+  trivy-fs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dépendances, secrets et configuration (Dockerfile, compose)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.58.1 fs \
+            --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            --skip-dirs node_modules --skip-dirs secrets .
+  hadolint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        dockerfile: [infra/docker/api.Dockerfile, infra/docker/proxy.Dockerfile, infra/backup/Dockerfile]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.dockerfile }}
+          failure-threshold: warning
+          ignore: DL3008,DL3018 # versions apt/apk non épinglées : mises à jour de sécurité de l'image de base préférées

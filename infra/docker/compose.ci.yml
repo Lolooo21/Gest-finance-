@@ -1,0 +1,8 @@
+# Surcharge utilisée uniquement par la CI : pas de Tailscale, proxy joignable sur 127.0.0.1:8080 pour le test de fumée.
+#   docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml up -d --build
+services:
+  proxy:
+    ports: ["127.0.0.1:8080:8080"]
+    networks: [frontend, ci]
+networks:
+  ci: {}

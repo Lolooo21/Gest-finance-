@@ -7,7 +7,7 @@ import { CurrentUser } from "../common/current-user.js";
 import { ZodPipe } from "../common/zod.pipe.js";
 import { AuthService, type Session } from "./auth.service.js";
 
-const cookieBase = { httpOnly: true, sameSite: "strict" as const, secure: process.env.NODE_ENV === "production", path: "/" };
+const cookieBase = { httpOnly: true, sameSite: "strict" as const, secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE !== "0" : process.env.NODE_ENV === "production", path: "/" };
 
 function setSession(res: FastifyReply, s: Session) {
   res.setCookie("access", s.access, { ...cookieBase, maxAge: 15 * 60 });

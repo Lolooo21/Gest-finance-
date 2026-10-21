@@ -160,7 +160,8 @@ erDiagram
 | Ergonomie et erreurs | Actions rapides en haut du tableau de bord (ajouter une opération, importer une fiche de paie, bilan, 2FA) ; boutons libellés avec icônes et zones tactiles ≥ 44 px ; « Modifier » et « Supprimer » explicites, suppression avec boîte de confirmation ; notifications de succès et d'erreur (aucune action n'échoue en silence) ; messages d'erreur clairs et actionnables (serveur injoignable, session expirée, droits, fichier trop gros ou non PDF, scan, doublon…), validations en français ; bandeau « Réessayer » si le chargement échoue ; import PDF par bouton ou glisser-déposer avec contrôle du fichier avant envoi |
 | Confidentialité | Bouton « Masquer les montants » (mémorisé sur l'appareil) |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
-| Tests | `finance-core` (49 tests, 100 %), API sur PostgreSQL réel (80 tests), front (47 tests) |
+| CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
+| Tests | `finance-core` (49 tests, 100 %), API sur PostgreSQL réel (113 tests), front (47 tests) |
 
 À venir (voir `TODO.md`) : OCR des scans, historique et alertes sur les taux, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys, RLS PostgreSQL.
 
@@ -176,6 +177,28 @@ pnpm test
 ```
 
 **Notifications push (optionnel).** Générez des clés VAPID (`cd apps/api && pnpm exec web-push generate-vapid-keys`) et renseignez-les dans `apps/api/.env` (voir `.env.example`). Le service worker n'est actif que dans la version construite : `pnpm --filter @gest-finance/web build` puis `pnpm --filter @gest-finance/web exec vite preview`. Sans clés, le rappel reste visible dans l'application.
+
+## Circuit de travail (Git)
+| Branche | Rôle |
+|---|---|
+| `feature/...` (ou `claude/...`) | un sujet à la fois ; la CI tourne à chaque push |
+| `develop` | intégration : on y fusionne les branches de fonctionnalité par **pull request** (CI, images Docker et analyse de sécurité obligatoires) |
+| `main` | production : `develop` y est fusionnée pour une version ; on la marque d'un tag `vX.Y.Z`, ce qui publie les images signées sur GHCR |
+
+Les workflows (`.github/workflows/`) se déclenchent sur les pushs vers `main`, `develop` et `claude/**`, et sur toute pull request ; l'analyse de sécurité tourne aussi chaque lundi
+et peut être lancée à la main (une fois le fichier présent sur la branche par défaut du dépôt).
+Conseils de réglage GitHub (Settings → Branches) : définir `develop` comme branche par défaut, protéger `develop` et `main` (pull request obligatoire, contrôles
+« CI » et « Images Docker » requis, pas de push direct).
+
+## Production (VPS privé)
+Déploiement sur un petit serveur loué, **sans aucun port ouvert**, accessible uniquement via Tailscale (VPN privé, HTTPS), avec sauvegardes quotidiennes
+chiffrées envoyées vers un stockage S3 : voir [`docs/deploiement.md`](docs/deploiement.md).
+```
+sh infra/scripts/init-secrets.sh
+docker compose -f infra/docker/compose.prod.yml --profile prod up -d --build
+```
+Pile : `postgres` · `migrate` (migrations automatiques) · `api` · `proxy` (Caddy : application + routage de l'API) · `tailscale` · `backup`.
+Conteneurs sans privilèges (`read_only`, `cap_drop: ALL`), réseaux internes, secrets Docker.
 
 ## Dépannage
 | Symptôme | Cause probable et solution |
