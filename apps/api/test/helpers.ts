@@ -5,10 +5,11 @@ import { createApp } from "../src/app.js";
 import { PrismaClient } from "@prisma/client";
 
 export async function startApp(rateLimitMax = 1000) {
-  // Hermétique : des clés VAPID présentes dans l'environnement ou le .env de la machine activeraient les notifications push.
-  delete process.env.VAPID_PUBLIC_KEY;
-  delete process.env.VAPID_PRIVATE_KEY;
-  delete process.env.VAPID_SUBJECT;
+  // Hermétique : des clés VAPID dans l'environnement ou le .env de la machine activeraient les notifications push.
+  // Valeurs vides plutôt que `delete` : le client Prisma recharge apps/api/.env à sa création et ne remplace que les variables ABSENTES.
+  process.env.VAPID_PUBLIC_KEY = "";
+  process.env.VAPID_PRIVATE_KEY = "";
+  process.env.VAPID_SUBJECT = "";
   const app = await createApp({ rateLimitMax });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();

@@ -5,6 +5,6 @@ process.env.DATABASE_SYSTEM_URL ??= "postgresql://gest_system:gest_system_dev_pa
 export {};
 process.env.FIELD_ENCRYPTION_KEY ??= "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 // Tests hermétiques : les clés VAPID de votre environnement ne doivent pas activer les notifications push dans les tests.
-delete process.env.VAPID_PUBLIC_KEY;
-delete process.env.VAPID_PRIVATE_KEY;
-delete process.env.VAPID_SUBJECT;
+process.env.VAPID_PUBLIC_KEY = ""; // vide et non supprimé : Prisma recharge .env pour les variables absentes seulement
+process.env.VAPID_PRIVATE_KEY = "";
+process.env.VAPID_SUBJECT = "";
