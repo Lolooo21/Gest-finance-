@@ -1,8 +1,7 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { PrismaService } from "../src/prisma/prisma.service.js";
-import { get, owner, post, resetDb, sessionCookies, startApp } from "./helpers.js";
+import { get, owner, post, resetDb, sessionCookies, startApp, admin } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -47,7 +46,7 @@ describe("lecture d'une fiche de paie", () => {
     const res = await upload(c, await makePdf(PAYSLIP));
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-09", employer: "ACME Conseil SAS", confidence: 1, warnings: [] });
-    const prisma = app.get(PrismaService);
+    const prisma = admin;
     expect(await prisma.transaction.count()).toBe(0);
     expect(await prisma.payslipImport.count()).toBe(0);
   });
@@ -105,7 +104,7 @@ describe("validation et enregistrement", () => {
     const audit = JSON.stringify((await get(app, "/household/audit", c)).json());
     expect(audit).toContain("payslip.confirmed");
     expect(audit).not.toContain("228540");
-    expect(await app.get(PrismaService).payslipImport.count()).toBe(1);
+    expect(await admin.payslipImport.count()).toBe(1);
   });
 
   it("détecte un doublon (409), l'accepte avec force, et permet de réimporter après suppression de l'opération", async () => {
@@ -116,7 +115,7 @@ describe("validation et enregistrement", () => {
     expect((await post(app, "/payslips/confirm", confirmBody(accountId, { netToPayCents: 228_541 }), c)).statusCode).toBe(201);
     expect((await post(app, "/payslips/confirm", confirmBody(accountId, { force: true }), c)).statusCode).toBe(201);
 
-    const prisma = app.get(PrismaService);
+    const prisma = admin;
     await prisma.transaction.deleteMany();
     expect((await post(app, "/payslips/confirm", confirmBody(accountId), c)).statusCode).toBe(201);
   });
@@ -140,7 +139,7 @@ describe("validation et enregistrement", () => {
     for (const bad of [{ netToPayCents: 0 }, { netToPayCents: -5 }, { periodMonth: "2026-13" }, { paymentDate: "demain" }, { accountId: "pas-un-uuid" }]) {
       expect((await post(app, "/payslips/confirm", confirmBody(own, bad), a)).statusCode).toBe(400);
     }
-    expect(await app.get(PrismaService).transaction.count()).toBe(0);
+    expect(await admin.transaction.count()).toBe(0);
   });
 });
 

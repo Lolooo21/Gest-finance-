@@ -23,8 +23,22 @@ trap 'rm -rf "$TMP"' EXIT
 age -d -i "$IDENTITY" -o "$TMP/dump" "$FILE" || { echo "Déchiffrement impossible : mauvaise clé privée ou fichier corrompu" >&2; exit 4; }
 pg_restore --list "$TMP/dump" > /dev/null || { echo "Sauvegarde déchiffrée mais illisible" >&2; exit 4; }
 
+# Les droits (GRANT) et les politiques RLS sont restaurés avec les tables : les rôles gest_app et gest_system doivent exister.
+# Sur un serveur neuf ils sont créés ici sans mot de passe ; le service « migrate » (scripts/setup-roles.mjs) leur pose ensuite leurs mots de passe.
+psql "$TARGET" -v ON_ERROR_STOP=1 -q <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gest_app') THEN
+    CREATE ROLE gest_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gest_system') THEN
+    CREATE ROLE gest_system LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+  END IF;
+END $$;
+SQL
+
 echo "Restauration dans la base cible..."
-pg_restore --no-owner --no-privileges --clean --if-exists --dbname "$TARGET" "$TMP/dump"
+pg_restore --no-owner --clean --if-exists --dbname "$TARGET" "$TMP/dump"
 
 echo "Contrôle : nombre de lignes par table"
 for t in Household User BankAccount Transaction RecurringRule AuditLog; do

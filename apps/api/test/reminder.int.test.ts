@@ -1,9 +1,8 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { PrismaService } from "../src/prisma/prisma.service.js";
 import { isAllowedPushEndpoint, PushSender, type PushPayload, type PushTarget } from "../src/push/push.sender.js";
 import { ReminderService } from "../src/reminder/reminder.service.js";
-import { get, owner, post, resetDb, sessionCookies, startApp } from "./helpers.js";
+import { get, owner, post, resetDb, sessionCookies, startApp, admin } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -33,7 +32,7 @@ class FakeSender extends PushSender {
 /** Active le rappel puis recule `since` pour simuler un rappel activé la semaine précédente. */
 async function enableInThePast(c: { access: string }) {
   await put("/reminder", SETTINGS, c);
-  await app.get(PrismaService).reminderSetting.updateMany({ data: { since: new Date("2026-01-01T00:00:00Z") } });
+  await admin.reminderSetting.updateMany({ data: { since: new Date("2026-01-01T00:00:00Z") } });
 }
 
 describe("réglages du rappel", () => {
@@ -58,7 +57,7 @@ describe("réglages du rappel", () => {
     await put("/reminder", SETTINGS, c);
     expect((await get(app, "/reminder", c)).json().due).toBe(false);
 
-    const prisma = app.get(PrismaService);
+    const prisma = admin;
     await prisma.reminderSetting.updateMany({ data: { since: new Date("2000-01-01T00:00:00Z") } });
     expect((await get(app, "/reminder", c)).json().due).toBe(true);
 
@@ -131,10 +130,10 @@ describe("planificateur", () => {
     expect(await reminders.runOnce(NOW, sender)).toBe(0); // pas d'abonnement
 
     await post(app, "/push/subscriptions", sub(), c);
-    await app.get(PrismaService).reminderSetting.updateMany({ data: { lastDoneAt: new Date("2026-01-12T08:00:00Z") } });
+    await admin.reminderSetting.updateMany({ data: { lastDoneAt: new Date("2026-01-12T08:00:00Z") } });
     expect(await reminders.runOnce(NOW, sender)).toBe(0); // bilan fait depuis le créneau
 
-    await app.get(PrismaService).reminderSetting.updateMany({ data: { lastDoneAt: null, enabled: false } });
+    await admin.reminderSetting.updateMany({ data: { lastDoneAt: null, enabled: false } });
     expect(await reminders.runOnce(NOW, sender)).toBe(0); // désactivé
     expect(sender.sent).toHaveLength(0);
   });

@@ -36,5 +36,16 @@ for t in Household User BankAccount Transaction RecurringRule AuditLog; do
   b="$(psql -d "$TEST_DB" -At -c "SELECT count(*) FROM \"$t\"")"
   [ "$a" = "$b" ] || { echo "ÉCHEC : $t source=$a restaurée=$b" >&2; exit 1; }
 done
+echo "== 6. La sécurité par ligne (RLS) et les droits des rôles sont restaurés"
+for q in "SELECT count(*) FROM pg_policies WHERE schemaname = 'public'" \
+         "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity" \
+         "SELECT has_table_privilege('gest_app', '\"BankAccount\"', 'SELECT')" \
+         "SELECT has_table_privilege('gest_system', '\"BankAccount\"', 'SELECT')" \
+         "SELECT has_table_privilege('gest_system', '\"AuditLog\"', 'INSERT')"; do
+  a="$(psql -d "$PGDATABASE" -At -c "$q")"
+  b="$(psql -d "$TEST_DB" -At -c "$q")"
+  [ "$a" = "$b" ] || { echo "ÉCHEC : RLS ou droits différents après restauration ($q) source=$a restaurée=$b" >&2; exit 1; }
+done
+[ "$(psql -d "$TEST_DB" -At -c "SELECT count(*) FROM pg_policies WHERE schemaname = 'public'")" -ge 10 ] || { echo "ÉCHEC : politiques RLS absentes après restauration" >&2; exit 1; }
 psql -d postgres -qc "DROP DATABASE \"$TEST_DB\""
 echo "OK : sauvegarde, chiffrement et restauration vérifiés."

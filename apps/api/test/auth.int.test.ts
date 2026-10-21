@@ -1,8 +1,7 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { authenticator } from "otplib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { PrismaService } from "../src/prisma/prisma.service.js";
-import { get, owner, post, resetDb, sessionCookies, startApp } from "./helpers.js";
+import { get, owner, post, resetDb, sessionCookies, startApp, admin } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -18,7 +17,7 @@ describe("inscription et connexion", () => {
     const cookie = res.cookies.find((c) => c.name === "access")!;
     expect(cookie.httpOnly).toBe(true);
     expect(cookie.sameSite).toBe("Strict");
-    const user = await app.get(PrismaService).user.findFirstOrThrow();
+    const user = await admin.user.findFirstOrThrow();
     expect(user.passwordHash.startsWith("$argon2id$")).toBe(true);
     expect(JSON.stringify(res.json())).not.toContain("passwordHash");
   });

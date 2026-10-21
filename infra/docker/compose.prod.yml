@@ -44,10 +44,16 @@ services:
     build: { context: ../.., dockerfile: infra/docker/api.Dockerfile }
     restart: "no"
     working_dir: /app/apps/api
-    # Prisma lit DATABASE_URL dans l'environnement : on l'extrait du secret, sans jamais l'écrire dans l'image.
-    entrypoint: ["/bin/sh", "-c", "DATABASE_URL=\"$$(cat /run/secrets/database_url)\" exec node_modules/.bin/prisma migrate deploy"]
+    # Seul ce service connaît le rôle propriétaire. Les URL sont lues dans les secrets, jamais écrites dans l'image.
+    # 1) migrations (créent aussi les rôles gest_app et gest_system sans mot de passe) ; 2) mots de passe des rôles, tirés des URL.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        export DATABASE_OWNER_URL="$$(cat /run/secrets/database_owner_url)" DATABASE_URL="$$(cat /run/secrets/database_url)" DATABASE_SYSTEM_URL="$$(cat /run/secrets/database_system_url)"
+        node_modules/.bin/prisma migrate deploy && exec node scripts/setup-roles.mjs
     command: []
-    secrets: [database_url]
+    secrets: [database_owner_url, database_url, database_system_url]
     tmpfs: ["/tmp"]
     networks: [backend]
     depends_on:
@@ -64,7 +70,8 @@ services:
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       FIELD_ENCRYPTION_KEY_FILE: /run/secrets/field_encryption_key
       DATABASE_URL_FILE: /run/secrets/database_url
-    secrets: [jwt_secret, field_encryption_key, database_url]
+      DATABASE_SYSTEM_URL_FILE: /run/secrets/database_system_url
+    secrets: [jwt_secret, field_encryption_key, database_url, database_system_url]
     # Docker monte les tmpfs en « noexec » : SWC (compilateur TypeScript chargé au démarrage) extrait son module natif dans /tmp
     # et doit pouvoir l'exécuter. Exception limitée à ce conteneur, avec nosuid/nodev et une taille bornée.
     tmpfs: ["/tmp:rw,exec,nosuid,nodev,size=128m"]
@@ -129,7 +136,9 @@ services:
 
 secrets:
   postgres_password: { file: ../../secrets/postgres_password }
+  database_owner_url: { file: ../../secrets/database_owner_url }
   database_url: { file: ../../secrets/database_url }
+  database_system_url: { file: ../../secrets/database_system_url }
   jwt_secret: { file: ../../secrets/jwt_secret }
   field_encryption_key: { file: ../../secrets/field_encryption_key }
   ts_authkey: { file: ../../secrets/ts_authkey }

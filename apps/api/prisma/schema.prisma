@@ -4,7 +4,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Client (API) : rôle gest_app, soumis à la RLS. Le rôle gest_system utilise DATABASE_SYSTEM_URL (voir prisma.service.ts).
+  url       = env("DATABASE_URL")
+  // Migrations (prisma migrate) : rôle propriétaire des tables, jamais utilisé par l'API.
+  directUrl = env("DATABASE_OWNER_URL")
 }
 
 enum Role {

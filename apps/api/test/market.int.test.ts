@@ -1,16 +1,16 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MarketService } from "../src/market/market.service.js";
-import { PrismaService } from "../src/prisma/prisma.service.js";
-import { get, owner, post, resetDb, sessionCookies, startApp } from "./helpers.js";
+import type { PrismaClient } from "@prisma/client";
+import { get, owner, post, resetDb, sessionCookies, startApp, admin } from "./helpers.js";
 
 let app: NestFastifyApplication;
 let market: MarketService;
-let prisma: PrismaService;
+let prisma: PrismaClient;
 beforeAll(async () => {
   app = await startApp();
   market = app.get(MarketService);
-  prisma = app.get(PrismaService);
+  prisma = admin;
 });
 afterAll(() => app.close());
 beforeEach(async () => {

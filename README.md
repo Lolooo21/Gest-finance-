@@ -140,6 +140,14 @@ erDiagram
 - `MarketSnapshot` (indépendante des foyers, **aucune donnée personnelle**) mémorise les indicateurs publics récupérés chaque jour (taux de dépôt de la BCE, OAT 10 ans France, inflation IPCH France) : une ligne par indicateur et par période observée. Les taux réglementés (Livret A, LDDS, LEP, PEL) ne sont pas en base : ils sont dans une configuration versionnée avec source et période de validité (`apps/api/src/market/regulated-rates.ts`), car ils ne changent que les 1er février et 1er août.
 - `RefreshToken` stocke uniquement l'empreinte SHA-256 du jeton de session, avec rotation et révocation. `AuditLog` garde les actions (connexion, ajout…), sans montants ni secrets.
 
+### Isolation par ligne (RLS PostgreSQL, jalon 8b)
+Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : même si une requête oubliait son filtre, la base ne renverrait que les lignes du foyer connecté.
+- **Trois rôles SQL** : `gest` (propriétaire des tables, utilisé **seulement** par les migrations et les tests, jamais par l'API), `gest_app` (requêtes des utilisateurs connectés, **soumis à la RLS**) et `gest_system` (inscription, connexion, journal d'audit, rappels, indicateurs : droits limités aux tables nécessaires, aucun accès aux comptes, opérations, règles ni fiches de paie). Les rôles sont créés par la migration `rls_foyer` ; leurs mots de passe viennent des URL de connexion (`pnpm db:roles`).
+- **Foyer courant** : un hook Fastify lit le foyer dans le jeton vérifié et le garde pour toute la requête ; chaque requête SQL s'exécute dans une transaction qui fixe `app.household_id` (`set_config(..., true)`, local à la transaction). Les politiques `foyer` de chaque table comparent `householdId` à ce réglage. **Sans foyer, l'accès est refusé** (erreur) plutôt que silencieusement vide.
+- **Tables** : `Household`, `User`, `AuditLog`, `BankAccount`, `Transaction`, `RecurringRule`, `PayslipImport` (par `householdId`) ; `RefreshToken`, `ReminderSetting`, `PushSubscription` (via l'utilisateur). `MarketSnapshot` (public) n'a pas de RLS. Le journal d'audit est en écriture seule pour l'application.
+- **Garde-fous** : l'API refuse de démarrer si `DATABASE_URL` n'est pas le rôle `gest_app` (ou si ce rôle contourne la RLS) ; en production, `DATABASE_OWNER_URL` ne doit pas exister dans l'API ; un test échoue si une table est ajoutée sans RLS.
+- **Nouvelle table du foyer** : dans sa migration, `ENABLE ROW LEVEL SECURITY`, une politique `foyer`, et les `GRANT` strictement nécessaires aux deux rôles.
+
 **Reste à vivre** = revenus (récurrents + ponctuels) − charges fixes récurrentes − dépenses ponctuelles, sur la période demandée (`GET /summary?from&to`), recalculé à chaque lecture donc après chaque ajout, modification ou suppression.
 
 ## Fonctionnalités en place
@@ -159,11 +167,12 @@ erDiagram
 | Actualités financières | Onglet « Actualités » : taux réglementés (Livret A, LDDS, LEP, PEL) avec variation, date d'entrée en vigueur, prochaine révision et alerte « périmé » ; indicateurs de marché (BCE, OAT 10 ans, inflation) rafraîchis automatiquement chaque jour avec état (à jour / ancienne / indisponible) et source ; fiches pédagogiques de 9 supports d'épargne (risque, disponibilité, plafond, fiscalité, points d'attention) ; simulateur d'intérêts calculé dans le navigateur (prérempli avec vos comptes d'épargne) ; avertissement permanent « information, pas un conseil en investissement » ; `pnpm market:check` pour tester les appels réels |
 | Ergonomie et erreurs | Actions rapides en haut du tableau de bord (ajouter une opération, importer une fiche de paie, bilan, 2FA) ; boutons libellés avec icônes et zones tactiles ≥ 44 px ; « Modifier » et « Supprimer » explicites, suppression avec boîte de confirmation ; notifications de succès et d'erreur (aucune action n'échoue en silence) ; messages d'erreur clairs et actionnables (serveur injoignable, session expirée, droits, fichier trop gros ou non PDF, scan, doublon…), validations en français ; bandeau « Réessayer » si le chargement échoue ; import PDF par bouton ou glisser-déposer avec contrôle du fichier avant envoi |
 | Confidentialité | Bouton « Masquer les montants » (mémorisé sur l'appareil) |
+| Isolation par foyer en base | RLS PostgreSQL forcée par rôle : requêtes des utilisateurs sous `gest_app` (un foyer à la fois, accès refusé sans foyer), `gest_system` à droits limités, propriétaire réservé aux migrations ; journal d'audit en écriture seule ; tests d'isolation en base réelle (lecture, écriture, concurrence, droits des rôles) |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (49 tests, 100 %), API sur PostgreSQL réel (113 tests), front (47 tests) |
+| Tests | `finance-core` (49 tests, 100 %), API sur PostgreSQL réel (137 tests, dont l'isolation par ligne et les droits des rôles), front (47 tests) |
 
-À venir (voir `TODO.md`) : OCR des scans, historique et alertes sur les taux, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys, RLS PostgreSQL.
+À venir (voir `TODO.md`) : OCR des scans, historique et alertes sur les taux, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker.
@@ -171,10 +180,10 @@ Prérequis : Node 22+, pnpm 10, Docker.
 pnpm install
 docker compose -f infra/docker/compose.dev.yml up -d     # PostgreSQL + Redis
 copy apps\api\.env.example apps\api\.env                  # (cp sous Linux/macOS)
-cd apps/api && pnpm exec prisma migrate deploy && cd ../..
 pnpm dev                                                  # API :3000 + front http://localhost:5173
 pnpm test
 ```
+`pnpm dev` et `pnpm test` appliquent d'eux-mêmes les migrations et les mots de passe des rôles SQL (`prisma migrate deploy` puis `pnpm db:roles`). **Mise à jour depuis une version antérieure au jalon 8b** : recopiez les trois lignes `DATABASE_OWNER_URL`, `DATABASE_URL` et `DATABASE_SYSTEM_URL` de `apps/api/.env.example` dans votre `apps/api/.env` (l'ancien `DATABASE_URL` devient `DATABASE_OWNER_URL`). L'utilisateur PostgreSQL de développement (`gest`, créé par `compose.dev.yml`) est super-utilisateur : c'est ce qui permet à la migration de créer les rôles.
 
 **Notifications push (optionnel).** Générez des clés VAPID (`cd apps/api && pnpm exec web-push generate-vapid-keys`) et renseignez-les dans `apps/api/.env` (voir `.env.example`). Le service worker n'est actif que dans la version construite : `pnpm --filter @gest-finance/web build` puis `pnpm --filter @gest-finance/web exec vite preview`. Sans clés, le rappel reste visible dans l'application.
 
@@ -208,7 +217,10 @@ Conteneurs sans privilèges (`read_only`, `cap_drop: ALL`), réseaux internes, s
 | Erreur 500 à l'inscription ou sur n'importe quelle requête | Regardez le terminal de l'API : la cause y est journalisée (sans données sensibles). Cas fréquent : base non migrée ou client Prisma obsolète → dans `apps/api`, `pnpm exec prisma migrate deploy` puis `pnpm exec prisma generate`, et redémarrez. L'API refuse désormais de démarrer avec un message explicite dans ce cas |
 | `404` sur une fonction (import de PDF, rappel, bilan…) en développement | Le proxy du front n'envoyait pas cette route à l'API (corrigé : la liste des préfixes est partagée dans `packages/shared/src/routes.ts`, un test de l'API vérifie qu'elle est complète). Après un `git pull` : `pnpm install` puis relancez `pnpm dev` pour recharger la configuration du proxy |
 | `ECONNREFUSED` dans le terminal du front | L'API n'a pas démarré : lisez l'erreur affichée juste avant « Failed running » dans le terminal de l'API |
+| `DATABASE_URL doit utiliser le rôle « gest_app »` au démarrage de l'API | Votre `apps/api/.env` date d'avant le jalon 8b : l'API refuse de tourner avec le rôle propriétaire (la RLS serait contournée). Recopiez les trois variables de `.env.example` (`DATABASE_OWNER_URL`, `DATABASE_URL`, `DATABASE_SYSTEM_URL`), puis `cd apps/api && pnpm db:roles` |
+| `permission denied for table …` ou `Accès à la base refusé : aucun foyer` | Une requête sort des droits du rôle ou s'exécute hors d'une requête connectée. Les données du foyer ne sont accessibles qu'avec un jeton valide (client `PrismaService`) ; l'inscription, la connexion, l'audit, les rappels et les indicateurs passent par `SystemPrismaService` |
 | `Can't reach database server` | PostgreSQL n'est pas démarré : `docker compose -f infra/docker/compose.dev.yml up -d` (depuis la racine) |
 | `Cannot read properties of undefined (reading 'count')` au démarrage de l'API | Le client Prisma date d'avant une mise à jour du schéma. `pnpm dev` exécute désormais `prisma generate` puis `prisma migrate deploy` avant de démarrer l'API (script `predev`) ; l'API affiche aussi un message explicite si le client ou la base ne sont pas à jour |
+| Tests d'infra en échec sur Windows (`.env` absent de `.dockerignore`, script « non exécutable ») ou test de rappel qui voit des clés VAPID | Fins de ligne CRLF et droits de fichiers de Windows : un `.gitattributes` force le LF pour les scripts et fichiers Docker (après un `git pull`, lancez `git add --renormalize .` puis `git status` ; recréez le dépôt si des scripts restent en CRLF, ils casseraient dans Docker). Les tests ignorent maintenant les clés VAPID de votre environnement |
 | `Cannot find package …` après un `git pull` | Dépendances manquantes : `pnpm install` |
 | `JWT_SECRET` ou `FIELD_ENCRYPTION_KEY` manquant | Vérifiez `apps/api/.env` (voir `.env.example`) |
