@@ -239,6 +239,10 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - **Trivy** : l'étiquette de l'action GitHub n'existait pas → exécution via l'image `aquasec/trivy:0.58.1`.
 - **Démarrage de la pile** : PostgreSQL ne pouvait pas lire `/run/secrets/postgres_password` (fichier en 600 appartenant à un autre utilisateur que le conteneur, sans contournement possible avec `cap_drop: ALL`). `init-secrets.sh` : dossier `secrets/` en 700 et fichiers en 644 (inaccessibles aux autres utilisateurs de l'hôte grâce au dossier) ; test d'infra adapté.
 - Mode `--local` de `init-secrets.sh` et section « Essayer sans VPS » dans `docs/deploiement.md`.
+- **Images à jour** (Trivy : 0 HIGH/CRITICAL sur les trois images) : Node 22.23.3 (le tag 22.23.4 n'avait pas d'image publiée), Alpine 3.23, PostgreSQL 16.15, Tailscale 1.104 ; Caddy 2.11.7 recompilé avec Go 1.27 et `golang.org/x/net` 0.60.0 (`proxy.Dockerfile`, étape `caddy-build`) car le binaire officiel embarquait des CVE Go.
+- **hadolint** : `api.Dockerfile` avec `SHELL … pipefail` et sans `cd` (DL3003, DL4006).
+- **Semgrep** : `CryptoService` fixe `authTagLength: 16` et refuse une étiquette de longueur différente (test ajouté).
+- Résultat CI « Images Docker » vert : construction, démarrage de la pile, test de fumée, sauvegarde chiffrée, Trivy.
 
 ## Circuit Git : branche `develop`
 - `ci.yml`, `docker.yml` : push sur `main`, `develop`, `claude/**` et toute pull request ; `security.yml` : push sur `main` et `develop`, pull requests, lundi, lancement manuel ; `release.yml` : tags `v*`.

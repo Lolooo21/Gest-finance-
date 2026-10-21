@@ -9,11 +9,11 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Compose dev (Postgres, Redis) | Terminé (non démarré/testé) |
 | CI de base (lint, typecheck, tests, audit, Gitleaks) | En test (jamais exécutée sur GitHub) |
 | Push GitHub | Terminé |
-| Dockerfiles multi-stage non-root, compose prod + Caddy + Tailscale | Terminé (jalon 8a) ; construction vérifiée par la CI GitHub, pas en local |
+| Dockerfiles multi-stage non-root, compose prod + Caddy + Tailscale | Terminé (jalon 8a) ; construction, démarrage, test de fumée et Trivy vérifiés par la CI GitHub (pas de déploiement réel sur VPS) |
 | Premier déploiement réel sur un VPS suivant `docs/deploiement.md` | À faire (utilisateur) |
 | Sauvegardes chiffrées (age) + envoi S3 + restauration testée + runbook | Terminé (jalon 8a) |
 | Sauvegardes : afficher la date de la dernière sauvegarde dans l'application et alerter si trop ancienne | À faire |
-| CI complète : Semgrep, CodeQL (dépôt public), Trivy, hadolint, Gitleaks, build des images + test de fumée | Terminé (jalon 8a) ; résultats de la première exécution à relever |
+| CI complète : Semgrep, CodeQL (dépôt public), Trivy, hadolint, Gitleaks, build des images + test de fumée | Terminé (jalon 8a) ; « Images Docker » vert ; hadolint/Semgrep corrigés, à confirmer au prochain push sur develop ou à la première pull request |
 | CI : e2e Playwright et ZAP baseline | À faire |
 | Publication des images GHCR signées (tags `v*`) | Terminé (jalon 8a), non exécutée |
 | Circuit Git : branche `develop`, workflows déclenchés sur develop/main/PR | Terminé |
