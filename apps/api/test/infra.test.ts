@@ -140,6 +140,14 @@ describe("images Docker", () => {
     expect(proxy).toMatch(/CMD \["\/usr\/local\/bin\/caddy"/);
   });
 
+  it("l'image d'exécution de l'API applique les correctifs Debian et ne contient ni npm ni Corepack", () => {
+    const api = read("infra/docker/api.Dockerfile");
+    const runtime = api.split(/^FROM /m).pop()!;
+    expect(runtime).toContain("apt-get -y upgrade");
+    expect(runtime).toMatch(/rm -rf \/usr\/local\/lib\/node_modules\/npm/);
+    expect(runtime).toContain("/usr/local/bin/corepack");
+  });
+
   it(".dockerignore exclut secrets, environnement, historique et dépendances", () => {
     const ignore = read(".dockerignore").split("\n");
     for (const entry of [".env", "secrets/", ".git/", "node_modules/"]) expect(ignore).toContain(entry);
