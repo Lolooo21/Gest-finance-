@@ -21,6 +21,10 @@ RUN pnpm --filter @gest-finance/web build
 
 FROM caddy:2.8.4-alpine AS runtime
 RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
+# Le binaire Caddy officiel porte une capacité de fichier (cap_net_bind_service) : avec « cap_drop: ALL » et « no-new-privileges »,
+# son exécution est refusée (« exec caddy failed: Operation not permitted »). Une copie ne conserve pas cet attribut ;
+# le port 8080 (> 1024) n'a de toute façon pas besoin de cette capacité.
+RUN cp /usr/bin/caddy /usr/local/bin/caddy && chmod 755 /usr/local/bin/caddy
 COPY --from=web-build /app/apps/web/dist /srv
 COPY infra/caddy/Caddyfile /etc/caddy/Caddyfile
 ENV XDG_DATA_HOME=/tmp/caddy-data \
@@ -29,4 +33,4 @@ USER app
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \
     CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
-CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+CMD ["/usr/local/bin/caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

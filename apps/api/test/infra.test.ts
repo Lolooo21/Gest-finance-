@@ -134,6 +134,12 @@ describe("images Docker", () => {
     expect(tsconfig.extends).toBeUndefined();
   });
 
+  it("le proxy n'exécute pas le binaire Caddy d'origine (capacité de fichier incompatible avec cap_drop: ALL)", () => {
+    const proxy = read("infra/docker/proxy.Dockerfile");
+    expect(proxy).toContain("cp /usr/bin/caddy /usr/local/bin/caddy");
+    expect(proxy).toMatch(/CMD \["\/usr\/local\/bin\/caddy"/);
+  });
+
   it(".dockerignore exclut secrets, environnement, historique et dépendances", () => {
     const ignore = read(".dockerignore").split("\n");
     for (const entry of [".env", "secrets/", ".git/", "node_modules/"]) expect(ignore).toContain(entry);
