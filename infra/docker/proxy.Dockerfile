@@ -2,7 +2,7 @@
 # Image du proxy : construit le front (PWA) puis le sert avec Caddy, qui relaie l'API. HTTP interne seulement :
 # le HTTPS est assuré en amont par Tailscale.
 
-FROM node:22.23.4-bookworm-slim AS web-build
+FROM node:22.23.3-bookworm-slim AS web-build
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 # pnpm via npm : le Corepack livré avec cette version de Node ne connaît pas les clés de signature actuelles du registre (erreur « Cannot find matching keyid »).
