@@ -134,9 +134,9 @@ describe("images Docker", () => {
     expect(tsconfig.extends).toBeUndefined();
   });
 
-  it("le proxy n'exécute pas le binaire Caddy d'origine (capacité de fichier incompatible avec cap_drop: ALL)", () => {
+  it("le proxy exécute un Caddy recompilé sans capacité de fichier (compatible cap_drop: ALL)", () => {
     const proxy = read("infra/docker/proxy.Dockerfile");
-    expect(proxy).toContain("cp /usr/bin/caddy /usr/local/bin/caddy");
+    expect(proxy).toContain("COPY --from=caddy-build /go/bin/caddy /usr/local/bin/caddy");
     expect(proxy).toMatch(/CMD \["\/usr\/local\/bin\/caddy"/);
   });
 

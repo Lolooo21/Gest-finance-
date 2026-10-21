@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # Sauvegarde chiffrée de la base : pg_dump -> age (clé publique seulement) -> copie locale + envoi S3 (rclone).
-FROM alpine:3.20
+FROM alpine:3.22
 RUN apk add --no-cache postgresql16-client age rclone tzdata ca-certificates \
     && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app \
     && mkdir -p /backups && chown app:app /backups

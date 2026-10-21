@@ -1,6 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
+const AUTH_TAG_BYTES = 16;
+
 /** Chiffrement applicatif AES-256-GCM des champs sensibles (IBAN...). Clé : FIELD_ENCRYPTION_KEY (32 octets en base64 ou 64 hex). */
 @Injectable()
 export class CryptoService {
@@ -15,7 +17,7 @@ export class CryptoService {
 
   encrypt(plain: string): string {
     const iv = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", this.key, iv);
+    const cipher = createCipheriv("aes-256-gcm", this.key, iv, { authTagLength: AUTH_TAG_BYTES });
     const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
     return [iv, cipher.getAuthTag(), data].map((b) => b.toString("base64")).join(".");
   }
@@ -23,7 +25,8 @@ export class CryptoService {
   decrypt(payload: string): string {
     const [iv, tag, data] = payload.split(".").map((p) => Buffer.from(p, "base64"));
     if (!iv || !tag || !data) throw new Error("Données chiffrées invalides");
-    const decipher = createDecipheriv("aes-256-gcm", this.key, iv);
+    if (tag.length !== AUTH_TAG_BYTES) throw new Error("Données chiffrées invalides");
+    const decipher = createDecipheriv("aes-256-gcm", this.key, iv, { authTagLength: AUTH_TAG_BYTES });
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(data), decipher.final()]).toString("utf8");
   }

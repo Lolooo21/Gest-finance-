@@ -20,7 +20,7 @@ x-hardening: &hardening
 services:
   postgres:
     <<: *hardening
-    image: postgres:16.6-alpine
+    image: postgres:16.15-alpine
     user: "70:70"
     environment:
       POSTGRES_USER: gest
@@ -87,7 +87,7 @@ services:
   tailscale:
     <<: *hardening
     profiles: [prod]
-    image: tailscale/tailscale:v1.80.3
+    image: tailscale/tailscale:v1.104.2
     hostname: gest-finance
     environment:
       TS_HOSTNAME: gest-finance

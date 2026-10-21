@@ -2,7 +2,7 @@
 # Image de l'API : même structure de dossiers que le développement (les paquets du workspace restent hors de
 # node_modules, car le chargeur swc compile le TypeScript du workspace). Aucun secret n'est copié dans l'image.
 
-FROM node:22.22.0-bookworm-slim AS base
+FROM node:22.23.3-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 # pnpm via npm : le Corepack livré avec cette version de Node ne connaît pas les clés de signature actuelles du registre (erreur « Cannot find matching keyid »).
@@ -26,14 +26,17 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 # Le client ET le moteur de migration sont téléchargés ici : à l'exécution, le conteneur n'a ni Internet ni système de fichiers inscriptible.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN pnpm --filter @gest-finance/api exec prisma generate \
-    && pnpm --filter @gest-finance/api exec prisma --version \
-    && ( find /app/node_modules/.pnpm -path '*@prisma/engines/schema-engine-*' | grep -q . \
-         || ( cd "$(find /app/node_modules/.pnpm -maxdepth 1 -name '@prisma+engines@*' | head -n1)/node_modules/@prisma/engines" \
-              && node -e "require('./dist/index.js').ensureBinariesExist()" ) ) \
+    && pnpm --filter @gest-finance/api exec prisma --version
+# Si le moteur de migration n'a pas été téléchargé par la commande précédente, on le force explicitement.
+RUN if ! find /app/node_modules/.pnpm -path '*@prisma/engines/schema-engine-*' | grep -q .; then \
+      engines="$(find /app/node_modules/.pnpm -maxdepth 1 -name '@prisma+engines@*' | head -n1)/node_modules/@prisma/engines/dist/index.js"; \
+      node -e "require(process.argv[1]).ensureBinariesExist()" "$engines"; \
+    fi \
     && find /app/node_modules/.pnpm -path '*@prisma/engines/schema-engine-*' | grep .
 
-FROM node:22.22.0-bookworm-slim AS runtime
+FROM node:22.23.3-bookworm-slim AS runtime
 # OpenSSL est requis par le moteur Prisma. La gestion des signaux et des processus orphelins est confiée à `init: true` (compose) ou `docker run --init`.
 # Correctifs de sécurité Debian appliqués à la construction (l'image de base peut dater de quelques semaines).
 RUN apt-get update \
