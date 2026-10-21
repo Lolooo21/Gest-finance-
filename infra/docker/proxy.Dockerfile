@@ -19,12 +19,16 @@ COPY packages packages
 COPY apps/web apps/web
 RUN pnpm --filter @gest-finance/web build
 
-FROM caddy:2.11.7-alpine AS runtime
+# Caddy recompilé avec un Go à jour : le binaire officiel 2.11.7 embarque une bibliothèque standard Go signalée par Trivy (5 CVE HIGH net/http, crypto/tls).
+FROM golang:1.27-alpine3.23 AS caddy-build
+ENV CGO_ENABLED=0
+RUN go install -trimpath -ldflags "-s -w" github.com/caddyserver/caddy/v2/cmd/caddy@v2.11.7
+
+FROM alpine:3.23 AS runtime
+RUN apk add --no-cache ca-certificates mailcap
 RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
-# Le binaire Caddy officiel porte une capacité de fichier (cap_net_bind_service) : avec « cap_drop: ALL » et « no-new-privileges »,
-# son exécution est refusée (« exec caddy failed: Operation not permitted »). Une copie ne conserve pas cet attribut ;
-# le port 8080 (> 1024) n'a de toute façon pas besoin de cette capacité.
-RUN cp /usr/bin/caddy /usr/local/bin/caddy && chmod 755 /usr/local/bin/caddy
+# Binaire sans capacité de fichier (cap_net_bind_service) : compatible avec « cap_drop: ALL » et « no-new-privileges » ; le port 8080 n'en a pas besoin.
+COPY --from=caddy-build /go/bin/caddy /usr/local/bin/caddy
 COPY --from=web-build /app/apps/web/dist /srv
 COPY infra/caddy/Caddyfile /etc/caddy/Caddyfile
 ENV XDG_DATA_HOME=/tmp/caddy-data \
