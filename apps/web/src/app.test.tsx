@@ -8,6 +8,8 @@ type Handler = (method: string, url: string, body: unknown) => { status?: number
 
 const EMPTY_FORECAST = { from: "2026-10-21", to: "2026-11-20", days: 30, startCents: 0, endCents: 0, incomeCents: 0, expensesCents: 0, points: [{ date: "2026-10-21", totalCents: 0, checkingCents: 0 }], accounts: [], events: [], firstNegativeDate: null, lowestCheckingCents: 0, lowestCheckingDate: null };
 
+const EMPTY_SAVINGS = { goals: [], emergency: { averageMonthlyExpensesCents: 0, threeMonthsCents: 0, sixMonthsCents: 0, savedCents: 0, coverageTenths: null, belowThreeMonths: false }, capacityCents: 0, totalAdvisedCents: 0 };
+
 function mockApi(handler: Handler) {
   const calls: { method: string; url: string; body: unknown }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
@@ -18,6 +20,7 @@ function mockApi(handler: Handler) {
     let r = handler(method, url, body);
     if (url.startsWith("/forecast") && !(r.json as { points?: unknown } | undefined)?.points) r = { json: EMPTY_FORECAST };
     if (url.startsWith("/goals/behavior") && !Array.isArray(r.json)) r = { json: [] };
+    if (url === "/goals/savings" && method === "GET" && !(r.json as { goals?: unknown } | undefined)?.goals) r = { json: EMPTY_SAVINGS };
     if (r.network) throw new TypeError("Failed to fetch");
     const status = r.status ?? 200;
     return { ok: status < 400, status, json: async () => { if (r.html) throw new SyntaxError("Unexpected token <"); return r.json ?? {}; } } as Response;
@@ -155,6 +158,27 @@ describe("rappel hebdomadaire", () => {
     if (u === "/review/weekly") return { json: review };
     return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
   };
+
+  it("rappelle l'état des objectifs dans le bilan de la semaine", async () => {
+    mockApi((m, u, b) => {
+      if (u === "/review/weekly") {
+        return { json: { ...review, goals: {
+          behavior: [{ kind: "NO_OVERDRAFT", status: "AT_RISK", streak: 3 }],
+          savings: [{ id: "g1", name: "Vacances", status: "BEHIND", percent: 25, advisedMonthlyCents: 8_000 }],
+          emergencyBelowThreeMonths: true,
+        } } };
+      }
+      return weeklyApi({ reminder: { ...baseReminder } })(m, u, b);
+    });
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Faire le bilan" }));
+    const goals = await screen.findByLabelText("Objectifs");
+    expect(goals).toHaveTextContent("Pas de découvert");
+    expect(goals).toHaveTextContent("à surveiller · 3 mois d'affilée");
+    expect(goals).toHaveTextContent(/Vacances.*25 %.*en retard/);
+    expect(goals).toHaveTextContent(/moins de 3 mois de dépenses/);
+  });
 
   it("affiche la bannière quand le bilan est dû, ouvre le bilan et le valide", async () => {
     const calls = mockApi(weeklyApi({ reminder: { ...baseReminder } }));
@@ -583,5 +607,114 @@ describe("prévisionnel et objectifs", () => {
     await user.click(within(cap).getByRole("button", { name: "Activer" }));
     expect(await within(cap).findByRole("alert")).toHaveTextContent("Indiquez un plafond en euros");
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+});
+
+describe("objectifs d'épargne", () => {
+  const goal = (over: object = {}) => ({
+    id: "g1", name: "Vacances", kind: "SHORT_TERM", targetCents: 120_000, targetDate: "2027-06-01", accountId: null, account: null, annualRateBp: 0,
+    savedCents: 60_000, percent: 50, remainingCents: 60_000, monthsLeft: 8, advisedMonthlyCents: 7_500, status: "ON_TRACK",
+    contributions: [{ id: "c1", date: "2026-10-01", amountCents: 60_000, note: null }], ...over,
+  });
+  const overview = (over: object = {}) => ({
+    goals: [goal()],
+    emergency: { averageMonthlyExpensesCents: 200_000, threeMonthsCents: 600_000, sixMonthsCents: 1_200_000, savedCents: 300_000, coverageTenths: 15, belowThreeMonths: true },
+    capacityCents: 5_000, totalAdvisedCents: 7_500, ...over,
+  });
+  const base = (extra: Handler): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Livret A", type: "SAVINGS", balanceCents: 0, ibanMasked: null }] };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("affiche l'avancement, le versement conseillé, la couverture du fonds de secours et l'alerte de dépassement", async () => {
+    mockApi(base((m, u) => (u === "/goals/savings" && m === "GET" ? { json: overview() } : (undefined as never))));
+    renderApp();
+    const panel = await screen.findByLabelText("Objectifs d'épargne");
+    await within(panel).findByText("Vacances");
+    expect(within(panel).getByRole("progressbar", { name: "Avancement de Vacances" })).toHaveAttribute("aria-valuenow", "50");
+    expect(within(panel).getByText("En bonne voie")).toBeInTheDocument();
+    expect(within(panel).getByText(/pendant 8 mois/)).toBeInTheDocument();
+    expect(within(panel).getByRole("alert")).toHaveTextContent(/1,5 mois.*sous le minimum de 3 mois/);
+    expect(within(panel).getByText(/Ce total dépasse votre reste à vivre/)).toBeInTheDocument();
+  });
+
+  it("crée un objectif depuis un modèle, avec la cible en centimes", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/goals/savings" && m === "GET") return { json: overview({ goals: [] }) };
+      if (u === "/goals/savings" && m === "POST") return { status: 201, json: { id: "g2" } };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Objectifs d'épargne");
+    await within(panel).findByText(/Aucun objectif pour le moment/);
+    await user.click(within(panel).getByRole("button", { name: "Nouvel objectif" }));
+    await user.click(within(panel).getByRole("button", { name: "Fonds d'urgence" }));
+    expect(within(panel).getByLabelText("Nom de l'objectif")).toHaveValue("Fonds d'urgence");
+    expect(within(panel).getByLabelText("Montant à atteindre")).toHaveValue("12000,00");
+    await user.click(within(panel).getByRole("button", { name: "Enregistrer l'objectif" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/goals/savings")).toBe(true));
+    expect(calls.find((c) => c.method === "POST" && c.url === "/goals/savings")?.body).toEqual({ name: "Fonds d'urgence", kind: "EMERGENCY", targetCents: 1_200_000, targetDate: null, accountId: null, annualRateBp: 0 });
+  });
+
+  it("refuse un objectif sans échéance ou sans montant sans appeler l'API", async () => {
+    const calls = mockApi(base((m, u) => (u === "/goals/savings" && m === "GET" ? { json: overview({ goals: [] }) } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Objectifs d'épargne");
+    await within(panel).findByText(/Aucun objectif pour le moment/);
+    await user.click(within(panel).getByRole("button", { name: "Nouvel objectif" }));
+    await user.type(within(panel).getByLabelText("Nom de l'objectif"), "Voyage");
+    await user.click(within(panel).getByRole("button", { name: "Enregistrer l'objectif" }));
+    const form = within(panel).getByRole("form", { name: "Nouvel objectif d'épargne" });
+    expect(await within(form).findByRole("alert")).toHaveTextContent("Indiquez le montant à atteindre");
+    await user.type(within(form).getByLabelText("Montant à atteindre"), "2000");
+    await user.click(within(form).getByRole("button", { name: "Enregistrer l'objectif" }));
+    expect(await within(form).findByRole("alert")).toHaveTextContent("Indiquez la date");
+    expect(calls.some((c) => c.method === "POST" && c.url === "/goals/savings")).toBe(false);
+  });
+
+  it("enregistre un versement, refuse un retrait supérieur à l'épargne et supprime un objectif après confirmation", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/goals/savings" && m === "GET") return { json: overview() };
+      if (u === "/goals/savings/g1/contributions" && m === "POST") return { status: 201, json: { id: "c2" } };
+      if (u === "/goals/savings/g1" && m === "DELETE") return { status: 204, json: {} };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Objectifs d'épargne");
+    await user.click(await within(panel).findByRole("button", { name: "Verser pour Vacances" }));
+    await user.type(within(panel).getByLabelText("Montant du versement"), "150");
+    await user.click(within(panel).getByRole("button", { name: "Verser" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/goals/savings/g1/contributions")?.body).toMatchObject({ amountCents: 15_000 }));
+
+    await user.click(within(panel).getByRole("button", { name: "Verser pour Vacances" }));
+    await user.type(within(panel).getByLabelText("Montant du versement"), "9000");
+    const form = within(panel).getByRole("form", { name: "Versement pour Vacances" });
+    await user.click(within(form).getByLabelText("Retrait"));
+    await user.click(within(form).getByRole("button", { name: "Retirer" }));
+    expect(await within(form).findByRole("alert")).toHaveTextContent(/ne pouvez pas retirer plus que l'épargne/);
+
+    await user.click(within(panel).getByRole("button", { name: "Supprimer Vacances" }));
+    await user.click(await screen.findByRole("button", { name: "Supprimer" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.url === "/goals/savings/g1")).toBe(true));
+  });
+
+  it("affiche l'historique des versements et permet d'en supprimer un", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/goals/savings" && m === "GET") return { json: overview() };
+      if (u === "/goals/savings/g1/contributions/c1" && m === "DELETE") return { status: 204, json: {} };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Objectifs d'épargne");
+    await user.click(await within(panel).findByRole("button", { name: "Historique de Vacances" }));
+    expect(within(panel).getByLabelText("Versements de Vacances")).toHaveTextContent("2026-10-01");
+    await user.click(within(panel).getByRole("button", { name: "Supprimer le versement du 2026-10-01" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.url === "/goals/savings/g1/contributions/c1")).toBe(true));
   });
 });

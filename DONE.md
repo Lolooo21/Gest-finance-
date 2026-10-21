@@ -270,6 +270,20 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Front
 - `pages/Forecast.tsx` (`ForecastPanel`) : horizons 30/60/90 jours, alerte de découvert, courbe SVG accessible (montants masqués en mode confidentialité), prochaines échéances ; `pages/Goals.tsx` (`GoalsPanel`) : trois objectifs avec statut, mesure, série, activation, plafond et retrait. Tests : 4 nouveaux (front : 51).
 
+## Jalon 9b — Objectifs d'épargne (enveloppes virtuelles) et épargne de secours
+### `packages/finance-core` (`savingsGoals.ts`)
+- `evaluateSavingsGoal()` : avancement (0 à 100 %), reste, mois restants, versement mensuel conseillé et statut (atteint, en bonne voie sur une trajectoire linéaire de la création à l'échéance, en retard, échéance dépassée, sans échéance).
+- `advisedMonthly()` : versement de fin de mois qui amène l'épargne à la cible, intérêts mensuels compris (même convention que `projectSavings`, vérifié par le test), arrondi supérieur ; `monthsUntil()` : mois civils restants (un mois entamé compte).
+- `emergencyFund()` : cibles de 3 et 6 mois, couverture en dixièmes de mois, alerte sous 3 mois ; `averageMonthlyExpenses()` : moyenne des 3 derniers mois terminés avec activité (repli : mois en cours).
+- Tests : 12 nouveaux (couverture 100 %).
+### API
+- `GET/POST /goals/savings`, `PUT/DELETE /goals/savings/:id`, `POST /goals/savings/:id/contributions`, `DELETE /goals/savings/:id/contributions/:cid` (`savings-goals.controller.ts`) : écriture réservée aux adultes ; un retrait ne peut pas dépasser l'épargne de l'objectif (vérifié dans une transaction), pas plus que la suppression d'un versement ; compte lié vérifié (foyer) et libéré si le compte est supprimé ; audit sans montant.
+- `goals.service.ts` : `behavior()` et `savings()` partagés par les pages d'objectifs et par `GET /review/weekly`, qui renvoie désormais l'état des objectifs (comportement, épargne, alerte de secours).
+- Tables `SavingsGoal` et `SavingsContribution` (migration `objectifs_epargne` avec RLS et droits).
+- Tests (API : 155, +9) : validations, avancement, retraits, suppression, compte lié, épargne de secours, droits (enfant en lecture), audit, isolation, bilan hebdomadaire.
+### Front
+- `pages/Savings.tsx` : objectifs avec jauge accessible, versements, retraits, historique, modification, suppression avec confirmation, modèles, bandeau d'épargne de secours et comparaison au reste à vivre ; `pages/Weekly.tsx` : section « Objectifs » du bilan. Tests : 6 nouveaux (front : 57).
+
 ## Circuit Git : branche `develop`
 - `ci.yml`, `docker.yml` : push sur `main`, `develop`, `claude/**` et toute pull request ; `security.yml` : push sur `main` et `develop`, pull requests, lundi, lancement manuel ; `release.yml` : tags `v*`.
 - README : section « Circuit de travail » (branches, pull requests, protections conseillées) ; `CLAUDE.md` : règle du circuit ; test d'infrastructure sur les déclencheurs (API : 114 tests).

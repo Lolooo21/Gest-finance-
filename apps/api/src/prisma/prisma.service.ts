@@ -70,7 +70,7 @@ const notMigrated = (model: string) =>
   `Base de données non migrée ou client Prisma obsolète (modèle « ${model} ») : dans apps/api, lancez \`pnpm exec prisma migrate deploy\` puis \`pnpm exec prisma generate\`, et redémarrez.`;
 
 /** Un modèle par table : une migration oubliée est détectée au démarrage, pas à la première requête. */
-const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot", "auditLog", "refreshToken", "behaviorGoal"] as const;
+const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot", "auditLog", "refreshToken", "behaviorGoal", "savingsGoal", "savingsContribution"] as const;
 const SYSTEM_CHECKS = ["household", "user", "refreshToken", "reminderSetting", "pushSubscription", "marketSnapshot"] as const;
 
 /** Possède les connexions : vérifie la configuration au démarrage et les ferme à l'arrêt. */

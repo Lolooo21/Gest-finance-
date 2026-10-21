@@ -1,13 +1,11 @@
 import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Put, UseGuards } from "@nestjs/common";
-import { evaluateBehaviorGoal } from "@gest-finance/finance-core";
 import { BehaviorGoalDto, BehaviorKind } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
-import { toIso } from "../common/dates.js";
-import { loadHouseholdFinance } from "../common/finance-data.js";
 import { ZodPipe } from "../common/zod.pipe.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { GoalsService } from "./goals.service.js";
 
 @Controller("goals")
 @UseGuards(AuthGuard)
@@ -15,18 +13,13 @@ export class GoalsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly goals: GoalsService,
   ) {}
 
   /** Objectifs de comportement du foyer avec leur statut du mois en cours, l'historique (12 mois maximum) et la série de mois réussis. */
   @Get("behavior")
-  async list(@CurrentUser() user: AuthUser) {
-    const goals = await this.prisma.behaviorGoal.findMany({ where: { householdId: user.householdId }, orderBy: { createdAt: "asc" } });
-    if (goals.length === 0) return [];
-    const data = { ...(await loadHouseholdFinance(this.prisma, user.householdId)), today: toIso(new Date()) };
-    return goals.map((g) => ({
-      ...evaluateBehaviorGoal({ kind: g.kind, ...(g.capCents ? { capCents: g.capCents } : {}), since: toIso(g.createdAt).slice(0, 7) }, data),
-      since: toIso(g.createdAt),
-    }));
+  list(@CurrentUser() user: AuthUser) {
+    return this.goals.behavior(user.householdId);
   }
 
   /** Active un objectif ou modifie son plafond. Le plafond n'a de sens que pour « dépenses sous un plafond ». */

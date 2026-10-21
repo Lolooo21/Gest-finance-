@@ -33,6 +33,9 @@ erDiagram
     Transaction ||--o| PayslipImport : "revenu créé"
     Household ||--o{ PayslipImport : "possède"
     Household ||--o{ BehaviorGoal : "objectifs"
+    Household ||--o{ SavingsGoal : "objectifs d'épargne"
+    SavingsGoal ||--o{ SavingsContribution : "versements"
+    BankAccount ||--o{ SavingsGoal : "compte indicatif"
 
     Household {
         uuid id PK
@@ -116,6 +119,24 @@ erDiagram
         int capCents "plafond mensuel (SPENDING_CAP)"
         datetime createdAt "premier mois évalué"
     }
+    SavingsGoal {
+        uuid id PK
+        uuid householdId FK
+        string name
+        enum kind "EMERGENCY, SHORT_TERM, LONG_TERM"
+        int targetCents
+        date targetDate "facultative pour l'épargne de secours"
+        uuid accountId FK "compte indicatif (SET NULL)"
+        int annualRateBp "taux espéré, 0 = sans intérêts"
+    }
+    SavingsContribution {
+        uuid id PK
+        uuid householdId FK
+        uuid goalId FK
+        int amountCents "versement (+) ou retrait (−)"
+        date date
+        string note
+    }
     MarketSnapshot {
         uuid id PK
         string key UK "ECB_DEPOSIT_RATE, FR_10Y_YIELD, FR_INFLATION"
@@ -146,6 +167,7 @@ erDiagram
 - `PushSubscription` : un appareil abonné aux notifications. L'API n'envoie qu'aux services push connus des navigateurs (liste blanche anti-SSRF) ; la notification ne contient aucune donnée financière.
 - `PayslipImport` garde uniquement les **métadonnées** d'une fiche de paie validée (période, net, brut, employeur, lien vers l'opération créée), jamais le PDF : le fichier est lu en mémoire par le serveur puis jeté. Il sert à détecter les doublons (même compte, période et net, tant que l'opération existe).
 - `BehaviorGoal` : un **objectif de comportement mensuel** du foyer, au plus un par type : « pas de découvert » (aucun compte courant sous zéro, jour après jour), « reste à vivre positif », « dépenses sous un plafond » (`capCents`). L'évaluation n'est jamais stockée : `finance-core` la recalcule à chaque lecture à partir des comptes, règles et opérations (statut du mois en cours *en bonne voie / à surveiller / raté*, mois terminés *réussi / raté* depuis la création, 12 mois maximum, série de mois réussis d'affilée). Seuils : alerte à 80 % du plafond de dépenses, à moins de 10 % des revenus pour le reste à vivre.
+- `SavingsGoal` : un **objectif d'épargne** (épargne de secours, court ou long terme) sous forme d'**enveloppe virtuelle** : plusieurs objectifs peuvent partager un même livret sans se mélanger, et aucun mouvement n'est fait sur un compte bancaire. L'épargne de l'objectif est la **somme de ses versements** (`SavingsContribution`, positifs ou négatifs, jamais en dessous de zéro) ; le compte lié (`accountId`) est indicatif. Avancement, statut (*atteint, en bonne voie, en retard, échéance dépassée, sans échéance*) et **versement mensuel conseillé** (reste à épargner réparti sur les mois restants, avec les intérêts si un taux est indiqué) sont recalculés à chaque lecture par `finance-core`, comme l'épargne de secours : cible de 3 à 6 mois des dépenses habituelles (moyenne des 3 derniers mois terminés), alerte sous 3 mois.
 - `MarketSnapshot` (indépendante des foyers, **aucune donnée personnelle**) mémorise les indicateurs publics récupérés chaque jour (taux de dépôt de la BCE, OAT 10 ans France, inflation IPCH France) : une ligne par indicateur et par période observée. Les taux réglementés (Livret A, LDDS, LEP, PEL) ne sont pas en base : ils sont dans une configuration versionnée avec source et période de validité (`apps/api/src/market/regulated-rates.ts`), car ils ne changent que les 1er février et 1er août.
 - `RefreshToken` stocke uniquement l'empreinte SHA-256 du jeton de session, avec rotation et révocation. `AuditLog` garde les actions (connexion, ajout…), sans montants ni secrets.
 
@@ -179,11 +201,12 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | Isolation par foyer en base | RLS PostgreSQL forcée par rôle : requêtes des utilisateurs sous `gest_app` (un foyer à la fois, accès refusé sans foyer), `gest_system` à droits limités, propriétaire réservé aux migrations ; journal d'audit en écriture seule ; tests d'isolation en base réelle (lecture, écriture, concurrence, droits des rôles) |
 | Prévisionnel de trésorerie | Solde projeté à 30, 60 ou 90 jours (`GET /forecast`) : point de départ = solde d'aujourd'hui, puis règles récurrentes à venir et opérations déjà saisies avec une date future ; courbe jour par jour, solde le plus bas, **alerte au premier découvert prévu** (comptes courants seulement), prochaines échéances. Fonction pure `projectBalance()` de `finance-core` |
 | Objectifs de comportement | « Pas de découvert », « reste à vivre positif », « dépenses sous un plafond » (`/goals/behavior`) : statut du mois en cours, mesure, historique et série de mois réussis ; activation et retrait par un adulte, lecture pour tous |
+| Objectifs d'épargne | Enveloppes virtuelles par objectif (`/goals/savings`) : avancement, versements et retraits saisis, versement mensuel conseillé comparé au reste à vivre du mois, **épargne de secours** (couverture en mois de dépenses, alerte sous 3 mois), modèles prédéfinis (fonds d'urgence, vacances, rentrée scolaire, apport immobilier), rappel de l'ordre conseillé (secours → court terme → long terme) ; l'état de tous les objectifs figure aussi dans le bilan de la semaine |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (72 tests, ≥ 95 %), API sur PostgreSQL réel (146 tests, dont l'isolation par ligne et les droits des rôles), front (51 tests) |
+| Tests | `finance-core` (84 tests, ≥ 95 %), API sur PostgreSQL réel (155 tests, dont l'isolation par ligne et les droits des rôles), front (57 tests) |
 
-À venir (voir `TODO.md`) : objectifs d'épargne (secours, court et long terme, jalon 9b), état des objectifs dans le bilan de la semaine, OCR des scans, historique et alertes sur les taux, import de relevés et catégorisation, passkeys.
+À venir (voir `TODO.md`) : OCR des scans, historique et alertes sur les taux, import de relevés et catégorisation, passkeys.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker.
