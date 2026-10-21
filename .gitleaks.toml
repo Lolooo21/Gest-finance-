@@ -1,0 +1,12 @@
+# Étend les règles par défaut de Gitleaks.
+[extend]
+useDefault = true
+
+# Valeurs d'exemple publiques de `.env.example` : l'API refuse de démarrer en production si on les utilise
+# (voir `EXAMPLE_SECRETS` dans apps/api/src/config.ts). Ce ne sont pas des secrets.
+[allowlist]
+description = "Valeurs d'exemple de .env.example"
+regexes = [
+  '''dev-secret-dev-secret-dev-secret-123456''',
+  '''MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=''',
+]
