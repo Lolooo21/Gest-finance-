@@ -243,6 +243,7 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - **hadolint** : `api.Dockerfile` avec `SHELL … pipefail` et sans `cd` (DL3003, DL4006).
 - **Semgrep** : `CryptoService` fixe `authTagLength: 16` et refuse une étiquette de longueur différente (test ajouté).
 - Résultat CI « Images Docker » vert : construction, démarrage de la pile, test de fumée, sauvegarde chiffrée, Trivy.
+- **Gitleaks** : faux positif sur la valeur d'exemple publique de `EXAMPLE_SECRETS` (`config.ts`) → `.gitleaks.toml` (règles par défaut + liste d'autorisation des deux valeurs d'exemple) ; vérifié en local (1 fuite sans, 0 avec).
 
 ## Circuit Git : branche `develop`
 - `ci.yml`, `docker.yml` : push sur `main`, `develop`, `claude/**` et toute pull request ; `security.yml` : push sur `main` et `develop`, pull requests, lundi, lancement manuel ; `release.yml` : tags `v*`.
