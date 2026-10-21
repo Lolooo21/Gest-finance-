@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
-    "predev": "prisma generate && prisma migrate deploy",
+    "predev": "prisma generate && prisma migrate deploy && node --env-file-if-exists=.env scripts/setup-roles.mjs",
     "dev": "node --env-file=.env --watch --import @swc-node/register/esm-register src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
+    "db:roles": "node --env-file-if-exists=.env scripts/setup-roles.mjs",
     "market:check": "node --import @swc-node/register/esm-register scripts/market-check.ts",
     "payslip:debug": "node --import @swc-node/register/esm-register scripts/payslip-debug.ts",
-    "pretest": "prisma generate",
+    "pretest": "prisma generate && prisma migrate deploy && node --env-file-if-exists=.env scripts/setup-roles.mjs",
     "test": "vitest run"
   },
   "dependencies": {

@@ -1,7 +1,6 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { PrismaService } from "../src/prisma/prisma.service.js";
-import { get, owner, post, resetDb, sessionCookies, startApp } from "./helpers.js";
+import { get, owner, post, resetDb, sessionCookies, startApp, admin } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -20,7 +19,7 @@ describe("comptes", () => {
     const res = await post(app, "/accounts", { name: "Courant", type: "CHECKING", initialBalanceCents: 5000, iban: "fr76 3000 6000 0112 3456 7890 189" }, c);
     expect(res.statusCode).toBe(201);
     expect(JSON.stringify(res.json())).not.toContain("1234567890");
-    const row = await app.get(PrismaService).bankAccount.findFirstOrThrow();
+    const row = await admin.bankAccount.findFirstOrThrow();
     expect(row.ibanEncrypted).not.toContain("FR76");
     const list = (await get(app, "/accounts", c)).json();
     expect(list[0].ibanMasked).toBe("FR76••••0189");

@@ -66,7 +66,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 |---|---|
 | Modèle de menaces v0 | Terminé |
 | Garde `householdId` (issu du JWT) + tests IDOR | Terminé (jalon 2) |
-| RLS PostgreSQL (défense en profondeur) | À faire : jalon 8b |
+| RLS PostgreSQL (défense en profondeur) | Terminé (jalon 8b) |
 | Chiffrement AES-256-GCM de l'IBAN | Terminé (jalon 3) |
 | Chiffrement des documents | À faire (avec le coffre-fort) |
 | Rate limiting, Helmet/CSP, audit log | Terminé (jalon 2) |

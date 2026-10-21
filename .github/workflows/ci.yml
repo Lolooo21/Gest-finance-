@@ -23,7 +23,9 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U gest" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://gest:gest_ci@localhost:5432/gest_finance
+      DATABASE_OWNER_URL: postgresql://gest:gest_ci@localhost:5432/gest_finance
+      DATABASE_URL: postgresql://gest_app:gest_app_ci_password@localhost:5432/gest_finance
+      DATABASE_SYSTEM_URL: postgresql://gest_system:gest_system_ci_password@localhost:5432/gest_finance
       JWT_SECRET: ci-secret-ci-secret-ci-secret-ci-secret
       FIELD_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     steps:
@@ -34,6 +36,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @gest-finance/api exec prisma generate
       - run: pnpm --filter @gest-finance/api exec prisma migrate deploy
+      - run: node apps/api/scripts/setup-roles.mjs
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

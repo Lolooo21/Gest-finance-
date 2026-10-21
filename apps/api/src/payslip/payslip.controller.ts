@@ -61,7 +61,7 @@ export class PayslipController {
       if (duplicate) throw new ConflictException("Cette fiche de paie semble déjà importée (même compte, période et montant).");
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$householdTransaction(async (tx) => {
       const transaction = await tx.transaction.create({
         data: { householdId: user.householdId, accountId: dto.accountId, amountCents: dto.netToPayCents, date: toDate(dto.paymentDate), label: `Salaire ${dto.periodMonth}` },
       });

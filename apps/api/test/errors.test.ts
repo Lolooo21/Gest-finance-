@@ -1,7 +1,7 @@
 import { HttpException, Logger } from "@nestjs/common";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AllExceptionsFilter } from "../src/common/all-exceptions.filter.js";
-import { PrismaService } from "../src/prisma/prisma.service.js";
+import { PrismaConnections } from "../src/prisma/prisma.service.js";
 
 const fakeHost = () => {
   const reply = { code: vi.fn().mockReturnThis(), send: vi.fn() };
@@ -43,32 +43,51 @@ describe("AllExceptionsFilter", () => {
   });
 });
 
-describe("PrismaService au démarrage", () => {
-  const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot"];
-  const service = (failing?: { model: string; code?: string; message?: string }, missing?: string) => {
-    const s = new PrismaService();
-    s.$connect = async () => undefined;
-    for (const model of MODELS) {
+describe("PrismaConnections au démarrage", () => {
+  const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot", "auditLog", "refreshToken"];
+  const delegates = (failing?: { model: string; code?: string; message?: string }, missing?: string) => {
+    const o: Record<string, unknown> = {};
+    for (const model of [...MODELS, "household", "refreshToken", "auditLog"]) {
       const fails = failing?.model === model;
-      Object.defineProperty(s, model, {
-        value: missing === model ? undefined : { count: async () => { if (fails) throw Object.assign(new Error(failing.message ?? "x"), { code: failing.code }); return 0; } },
-      });
+      o[model] = missing === model ? undefined : { count: async () => { if (fails) throw Object.assign(new Error(failing.message ?? "x"), { code: failing.code }); return 0; } };
     }
-    return s;
+    return o;
   };
+  const client = (role: { name: string; bypass?: boolean; super?: boolean }, extra: Record<string, unknown> = {}) => ({
+    $connect: async () => undefined,
+    $disconnect: async () => undefined,
+    $queryRaw: async () => [{ name: role.name, bypass: role.bypass ?? false, super: role.super ?? false }],
+    ...extra,
+  });
+  const connections = (failing?: { model: string; code?: string; message?: string }, missing?: string, roles = { app: "gest_app", system: "gest_system" }) =>
+    new PrismaConnections(
+      client({ name: roles.app }, delegates(undefined, missing)) as never,
+      client({ name: roles.system }, delegates()) as never,
+      delegates(failing) as never,
+    );
 
   it("indique le modèle manquant et comment migrer, quelle que soit la table absente", async () => {
-    await expect(service({ model: "user", code: "P2021" }).onModuleInit()).rejects.toThrow(/« user ».*prisma migrate deploy/);
-    await expect(service({ model: "bankAccount", code: "P2021" }).onModuleInit()).rejects.toThrow(/« bankAccount »/);
-    await expect(service({ model: "payslipImport", code: "P2022" }).onModuleInit()).rejects.toThrow(/prisma generate/);
+    await expect(connections({ model: "user", code: "P2021" }).onModuleInit()).rejects.toThrow(/« user ».*prisma migrate deploy/);
+    await expect(connections({ model: "bankAccount", code: "P2021" }).onModuleInit()).rejects.toThrow(/« bankAccount »/);
+    await expect(connections({ model: "payslipImport", code: "P2022" }).onModuleInit()).rejects.toThrow(/prisma generate/);
   });
 
   it("explique qu'il faut régénérer le client Prisma quand un modèle est absent du client", async () => {
-    await expect(service(undefined, "marketSnapshot").onModuleInit()).rejects.toThrow(/« marketSnapshot ».*prisma generate/);
+    await expect(connections(undefined, "marketSnapshot").onModuleInit()).rejects.toThrow(/« marketSnapshot ».*prisma generate/);
   });
 
   it("laisse passer les autres erreurs et démarre si le schéma est migré", async () => {
-    await expect(service({ model: "transaction", message: "réseau" }).onModuleInit()).rejects.toThrow("réseau");
-    await expect(service().onModuleInit()).resolves.toBeUndefined();
+    await expect(connections({ model: "transaction", message: "réseau" }).onModuleInit()).rejects.toThrow("réseau");
+    await expect(connections().onModuleInit()).resolves.toBeUndefined();
+  });
+
+  it("refuse de démarrer si DATABASE_URL n'est pas le rôle gest_app (la RLS serait contournée)", async () => {
+    await expect(connections(undefined, undefined, { app: "gest", system: "gest_system" }).onModuleInit()).rejects.toThrow(/DATABASE_URL doit utiliser le rôle « gest_app ».*« gest »/);
+    const bypass = new PrismaConnections(client({ name: "gest_app", bypass: true }, delegates()) as never, client({ name: "gest_system" }, delegates()) as never, delegates() as never);
+    await expect(bypass.onModuleInit()).rejects.toThrow(/sans contournement de la RLS/);
+  });
+
+  it("refuse de démarrer si DATABASE_SYSTEM_URL n'est pas le rôle gest_system", async () => {
+    await expect(connections(undefined, undefined, { app: "gest_app", system: "gest" }).onModuleInit()).rejects.toThrow(/DATABASE_SYSTEM_URL doit utiliser le rôle « gest_system »/);
   });
 });

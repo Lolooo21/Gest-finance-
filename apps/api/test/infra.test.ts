@@ -41,18 +41,40 @@ describe("pile de production (compose.prod.yml)", () => {
 
   it("garde les secrets hors de l'environnement : uniquement des fichiers", () => {
     const secrets = Object.keys(prod.secrets);
-    for (const name of ["postgres_password", "database_url", "jwt_secret", "field_encryption_key", "ts_authkey", "age_recipient", "rclone_conf"]) {
+    for (const name of ["postgres_password", "database_owner_url", "database_url", "database_system_url", "jwt_secret", "field_encryption_key", "ts_authkey", "age_recipient", "rclone_conf"]) {
       expect(secrets).toContain(name);
       expect(prod.secrets[name].file).toMatch(/^\.\.\/\.\.\/secrets\//);
     }
     for (const [name, s] of Object.entries(services)) {
       for (const [key, value] of Object.entries((s.environment ?? {}) as Record<string, string>)) {
-        if (/PASSWORD|SECRET|KEY|TOKEN|DATABASE_URL/i.test(key)) {
+        if (/PASSWORD|SECRET|KEY|TOKEN|DATABASE_\w*URL/i.test(key)) {
           expect(key, `${name}.${key}`).toMatch(/_FILE$|^TS_AUTHKEY$/);
           expect(String(value), `${name}.${key}`).toMatch(/^(\/run\/secrets\/|file:\/run\/secrets\/)/);
         }
       }
     }
+  });
+
+  it("sépare les rôles de base de données : seul le service de migration connaît le propriétaire", () => {
+    const secretsOf = (name: string) => (services[name].secrets ?? []) as string[];
+    expect(secretsOf("migrate")).toEqual(expect.arrayContaining(["database_owner_url", "database_url", "database_system_url"]));
+    expect(secretsOf("api")).toEqual(expect.arrayContaining(["database_url", "database_system_url"]));
+    for (const name of Object.keys(services)) {
+      if (name !== "migrate") expect(secretsOf(name), name).not.toContain("database_owner_url");
+    }
+    const migrate = JSON.stringify(services.migrate.entrypoint);
+    expect(migrate).toContain("prisma migrate deploy");
+    expect(migrate).toContain("scripts/setup-roles.mjs");
+    const api = (services.api.environment ?? {}) as Record<string, string>;
+    expect(Object.keys(api).some((k) => k.startsWith("DATABASE_OWNER_URL"))).toBe(false);
+  });
+
+  it("la migration RLS active la sécurité par ligne et ne contient aucun mot de passe", () => {
+    const sql = read("apps/api/prisma/migrations/20261021160000_rls_foyer/migration.sql");
+    expect(sql).toMatch(/CREATE ROLE gest_app .*NOBYPASSRLS/);
+    expect(sql).toMatch(/CREATE ROLE gest_system .*BYPASSRLS/);
+    expect(sql).not.toMatch(/PASSWORD/i);
+    expect(sql).not.toMatch(/GRANT[^;]*(BankAccount|Transaction|RecurringRule|PayslipImport)[^;]*TO[^;]*gest_system/);
   });
 
   it("isole les réseaux : base et sauvegardes sans accès direct depuis Internet", () => {

@@ -5,13 +5,14 @@ import { AuthService } from "../auth/auth.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
 import { ZodPipe } from "../common/zod.pipe.js";
-import { PrismaService } from "../prisma/prisma.service.js";
+import { PrismaService, SystemPrismaService } from "../prisma/prisma.service.js";
 
 @Controller("household")
 @UseGuards(AuthGuard)
 export class HouseholdController {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly system: SystemPrismaService,
     private readonly auth: AuthService,
     private readonly audit: AuditService,
   ) {}
@@ -39,7 +40,8 @@ export class HouseholdController {
   @Post("members")
   @Roles("OWNER")
   async addMember(@CurrentUser() user: AuthUser, @Body(new ZodPipe(AddMemberDto)) dto: AddMemberDto) {
-    if (await this.prisma.user.findUnique({ where: { email: dto.email } })) throw new ConflictException("Ajout impossible");
+    // Unicité de l'e-mail sur tous les foyers : la RLS cache les autres foyers, donc contrôle par le client système.
+    if (await this.system.user.findUnique({ where: { email: dto.email }, select: { id: true } })) throw new ConflictException("Ajout impossible");
     const member = await this.prisma.user.create({
       data: {
         householdId: user.householdId,
