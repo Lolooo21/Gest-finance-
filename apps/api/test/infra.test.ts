@@ -171,7 +171,7 @@ describe("images Docker", () => {
   });
 
   it(".dockerignore exclut secrets, environnement, historique et dépendances", () => {
-    const ignore = read(".dockerignore").split("\n");
+    const ignore = read(".dockerignore").split(/\r?\n/);
     for (const entry of [".env", "secrets/", ".git/", "node_modules/"]) expect(ignore).toContain(entry);
   });
 
@@ -206,6 +206,15 @@ describe("proxy Caddy", () => {
   });
 });
 
+/** Droit d'exécution tel que Git le conserve (100755) : fiable aussi sur Windows, où le système de fichiers n'a pas ce droit. */
+function isExecutable(file: string): boolean {
+  try {
+    return execFileSync("git", ["ls-files", "-s", file], { cwd: ROOT, encoding: "utf8" }).startsWith("100755");
+  } catch {
+    return (statSync(join(ROOT, file)).mode & 0o111) > 0;
+  }
+}
+
 describe("scripts d'exploitation", () => {
   const scripts = ["infra/backup/backup.sh", "infra/backup/restore.sh", "infra/backup/scheduler.sh", "infra/backup/test-backup.sh", "infra/scripts/init-secrets.sh", "infra/scripts/smoke.sh"];
 
@@ -214,7 +223,7 @@ describe("scripts d'exploitation", () => {
       const text = read(f);
       expect(text.startsWith("#!/bin/sh"), `${f} : shebang`).toBe(true);
       expect(text, `${f} : set -eu`).toMatch(/^set -eu$/m);
-      expect(statSync(join(ROOT, f)).mode & 0o111, `${f} : exécutable`).toBeGreaterThan(0);
+      expect(isExecutable(f), `${f} : exécutable`).toBe(true);
       expect(() => execFileSync("sh", ["-n", join(ROOT, f)]), `${f} : syntaxe`).not.toThrow();
     }
   });

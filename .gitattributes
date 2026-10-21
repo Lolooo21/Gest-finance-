@@ -1,0 +1,10 @@
+# Fins de ligne : les scripts et fichiers lus dans les conteneurs Linux doivent rester en LF, même sur Windows.
+* text=auto
+*.sh text eol=lf
+*.mjs text eol=lf
+Dockerfile* text eol=lf
+*.Dockerfile text eol=lf
+Caddyfile text eol=lf
+.dockerignore text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
