@@ -6,13 +6,18 @@ import { AppProviders } from "./providers";
 
 type Handler = (method: string, url: string, body: unknown) => { status?: number; json?: unknown; network?: boolean; html?: boolean };
 
+const EMPTY_FORECAST = { from: "2026-10-21", to: "2026-11-20", days: 30, startCents: 0, endCents: 0, incomeCents: 0, expensesCents: 0, points: [{ date: "2026-10-21", totalCents: 0, checkingCents: 0 }], accounts: [], events: [], firstNegativeDate: null, lowestCheckingCents: 0, lowestCheckingDate: null };
+
 function mockApi(handler: Handler) {
   const calls: { method: string; url: string; body: unknown }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const body = init?.body instanceof FormData ? { file: (init.body.get("file") as File | null)?.name } : init?.body ? JSON.parse(String(init.body)) : undefined;
     const method = init?.method ?? "GET";
     calls.push({ method, url, body });
-    const r = handler(method, url, body);
+    // Prévisionnel et objectifs : réponses vides par défaut, sauf si le test les définit lui-même.
+    let r = handler(method, url, body);
+    if (url.startsWith("/forecast") && !(r.json as { points?: unknown } | undefined)?.points) r = { json: EMPTY_FORECAST };
+    if (url.startsWith("/goals/behavior") && !Array.isArray(r.json)) r = { json: [] };
     if (r.network) throw new TypeError("Failed to fetch");
     const status = r.status ?? 200;
     return { ok: status < 400, status, json: async () => { if (r.html) throw new SyntaxError("Unexpected token <"); return r.json ?? {}; } } as Response;
@@ -481,5 +486,102 @@ describe("actualités financières", () => {
     expect(screen.getByRole("button", { name: "Actualités" })).toHaveAttribute("aria-current", "page");
     await user.click(screen.getByRole("button", { name: "Tableau de bord" }));
     expect(await screen.findByRole("region", { name: "Reste à vivre" })).toBeInTheDocument();
+  });
+});
+
+describe("prévisionnel et objectifs", () => {
+  const forecast = (over: object = {}) => ({
+    ...EMPTY_FORECAST, days: 30, startCents: 50_000, endCents: -20_000, incomeCents: 0, expensesCents: 70_000,
+    points: [
+      { date: "2026-10-21", totalCents: 50_000, checkingCents: 50_000 },
+      { date: "2026-10-26", totalCents: -50_000, checkingCents: -50_000 },
+      { date: "2026-11-20", totalCents: -20_000, checkingCents: -20_000 },
+    ],
+    accounts: [{ id: "a1", name: "Courant", type: "CHECKING", endCents: -20_000, minCents: -50_000, minDate: "2026-10-26", firstNegativeDate: "2026-10-26" }],
+    events: [{ date: "2026-10-26", account: "Courant", label: "Travaux", amountCents: -100_000 }],
+    firstNegativeDate: "2026-10-26", lowestCheckingCents: -50_000, lowestCheckingDate: "2026-10-26", ...over,
+  });
+  const goal = (over: object) => ({ capCents: null, history: [], streak: 0, since: "2026-10-01", ...over });
+  const base = (extra: Handler): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("alerte d'un découvert prévu, change d'horizon et affiche les prochaines échéances", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/forecast?days=30") return { json: forecast() };
+      if (u === "/forecast?days=60") return { json: forecast({ days: 60, firstNegativeDate: null, lowestCheckingCents: 0, lowestCheckingDate: null }) };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Prévisionnel");
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(/Découvert prévu le 26 octobre 2026/);
+    expect(within(panel).getByText("Travaux")).toBeInTheDocument();
+    expect(within(panel).getByRole("img")).toHaveAccessibleName(/Courbe du solde prévisionnel/);
+
+    await user.click(within(panel).getByRole("button", { name: "60 jours" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/forecast?days=60")).toBe(true));
+    expect(await within(panel).findByText("Aucun découvert prévu sur 60 jours.")).toBeInTheDocument();
+  });
+
+  it("masque les montants du prévisionnel en mode confidentialité", async () => {
+    mockApi(base((m, u) => (u === "/forecast?days=30" ? { json: forecast() } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup();
+    await screen.findByLabelText("Prévisionnel");
+    await user.click(screen.getByRole("button", { name: /Masquer les montants/ }));
+    expect(within(screen.getByLabelText("Prévisionnel")).getByRole("img")).toHaveAccessibleName("Courbe du solde prévisionnel (montants masqués)");
+    expect(within(screen.getByLabelText("Prévisionnel")).getByRole("alert")).toHaveTextContent("•••• €");
+  });
+
+  it("affiche les objectifs avec statut et série, active un plafond et retire un objectif", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/goals/behavior" && m === "GET") {
+        return {
+          json: [
+            goal({ kind: "NO_OVERDRAFT", current: { month: "2026-10", status: "ON_TRACK", valueCents: 120_000, limitCents: 0 }, history: [{ month: "2026-08", status: "ACHIEVED", valueCents: 1, limitCents: 0 }, { month: "2026-09", status: "ACHIEVED", valueCents: 1, limitCents: 0 }], streak: 2 }),
+            goal({ kind: "SPENDING_CAP", capCents: 180_000, current: { month: "2026-10", status: "AT_RISK", valueCents: 150_000, limitCents: 180_000 }, history: [{ month: "2026-09", status: "FAILED", valueCents: 1, limitCents: 1 }] }),
+          ],
+        };
+      }
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Objectifs du mois");
+    await within(panel).findByText("En bonne voie");
+    expect(within(panel).getByText("À surveiller")).toBeInTheDocument();
+    expect(within(panel).getByText(/2 mois réussis d'affilée/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Série interrompue/)).toBeInTheDocument();
+
+    // Reste à vivre positif : pas encore activé → bouton « Activer », sans plafond.
+    const remaining = within(panel).getByText("Reste à vivre positif").closest("li")!;
+    await user.click(within(remaining).getByRole("button", { name: "Activer" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url === "/goals/behavior/POSITIVE_REMAINING")).toBe(true));
+    expect(calls.find((c) => c.url === "/goals/behavior/POSITIVE_REMAINING")?.body).toEqual({});
+
+    const cap = within(panel).getByText("Dépenses sous un plafond").closest("li")!;
+    const input = within(cap).getByLabelText(/Plafond de dépenses/);
+    await user.clear(input);
+    await user.type(input, "1 900,50");
+    await user.click(within(cap).getByRole("button", { name: "Mettre à jour" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/goals/behavior/SPENDING_CAP" && c.method === "PUT")?.body).toEqual({ capCents: 190_050 }));
+
+    await user.click(within(within(panel).getByText("Pas de découvert ce mois-ci").closest("li")!).getByRole("button", { name: "Retirer" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.url === "/goals/behavior/NO_OVERDRAFT")).toBe(true));
+  });
+
+  it("refuse un plafond invalide sans appeler l'API", async () => {
+    const calls = mockApi(base(() => undefined as never));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Objectifs du mois");
+    const cap = (await within(panel).findByText("Dépenses sous un plafond")).closest("li")!;
+    await user.type(within(cap).getByLabelText(/Plafond de dépenses/), "abc");
+    await user.click(within(cap).getByRole("button", { name: "Activer" }));
+    expect(await within(cap).findByRole("alert")).toHaveTextContent("Indiquez un plafond en euros");
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
   });
 });

@@ -32,6 +32,7 @@ erDiagram
     BankAccount ||--o{ PayslipImport : "salaires importés"
     Transaction ||--o| PayslipImport : "revenu créé"
     Household ||--o{ PayslipImport : "possède"
+    Household ||--o{ BehaviorGoal : "objectifs"
 
     Household {
         uuid id PK
@@ -108,6 +109,13 @@ erDiagram
         int grossCents
         string employer
     }
+    BehaviorGoal {
+        uuid id PK
+        uuid householdId FK
+        enum kind UK "NO_OVERDRAFT, POSITIVE_REMAINING, SPENDING_CAP (un par foyer)"
+        int capCents "plafond mensuel (SPENDING_CAP)"
+        datetime createdAt "premier mois évalué"
+    }
     MarketSnapshot {
         uuid id PK
         string key UK "ECB_DEPOSIT_RATE, FR_10Y_YIELD, FR_INFLATION"
@@ -137,6 +145,7 @@ erDiagram
 - `ReminderSetting` (une ligne par utilisateur) décrit son rappel hebdomadaire : jour, heure, fuseau. Le **créneau** du rappel est le dernier instant où tombent ce jour et cette heure ; le bilan est « dû » si ce créneau est postérieur à l'activation (`since`) et au dernier bilan fait (`lastDoneAt`). `lastReminderAt` garantit une seule notification par créneau.
 - `PushSubscription` : un appareil abonné aux notifications. L'API n'envoie qu'aux services push connus des navigateurs (liste blanche anti-SSRF) ; la notification ne contient aucune donnée financière.
 - `PayslipImport` garde uniquement les **métadonnées** d'une fiche de paie validée (période, net, brut, employeur, lien vers l'opération créée), jamais le PDF : le fichier est lu en mémoire par le serveur puis jeté. Il sert à détecter les doublons (même compte, période et net, tant que l'opération existe).
+- `BehaviorGoal` : un **objectif de comportement mensuel** du foyer, au plus un par type : « pas de découvert » (aucun compte courant sous zéro, jour après jour), « reste à vivre positif », « dépenses sous un plafond » (`capCents`). L'évaluation n'est jamais stockée : `finance-core` la recalcule à chaque lecture à partir des comptes, règles et opérations (statut du mois en cours *en bonne voie / à surveiller / raté*, mois terminés *réussi / raté* depuis la création, 12 mois maximum, série de mois réussis d'affilée). Seuils : alerte à 80 % du plafond de dépenses, à moins de 10 % des revenus pour le reste à vivre.
 - `MarketSnapshot` (indépendante des foyers, **aucune donnée personnelle**) mémorise les indicateurs publics récupérés chaque jour (taux de dépôt de la BCE, OAT 10 ans France, inflation IPCH France) : une ligne par indicateur et par période observée. Les taux réglementés (Livret A, LDDS, LEP, PEL) ne sont pas en base : ils sont dans une configuration versionnée avec source et période de validité (`apps/api/src/market/regulated-rates.ts`), car ils ne changent que les 1er février et 1er août.
 - `RefreshToken` stocke uniquement l'empreinte SHA-256 du jeton de session, avec rotation et révocation. `AuditLog` garde les actions (connexion, ajout…), sans montants ni secrets.
 
@@ -168,11 +177,13 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | Ergonomie et erreurs | Actions rapides en haut du tableau de bord (ajouter une opération, importer une fiche de paie, bilan, 2FA) ; boutons libellés avec icônes et zones tactiles ≥ 44 px ; « Modifier » et « Supprimer » explicites, suppression avec boîte de confirmation ; notifications de succès et d'erreur (aucune action n'échoue en silence) ; messages d'erreur clairs et actionnables (serveur injoignable, session expirée, droits, fichier trop gros ou non PDF, scan, doublon…), validations en français ; bandeau « Réessayer » si le chargement échoue ; import PDF par bouton ou glisser-déposer avec contrôle du fichier avant envoi |
 | Confidentialité | Bouton « Masquer les montants » (mémorisé sur l'appareil) |
 | Isolation par foyer en base | RLS PostgreSQL forcée par rôle : requêtes des utilisateurs sous `gest_app` (un foyer à la fois, accès refusé sans foyer), `gest_system` à droits limités, propriétaire réservé aux migrations ; journal d'audit en écriture seule ; tests d'isolation en base réelle (lecture, écriture, concurrence, droits des rôles) |
+| Prévisionnel de trésorerie | Solde projeté à 30, 60 ou 90 jours (`GET /forecast`) : point de départ = solde d'aujourd'hui, puis règles récurrentes à venir et opérations déjà saisies avec une date future ; courbe jour par jour, solde le plus bas, **alerte au premier découvert prévu** (comptes courants seulement), prochaines échéances. Fonction pure `projectBalance()` de `finance-core` |
+| Objectifs de comportement | « Pas de découvert », « reste à vivre positif », « dépenses sous un plafond » (`/goals/behavior`) : statut du mois en cours, mesure, historique et série de mois réussis ; activation et retrait par un adulte, lecture pour tous |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (49 tests, 100 %), API sur PostgreSQL réel (137 tests, dont l'isolation par ligne et les droits des rôles), front (47 tests) |
+| Tests | `finance-core` (72 tests, ≥ 95 %), API sur PostgreSQL réel (146 tests, dont l'isolation par ligne et les droits des rôles), front (51 tests) |
 
-À venir (voir `TODO.md`) : OCR des scans, historique et alertes sur les taux, import de relevés et catégorisation, prévisionnel à 30/60/90 jours, passkeys.
+À venir (voir `TODO.md`) : objectifs d'épargne (secours, court et long terme, jalon 9b), état des objectifs dans le bilan de la semaine, OCR des scans, historique et alertes sur les taux, import de relevés et catégorisation, passkeys.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker.

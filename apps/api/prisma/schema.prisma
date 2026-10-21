@@ -26,6 +26,7 @@ model Household {
   transactions Transaction[]
   recurringRules RecurringRule[]
   payslipImports PayslipImport[]
+  behaviorGoals BehaviorGoal[]
 }
 
 model User {
@@ -176,6 +177,26 @@ model PayslipImport {
   createdAt     DateTime @default(now())
 
   @@index([householdId, accountId, periodMonth])
+}
+
+enum BehaviorKind {
+  NO_OVERDRAFT
+  POSITIVE_REMAINING
+  SPENDING_CAP
+}
+
+/// Objectif de comportement mensuel du foyer (un par type) : pas de découvert, reste à vivre positif, dépenses sous un plafond.
+model BehaviorGoal {
+  id          String   @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  kind        BehaviorKind
+  /// Plafond mensuel de dépenses en centimes (SPENDING_CAP uniquement)
+  capCents    Int?
+  /// Les mois évalués commencent au mois de création
+  createdAt   DateTime @default(now())
+
+  @@unique([householdId, kind])
 }
 
 /// Indicateur de marché public (BCE, Eurostat) : non rattaché à un foyer, aucune donnée personnelle.

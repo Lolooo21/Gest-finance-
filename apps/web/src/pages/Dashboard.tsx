@@ -4,6 +4,8 @@ import { api, ApiError, type Account, type Reminder, type Rule, type Summary, ty
 import { centsToInput, monthRange, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
+import { ForecastPanel } from "./Forecast";
+import { GoalsPanel } from "./Goals";
 import { PayslipImport } from "./Payslip";
 import { ReminderSettings, WeeklyReviewPanel } from "./Weekly";
 
@@ -71,6 +73,9 @@ export function Dashboard() {
         <WeeklyReviewPanel reminder={reminder.data} open={panel === "review"} onOpen={() => setPanel("review")} onClose={() => setPanel(null)} />
         {panel === "payslip" && <PayslipImport accounts={accounts.data ?? []} onClose={() => setPanel(null)} />}
         {panel === "2fa" && <TwoFactor onClose={() => setPanel(null)} />}
+
+        <ForecastPanel />
+        <GoalsPanel />
 
         <section className={cardClass}>
           <h2 className="text-lg font-semibold">Comptes</h2>
