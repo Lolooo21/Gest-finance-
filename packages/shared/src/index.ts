@@ -88,6 +88,19 @@ export type RecurringRuleDto = z.infer<typeof RecurringRuleDto>;
 export const SummaryQuery = z.object({ from: isoDate, to: isoDate }).refine((q) => q.from <= q.to, "from doit précéder to");
 export type SummaryQuery = z.infer<typeof SummaryQuery>;
 
+/** Horizons du prévisionnel de trésorerie, en jours. */
+export const FORECAST_HORIZONS = [30, 60, 90] as const;
+export const ForecastQuery = z.object({
+  days: z.coerce.number().int().refine((d) => (FORECAST_HORIZONS as readonly number[]).includes(d), "Horizon : 30, 60 ou 90 jours").default(30),
+});
+export type ForecastQuery = z.infer<typeof ForecastQuery>;
+
+/** Objectifs de comportement mensuels (un par type et par foyer). */
+export const BehaviorKind = z.enum(["NO_OVERDRAFT", "POSITIVE_REMAINING", "SPENDING_CAP"]);
+export type BehaviorKind = z.infer<typeof BehaviorKind>;
+export const BehaviorGoalDto = z.object({ capCents: z.number().int().positive("Le plafond doit être positif").max(100_000_000).optional() });
+export type BehaviorGoalDto = z.infer<typeof BehaviorGoalDto>;
+
 const atLeastOne = (o: object) => Object.keys(o).length > 0;
 
 export const AccountPatch = AccountDto.partial().refine(atLeastOne, "aucune modification");

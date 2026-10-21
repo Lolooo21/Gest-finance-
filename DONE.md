@@ -257,6 +257,19 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - Correctifs de portabilité Windows : `.gitattributes` (LF pour scripts, Dockerfiles, Caddyfile, YAML), test d'infra qui lit `.dockerignore` en CRLF et le droit d'exécution dans l'index Git (`100755`), tests hermétiques vis-à-vis des clés VAPID de l'environnement.
 - Docs : README (section « Isolation par ligne », démarrage, dépannage), `docs/threat-model.md`, `docs/deploiement.md`, `TODO.md`.
 
+## Jalon 9a — Prévisionnel de trésorerie et objectifs de comportement
+### `packages/finance-core`
+- `forecast.ts` : `projectBalance()` (solde projeté de `today` à +30/60/90 jours : points quotidiens, creux, premier jour de découvert sur les comptes courants, événements à venir, revenus et dépenses attendus ; refuse un horizon hors 1 à 366), `accountBalanceAt()` (solde d'un compte à une date : initial + opérations + occurrences échues), `flowsBetween()` (règles + opérations datées, triées), `dailyBalances()` (soldes jour par jour), `addDays()`.
+- `goals.ts` : `evaluateBehaviorGoal()` (mois en cours, historique depuis la création sur 12 mois maximum, série de mois réussis) et `evaluateMonth()` pour « pas de découvert » (solde le plus bas, découvert déjà subi ou à venir), « reste à vivre positif » (à surveiller sous 10 % des revenus) et « dépenses sous un plafond » (à surveiller dès 80 %) ; helpers de calendrier `lastDay()`, `addMonthsToMonth()`.
+- Tests : 23 nouveaux (couverture du paquet : 100 % des lignes, 97 % des branches).
+### API
+- `GET /forecast?days=30|60|90` (`forecast.controller.ts`) : solde du jour calculé comme `accountBalanceAt()`, puis `projectBalance()` ; noms des comptes et des échéances ajoutés ; lecture pour tous les rôles.
+- `GET /goals/behavior`, `PUT /goals/behavior/:kind` (plafond obligatoire pour `SPENDING_CAP`, interdit sinon), `DELETE /goals/behavior/:kind` (`goals.controller.ts`) : écriture réservée aux adultes, audit sans montant.
+- `common/finance-data.ts` : chargement des comptes, règles et opérations du foyer. Table `BehaviorGoal` (migration `objectifs_comportement` avec RLS et droits), préfixes `/forecast` et `/goals` ajoutés à `routes.ts` et au `Caddyfile`.
+- Tests (API : 146, +9) : horizon invalide, projection et premier découvert, ce qui est déjà dans le solde n'est pas rejoué, règles récurrentes, enfant en lecture, isolation entre foyers ; objectifs : validation du plafond, statuts du mois, droits, audit, isolation.
+### Front
+- `pages/Forecast.tsx` (`ForecastPanel`) : horizons 30/60/90 jours, alerte de découvert, courbe SVG accessible (montants masqués en mode confidentialité), prochaines échéances ; `pages/Goals.tsx` (`GoalsPanel`) : trois objectifs avec statut, mesure, série, activation, plafond et retrait. Tests : 4 nouveaux (front : 51).
+
 ## Circuit Git : branche `develop`
 - `ci.yml`, `docker.yml` : push sur `main`, `develop`, `claude/**` et toute pull request ; `security.yml` : push sur `main` et `develop`, pull requests, lundi, lancement manuel ; `release.yml` : tags `v*`.
 - README : section « Circuit de travail » (branches, pull requests, protections conseillées) ; `CLAUDE.md` : règle du circuit ; test d'infrastructure sur les déclencheurs (API : 114 tests).

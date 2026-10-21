@@ -18,7 +18,7 @@
 	}
 
 	# Routes de l'API (liste à tenir à jour avec packages/shared/src/routes.ts : un test le vérifie).
-	@api path /auth /auth/* /household /household/* /accounts /accounts/* /transactions /transactions/* /recurring-rules /recurring-rules/* /summary /summary/* /reminder /reminder/* /push /push/* /review /review/* /payslips /payslips/* /market /market/* /savings /savings/* /health /health/*
+	@api path /auth /auth/* /household /household/* /accounts /accounts/* /transactions /transactions/* /recurring-rules /recurring-rules/* /summary /summary/* /reminder /reminder/* /push /push/* /review /review/* /payslips /payslips/* /market /market/* /savings /savings/* /forecast /forecast/* /goals /goals/* /health /health/*
 	handle @api {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-For {remote_host}

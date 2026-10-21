@@ -1,4 +1,6 @@
 import { Controller, Get, Module } from "@nestjs/common";
+import { ForecastController } from "./forecast/forecast.controller.js";
+import { GoalsController } from "./goals/goals.controller.js";
 import { AccountsController } from "./accounts/accounts.controller.js";
 import { CryptoModule } from "./crypto/crypto.module.js";
 import { RecurringController } from "./recurring/recurring.controller.js";
@@ -26,7 +28,7 @@ class HealthController {
 
 @Module({
   imports: [PrismaModule, CryptoModule, AuditModule, AuthModule, HouseholdModule],
-  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController],
+  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController, ForecastController, GoalsController],
   providers: [ReminderService, MarketService, { provide: PushSender, useClass: WebPushSender }],
 })
 export class AppModule {}
