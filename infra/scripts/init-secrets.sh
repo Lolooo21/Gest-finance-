@@ -1,7 +1,9 @@
 #!/bin/sh
 # Crée les secrets de production dans ./secrets (droits 600) et infra/docker/.env.
 #   sh infra/scripts/init-secrets.sh          interactif (clé publique age, clé Tailscale, stockage S3)
-#   sh infra/scripts/init-secrets.sh --ci     non interactif (valeurs factices, pour les tests)
+#   sh infra/scripts/init-secrets.sh --local  non interactif, pour ESSAYER la pile sur votre PC sans VPS (valeurs factices ;
+#                                             la clé privée de test est conservée dans secrets/age_identity_test.txt)
+#   sh infra/scripts/init-secrets.sh --ci     identique, pour la CI
 # Un secret existant n'est JAMAIS régénéré (changer le mot de passe de la base casserait l'accès aux données) :
 # supprimez le fichier volontairement pour le renouveler.
 set -eu
@@ -11,7 +13,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DIR="${SECRETS_DIR:-$ROOT/secrets}"
 ENV_FILE="${ENV_FILE:-$ROOT/infra/docker/.env}"
 CI=0
-[ "${1:-}" = "--ci" ] && CI=1
+{ [ "${1:-}" = "--ci" ] || [ "${1:-}" = "--local" ]; } && CI=1
 
 mkdir -p "$DIR"
 chmod 700 "$DIR"
@@ -47,8 +49,10 @@ write field_encryption_key "$(openssl rand -base64 32 | tr -d '\n')"
 # --- Clé publique age (sauvegardes) : la clé privée reste sur VOTRE ordinateur ---
 if ! exists age_recipient strict; then
   if [ "$CI" = "1" ]; then
-    command -v age-keygen > /dev/null || { say "age-keygen requis en mode --ci" >&2; exit 1; }
-    tmpdir="$(mktemp -d)"; age-keygen -o "$tmpdir/key.txt" 2> /dev/null; RECIPIENT="$(age-keygen -y "$tmpdir/key.txt")"; rm -rf "$tmpdir"
+    command -v age-keygen > /dev/null || { say "age-keygen est requis pour les modes --local et --ci (Windows : winget install FiloSottile.age)" >&2; exit 1; }
+    tmpdir="$(mktemp -d)"; age-keygen -o "$tmpdir/key.txt" 2> /dev/null; RECIPIENT="$(age-keygen -y "$tmpdir/key.txt")"
+    # Clé de TEST uniquement : permet d'essayer une restauration en local. En production, la clé privée ne doit jamais être sur le serveur.
+    cp "$tmpdir/key.txt" "$DIR/age_identity_test.txt"; chmod 600 "$DIR/age_identity_test.txt"; rm -rf "$tmpdir"
   else
     say ""
     say "Clé de chiffrement des sauvegardes : sur VOTRE ordinateur, lancez « age-keygen -o cle-sauvegarde.txt » ;"

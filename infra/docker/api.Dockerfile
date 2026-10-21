@@ -5,7 +5,8 @@
 FROM node:22.12-bookworm-slim AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
-RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
+# pnpm via npm : le Corepack livré avec cette version de Node ne connaît pas les clés de signature actuelles du registre (erreur « Cannot find matching keyid »).
+RUN npm install --global --no-fund --no-audit pnpm@10.28.0
 WORKDIR /app
 
 FROM base AS build

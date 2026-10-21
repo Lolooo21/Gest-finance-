@@ -8,3 +8,7 @@ onlyBuiltDependencies:
   - prisma
   - "@swc/core"
   - esbuild
+# Correctifs de sécurité forcés sur les dépendances indirectes (rapport `pnpm audit`).
+overrides:
+  fastify: ">=5.12.7 <6"
+  deepmerge-ts: ">=8.0.0"

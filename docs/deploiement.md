@@ -15,6 +15,27 @@ Vos appareils ──(Tailscale, HTTPS)──► [VPS] tailscale ► proxy (Caddy
 > GitHub (workflow « Images Docker »). **Le premier déploiement réel sur un VPS n'a pas encore été fait** : suivez ce guide pas à pas
 > et signalez toute étape qui diffère.
 
+## 0. Essayer sans VPS, sur votre PC
+Avant de louer un serveur, vous pouvez faire tourner **toute la pile de production** (base, migrations, API, proxy, sauvegarde) sur votre PC avec Docker Desktop,
+sans Tailscale (il est réservé au profil `prod`). Depuis **Git Bash** (fourni avec Git pour Windows) ou WSL, à la racine du projet :
+```
+winget install FiloSottile.age                      # une seule fois, puis rouvrez le terminal
+sh infra/scripts/init-secrets.sh --local            # secrets de TEST (jamais à réutiliser en production)
+docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml up -d --build
+docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml ps        # tout doit être « healthy »
+sh infra/scripts/smoke.sh                           # test de fumée : santé, en-têtes de sécurité, routes, parcours complet
+```
+Ouvrez ensuite <http://127.0.0.1:8080> : c'est exactement l'application de production (proxy Caddy, base migrée, secrets en fichiers).
+- **Tester la sauvegarde** : `docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml exec backup backup.sh`, puis copiez le
+  fichier (`... cp backup:/backups/<fichier> .`) et testez la restauration avec la clé de test `secrets/age_identity_test.txt` (commande du § 8).
+- **Arrêter et effacer** : `docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml down -v` (le `-v` supprime la base de test).
+- Si quelque chose échoue, envoyez-moi la sortie de `docker compose ... logs --tail=100` : c'est le premier vrai essai de ces fichiers sur une machine avec Docker.
+
+Le reste (tests, CI) :
+- `pnpm test` : tous les tests automatiques (126 au dernier décompte) ; `pnpm dev` : l'application de développement.
+- **CI GitHub** : onglet **Actions** du dépôt. Chaque `git push` lance les workflows ; une coche verte = tout passe, une croix rouge = ouvrez le job pour lire l'erreur
+  (ou demandez-moi : je lis les journaux et corrige).
+
 ## 1. Ce qu'il vous faut
 - Un **VPS** (Debian 12 ou Ubuntu 24.04, 1 à 2 vCPU, 2 Go de mémoire, 20 Go de disque), chez un hébergeur européen (Scaleway, OVH, Hetzner…).
 - Un compte **Tailscale** (gratuit pour un usage personnel) et le client installé sur vos appareils.
