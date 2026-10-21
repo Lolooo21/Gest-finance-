@@ -21,7 +21,17 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # 2) Code puis client Prisma
 COPY packages packages
 COPY apps/api apps/api
-RUN pnpm --filter @gest-finance/api exec prisma generate
+# OpenSSL doit être présent à la construction pour que Prisma détecte la bonne plateforme (debian-openssl-3.0.x).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+# Le client ET le moteur de migration sont téléchargés ici : à l'exécution, le conteneur n'a ni Internet ni système de fichiers inscriptible.
+RUN pnpm --filter @gest-finance/api exec prisma generate \
+    && pnpm --filter @gest-finance/api exec prisma --version \
+    && ( find /app/node_modules/.pnpm -path '*@prisma/engines/schema-engine-*' | grep -q . \
+         || ( cd "$(find /app/node_modules/.pnpm -maxdepth 1 -name '@prisma+engines@*' | head -n1)/node_modules/@prisma/engines" \
+              && node -e "require('./dist/index.js').ensureBinariesExist()" ) ) \
+    && find /app/node_modules/.pnpm -path '*@prisma/engines/schema-engine-*' | grep .
 
 FROM node:22.12-bookworm-slim AS runtime
 # OpenSSL est requis par le moteur Prisma ; tini gère les signaux et les processus orphelins.
