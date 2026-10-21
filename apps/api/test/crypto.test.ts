@@ -10,6 +10,13 @@ describe("CryptoService", () => {
     expect(c.decrypt(a)).toBe("FR7630006000011234567890189");
   });
 
+  it("refuse une étiquette d'authentification tronquée", () => {
+    const c = new CryptoService();
+    const [iv, tag, data] = c.encrypt("secret").split(".");
+    const short = Buffer.from(tag ?? "", "base64").subarray(0, 4).toString("base64");
+    expect(() => c.decrypt([iv, short, data].join("."))).toThrow("invalides");
+  });
+
   it("détecte une altération des données", () => {
     const c = new CryptoService();
     const [iv, tag, data] = c.encrypt("secret").split(".");
