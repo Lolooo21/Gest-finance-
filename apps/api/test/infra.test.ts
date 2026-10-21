@@ -176,7 +176,8 @@ describe("scripts d'exploitation", () => {
     const text = read("infra/scripts/init-secrets.sh");
     expect(text).toContain("existe déjà");
     expect(text).toContain("umask 077");
-    expect(text).toContain("chmod 600");
+    expect(text).toContain('chmod 700 "$DIR"'); // dossier fermé aux autres utilisateurs
+    expect(text).toContain('chmod 644 "$DIR/$1"'); // fichiers lisibles par les conteneurs non root (uid différent de l'hôte)
   });
 
   it("la sauvegarde refuse une clé privée et n'a besoin que de la clé publique", () => {

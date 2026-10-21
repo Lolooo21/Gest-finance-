@@ -71,7 +71,7 @@ git clone https://github.com/Lolooo21/Gest-finance-.git && cd Gest-finance-
 sh infra/scripts/init-secrets.sh
 ```
 Le script génère les mots de passe et clés, puis vous demande : la **clé publique age**, la **clé Tailscale** et (facultatif) les
-informations du **stockage S3**. Il crée le dossier `secrets/` (droits 600) et `infra/docker/.env`.
+informations du **stockage S3**. Il crée le dossier `secrets/` (accessible à vous seul, droits 700) et `infra/docker/.env`.
 
 > **Sauvegardez le dossier `secrets/` séparément** (gestionnaire de mots de passe), en particulier `field_encryption_key` :
 > elle chiffre les IBAN. Sans elle, une base restaurée contiendrait des IBAN illisibles. Le script ne régénère jamais un secret existant.
@@ -118,7 +118,7 @@ de base n'est pas annulable automatiquement : en cas de problème de données, r
 
 ## 9. Sécurité : à retenir
 - Aucun port n'est publié : le serveur n'est joignable que via Tailscale. Ne publiez jamais de port de la base ou de l'API.
-- Les secrets sont des fichiers (`secrets/`, droits 600), jamais dans les images ni dans Git.
+- Les secrets sont des fichiers (dossier `secrets/` en 700, fermé aux autres utilisateurs du serveur), jamais dans les images ni dans Git.
 - Gardez le serveur à jour (`apt upgrade`, redéploiement régulier) et activez la 2FA de chaque compte et celle de Tailscale.
 - Limitez qui peut rejoindre votre réseau Tailscale : toute personne du réseau peut atteindre la page d'inscription.
 - Supprimer l'accès d'un appareil perdu : console Tailscale → Machines → Remove.

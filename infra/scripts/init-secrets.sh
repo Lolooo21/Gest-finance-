@@ -1,5 +1,9 @@
 #!/bin/sh
-# Crée les secrets de production dans ./secrets (droits 600) et infra/docker/.env.
+# Crée les secrets de production dans ./secrets (dossier 700) et infra/docker/.env.
+#
+# Droits : Docker monte chaque fichier tel quel dans le conteneur, qui tourne sous un autre utilisateur (postgres, node, app...) et sans
+# capacité de contourner les droits (cap_drop: ALL). Les fichiers doivent donc être lisibles (644) ; ils restent inaccessibles aux autres
+# utilisateurs du serveur car le dossier ./secrets est en 700 (seul votre compte et Docker y accèdent).
 #   sh infra/scripts/init-secrets.sh          interactif (clé publique age, clé Tailscale, stockage S3)
 #   sh infra/scripts/init-secrets.sh --local  non interactif, pour ESSAYER la pile sur votre PC sans VPS (valeurs factices ;
 #                                             la clé privée de test est conservée dans secrets/age_identity_test.txt)
@@ -24,7 +28,7 @@ exists() { [ -s "$DIR/$1" ] || { [ -f "$DIR/$1" ] && [ "$2" = "allow-empty" ]; }
 write() { # nom valeur
   if exists "$1" strict; then say "  = $1 existe déjà : conservé"; return 0; fi
   printf '%s' "$2" > "$DIR/$1"
-  chmod 600 "$DIR/$1"
+  chmod 644 "$DIR/$1"
   say "  + $1 créé"
 }
 
@@ -90,13 +94,13 @@ if ! exists rclone_conf allow-empty; then
       AK="$(ask 'Access key : ')"
       SK="$(ask 'Secret key : ')"
       printf '[sauvegardes]\ntype = s3\nprovider = Other\nendpoint = %s\nregion = %s\naccess_key_id = %s\nsecret_access_key = %s\n' "$ENDPOINT" "$REGION" "$AK" "$SK" > "$DIR/rclone_conf"
-      chmod 600 "$DIR/rclone_conf"
+      chmod 644 "$DIR/rclone_conf"
       REMOTE="sauvegardes:${BUCKET}/gest-finance"
       say "  + rclone_conf créé"
       ;;
     *)
       printf '# Stockage distant non configuré : les sauvegardes restent sur le serveur (déconseillé).\n' > "$DIR/rclone_conf"
-      chmod 600 "$DIR/rclone_conf"
+      chmod 644 "$DIR/rclone_conf"
       say "  + rclone_conf vide créé (à renseigner plus tard)"
       ;;
   esac

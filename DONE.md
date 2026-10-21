@@ -232,3 +232,10 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - API : 113 tests (+29 : secrets, configuration de production, 21 tests d'infrastructure : aucun port publié, durcissement, secrets hors environnement, réseaux, ordre de démarrage, Caddyfile couvrant tous les préfixes, scripts valides, workflows).
 - `docs/deploiement.md` (pas à pas VPS + Tailscale + S3 + restauration), `docs/threat-model.md`, README.
 - **Non exécuté ici** (pas de démon Docker dans le bac à sable) : construction des images, démarrage de la pile, Tailscale, envoi S3. Vérifiés par la CI GitHub et par le premier déploiement.
+
+## Correctifs issus de la première exécution de la CI (jalon 8a)
+- **Failles de dépendances** (`pnpm audit`, 5 hautes + 3 moyennes) : `fastify` (contournement d'authentification, validation, falsification de `X-Forwarded-*`) forcé à `>=5.12.7`, `deepmerge-ts` à `>=8` via `overrides` de `pnpm-workspace.yaml` ; audit propre, 113 tests API toujours verts, migrations et génération Prisma vérifiées.
+- **Construction des images** : Corepack échouait (« Cannot find matching keyid ») → pnpm installé via npm dans les Dockerfiles. Les trois images se construisent désormais en CI.
+- **Trivy** : l'étiquette de l'action GitHub n'existait pas → exécution via l'image `aquasec/trivy:0.58.1`.
+- **Démarrage de la pile** : PostgreSQL ne pouvait pas lire `/run/secrets/postgres_password` (fichier en 600 appartenant à un autre utilisateur que le conteneur, sans contournement possible avec `cap_drop: ALL`). `init-secrets.sh` : dossier `secrets/` en 700 et fichiers en 644 (inaccessibles aux autres utilisateurs de l'hôte grâce au dossier) ; test d'infra adapté.
+- Mode `--local` de `init-secrets.sh` et section « Essayer sans VPS » dans `docs/deploiement.md`.
