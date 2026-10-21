@@ -22,7 +22,13 @@ RUN pnpm --filter @gest-finance/web build
 # Caddy recompilé avec un Go à jour : le binaire officiel 2.11.7 embarque une bibliothèque standard Go signalée par Trivy (5 CVE HIGH net/http, crypto/tls).
 FROM golang:1.27-alpine3.23 AS caddy-build
 ENV CGO_ENABLED=0
-RUN go install -trimpath -ldflags "-s -w" github.com/caddyserver/caddy/v2/cmd/caddy@v2.11.7
+WORKDIR /build
+# golang.org/x/net est relevé (0.60.0 : correctif CVE-2026-78669, HTTP/2) par-dessus la version choisie par Caddy 2.11.7.
+RUN go mod init caddy-build \
+    && printf 'package main\n\nimport (\n\tcaddycmd "github.com/caddyserver/caddy/v2/cmd"\n\t_ "github.com/caddyserver/caddy/v2/modules/standard"\n)\n\nfunc main() { caddycmd.Main() }\n' > main.go \
+    && go get github.com/caddyserver/caddy/v2@v2.11.7 golang.org/x/net@v0.60.0 \
+    && go mod tidy \
+    && go build -trimpath -ldflags "-s -w" -o /go/bin/caddy .
 
 FROM alpine:3.23 AS runtime
 RUN apk add --no-cache ca-certificates mailcap
