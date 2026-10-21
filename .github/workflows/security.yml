@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
   schedule:
     - cron: "17 4 * * 1" # chaque lundi : nouvelles vulnérabilités sur du code inchangé
 permissions:

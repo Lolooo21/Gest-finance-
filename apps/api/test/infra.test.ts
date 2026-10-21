@@ -219,6 +219,16 @@ describe("CI/CD", () => {
     expect((dependabot.updates as { "package-ecosystem": string }[]).map((u) => u["package-ecosystem"])).toEqual(expect.arrayContaining(["npm", "docker", "github-actions"]));
   });
 
+  it("déclenche CI, images et sécurité sur develop et main (circuit : branche de fonctionnalité -> pull request -> develop -> main)", () => {
+    for (const f of [".github/workflows/ci.yml", ".github/workflows/docker.yml", ".github/workflows/security.yml"]) {
+      const on = yaml(f).on as Record<string, any>;
+      expect(on.push.branches, `${f} : push`).toEqual(expect.arrayContaining(["main", "develop"]));
+      expect(on, `${f} : pull_request`).toHaveProperty("pull_request");
+    }
+    expect(yaml(".github/workflows/security.yml").on).toHaveProperty("workflow_dispatch");
+    expect(yaml(".github/workflows/release.yml").on.push.tags).toEqual(["v*"]);
+  });
+
   it("limite les droits des workflows et n'expose aucun secret en clair", () => {
     for (const f of [".github/workflows/ci.yml", ".github/workflows/security.yml", ".github/workflows/docker.yml", ".github/workflows/release.yml"]) {
       const text = read(f);

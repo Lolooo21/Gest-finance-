@@ -6,3 +6,4 @@
 - Commits en français, Conventional Commits, une seule ligne.
 - **À chaque itération**, mettre à jour `README.md` : schéma de base de données (diagramme Mermaid et texte explicatif), tableau des fonctionnalités en place, section « à venir » et démarrage si nécessaire.
 - Tout nouveau contrôleur de l'API : ajouter son préfixe dans `packages/shared/src/routes.ts` **et** dans `infra/caddy/Caddyfile` (deux tests le vérifient).
+- Circuit Git : branche de fonctionnalité -> pull request vers `develop` -> fusion de `develop` dans `main` pour une version -> tag `v*` (publication des images). Ne jamais pousser directement sur `main` ou `develop` hors pull request.

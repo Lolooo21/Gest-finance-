@@ -239,3 +239,7 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - **Trivy** : l'étiquette de l'action GitHub n'existait pas → exécution via l'image `aquasec/trivy:0.58.1`.
 - **Démarrage de la pile** : PostgreSQL ne pouvait pas lire `/run/secrets/postgres_password` (fichier en 600 appartenant à un autre utilisateur que le conteneur, sans contournement possible avec `cap_drop: ALL`). `init-secrets.sh` : dossier `secrets/` en 700 et fichiers en 644 (inaccessibles aux autres utilisateurs de l'hôte grâce au dossier) ; test d'infra adapté.
 - Mode `--local` de `init-secrets.sh` et section « Essayer sans VPS » dans `docs/deploiement.md`.
+
+## Circuit Git : branche `develop`
+- `ci.yml`, `docker.yml` : push sur `main`, `develop`, `claude/**` et toute pull request ; `security.yml` : push sur `main` et `develop`, pull requests, lundi, lancement manuel ; `release.yml` : tags `v*`.
+- README : section « Circuit de travail » (branches, pull requests, protections conseillées) ; `CLAUDE.md` : règle du circuit ; test d'infrastructure sur les déclencheurs (API : 114 tests).

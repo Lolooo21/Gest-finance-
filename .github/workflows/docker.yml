@@ -3,7 +3,7 @@ on:
   pull_request:
     paths: ["infra/**", "apps/**", "packages/**", "pnpm-lock.yaml", ".github/workflows/docker.yml"]
   push:
-    branches: [main, "claude/**"]
+    branches: [main, develop, "claude/**"]
 permissions:
   contents: read
 concurrency:

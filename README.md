@@ -178,6 +178,18 @@ pnpm test
 
 **Notifications push (optionnel).** Générez des clés VAPID (`cd apps/api && pnpm exec web-push generate-vapid-keys`) et renseignez-les dans `apps/api/.env` (voir `.env.example`). Le service worker n'est actif que dans la version construite : `pnpm --filter @gest-finance/web build` puis `pnpm --filter @gest-finance/web exec vite preview`. Sans clés, le rappel reste visible dans l'application.
 
+## Circuit de travail (Git)
+| Branche | Rôle |
+|---|---|
+| `feature/...` (ou `claude/...`) | un sujet à la fois ; la CI tourne à chaque push |
+| `develop` | intégration : on y fusionne les branches de fonctionnalité par **pull request** (CI, images Docker et analyse de sécurité obligatoires) |
+| `main` | production : `develop` y est fusionnée pour une version ; on la marque d'un tag `vX.Y.Z`, ce qui publie les images signées sur GHCR |
+
+Les workflows (`.github/workflows/`) se déclenchent sur les pushs vers `main`, `develop` et `claude/**`, et sur toute pull request ; l'analyse de sécurité tourne aussi chaque lundi
+et peut être lancée à la main (une fois le fichier présent sur la branche par défaut du dépôt).
+Conseils de réglage GitHub (Settings → Branches) : définir `develop` comme branche par défaut, protéger `develop` et `main` (pull request obligatoire, contrôles
+« CI » et « Images Docker » requis, pas de push direct).
+
 ## Production (VPS privé)
 Déploiement sur un petit serveur loué, **sans aucun port ouvert**, accessible uniquement via Tailscale (VPN privé, HTTPS), avec sauvegardes quotidiennes
 chiffrées envoyées vers un stockage S3 : voir [`docs/deploiement.md`](docs/deploiement.md).

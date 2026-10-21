@@ -16,6 +16,8 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | CI complète : Semgrep, CodeQL (dépôt public), Trivy, hadolint, Gitleaks, build des images + test de fumée | Terminé (jalon 8a) ; résultats de la première exécution à relever |
 | CI : e2e Playwright et ZAP baseline | À faire |
 | Publication des images GHCR signées (tags `v*`) | Terminé (jalon 8a), non exécutée |
+| Circuit Git : branche `develop`, workflows déclenchés sur develop/main/PR | Terminé |
+| GitHub : définir `develop` par défaut et protéger `develop`/`main` (PR obligatoire, contrôles requis) | À faire (réglage utilisateur) |
 | CD : déploiement automatique via Tailscale, rollback | À faire |
 | Production : désactiver l'inscription publique une fois le foyer créé | À faire |
 | Production : rotation des secrets, épinglage des images par empreinte, compilation de l'API (sans chargeur swc) | À faire |
