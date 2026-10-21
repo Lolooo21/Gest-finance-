@@ -5,6 +5,10 @@ import { createApp } from "../src/app.js";
 import { PrismaClient } from "@prisma/client";
 
 export async function startApp(rateLimitMax = 1000) {
+  // Hermétique : des clés VAPID présentes dans l'environnement ou le .env de la machine activeraient les notifications push.
+  delete process.env.VAPID_PUBLIC_KEY;
+  delete process.env.VAPID_PRIVATE_KEY;
+  delete process.env.VAPID_SUBJECT;
   const app = await createApp({ rateLimitMax });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();

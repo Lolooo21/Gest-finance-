@@ -215,6 +215,16 @@ function isExecutable(file: string): boolean {
   }
 }
 
+/** `sh` n'existe pas sous Windows sans Git Bash : la vérification de syntaxe est alors laissée à la CI (Linux). */
+const hasSh = (() => {
+  try {
+    execFileSync("sh", ["-c", "true"]);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 describe("scripts d'exploitation", () => {
   const scripts = ["infra/backup/backup.sh", "infra/backup/restore.sh", "infra/backup/scheduler.sh", "infra/backup/test-backup.sh", "infra/scripts/init-secrets.sh", "infra/scripts/smoke.sh"];
 
@@ -224,7 +234,7 @@ describe("scripts d'exploitation", () => {
       expect(text.startsWith("#!/bin/sh"), `${f} : shebang`).toBe(true);
       expect(text, `${f} : set -eu`).toMatch(/^set -eu$/m);
       expect(isExecutable(f), `${f} : exécutable`).toBe(true);
-      expect(() => execFileSync("sh", ["-n", join(ROOT, f)]), `${f} : syntaxe`).not.toThrow();
+      if (hasSh) expect(() => execFileSync("sh", ["-n", join(ROOT, f)]), `${f} : syntaxe`).not.toThrow();
     }
   });
 
