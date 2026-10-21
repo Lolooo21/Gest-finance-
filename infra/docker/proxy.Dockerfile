@@ -2,7 +2,7 @@
 # Image du proxy : construit le front (PWA) puis le sert avec Caddy, qui relaie l'API. HTTP interne seulement :
 # le HTTPS est assuré en amont par Tailscale.
 
-FROM node:22.22.0-bookworm-slim AS web-build
+FROM node:22.23.4-bookworm-slim AS web-build
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 # pnpm via npm : le Corepack livré avec cette version de Node ne connaît pas les clés de signature actuelles du registre (erreur « Cannot find matching keyid »).
@@ -19,7 +19,7 @@ COPY packages packages
 COPY apps/web apps/web
 RUN pnpm --filter @gest-finance/web build
 
-FROM caddy:2.8.4-alpine AS runtime
+FROM caddy:2.11.7-alpine AS runtime
 RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 # Le binaire Caddy officiel porte une capacité de fichier (cap_net_bind_service) : avec « cap_drop: ALL » et « no-new-privileges »,
 # son exécution est refusée (« exec caddy failed: Operation not permitted »). Une copie ne conserve pas cet attribut ;
