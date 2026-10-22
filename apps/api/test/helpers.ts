@@ -2,21 +2,30 @@ import "reflect-metadata";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import type { LightMyRequestResponse } from "fastify";
 import { createApp } from "../src/app.js";
-import { PrismaService } from "../src/prisma/prisma.service.js";
+import { PrismaClient } from "@prisma/client";
 
 export async function startApp(rateLimitMax = 1000) {
+  // Hermétique : des clés VAPID dans l'environnement ou le .env de la machine activeraient les notifications push.
+  // Valeurs vides plutôt que `delete` : le client Prisma recharge apps/api/.env à sa création et ne remplace que les variables ABSENTES.
+  process.env.VAPID_PUBLIC_KEY = "";
+  process.env.VAPID_PRIVATE_KEY = "";
+  process.env.VAPID_SUBJECT = "";
   const app = await createApp({ rateLimitMax });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return app;
 }
 
-export async function resetDb(app: NestFastifyApplication) {
-  const prisma = app.get(PrismaService);
-  await prisma.auditLog.deleteMany();
-  await prisma.refreshToken.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.household.deleteMany();
+/** Connexion propriétaire (hors RLS) : réservée aux tests, pour préparer et vérifier les données. L'API, elle, n'a jamais ce rôle. */
+export const admin = new PrismaClient({ datasourceUrl: process.env.DATABASE_OWNER_URL });
+
+// Le paramètre est conservé pour les appelants existants (resetDb(app)) : la base se vide avec la connexion propriétaire.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function resetDb(_app?: NestFastifyApplication) {
+  await admin.auditLog.deleteMany();
+  await admin.refreshToken.deleteMany();
+  await admin.user.deleteMany();
+  await admin.household.deleteMany();
 }
 
 export function post(app: NestFastifyApplication, url: string, payload?: unknown, cookies?: Record<string, string>) {

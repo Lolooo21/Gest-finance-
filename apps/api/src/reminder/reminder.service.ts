@@ -3,7 +3,7 @@ import { dueSlot, type ReminderConfig } from "@gest-finance/finance-core";
 import type { ReminderDto } from "@gest-finance/shared";
 import type { ReminderSetting } from "@prisma/client";
 import { AuditService } from "../audit/audit.service.js";
-import { PrismaService } from "../prisma/prisma.service.js";
+import { PrismaService, SystemPrismaService } from "../prisma/prisma.service.js";
 import { PushSender } from "../push/push.sender.js";
 
 const cfg = (s: ReminderSetting): ReminderConfig => ({ weekday: s.weekday, hour: s.hour, timezone: s.timezone });
@@ -17,6 +17,7 @@ export class ReminderService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly system: SystemPrismaService,
     private readonly sender: PushSender,
     private readonly audit: AuditService,
   ) {}
@@ -65,7 +66,7 @@ export class ReminderService implements OnModuleInit, OnModuleDestroy {
   /** Envoie les notifications dues. Renvoie le nombre d'utilisateurs notifiés. */
   async runOnce(now: Date, sender: PushSender = this.sender): Promise<number> {
     if (!sender.publicKey) return 0;
-    const settings = await this.prisma.reminderSetting.findMany({
+    const settings = await this.system.reminderSetting.findMany({
       where: { enabled: true, user: { pushSubscriptions: { some: {} } } },
       include: { user: { include: { pushSubscriptions: true } } },
     });
@@ -77,10 +78,10 @@ export class ReminderService implements OnModuleInit, OnModuleDestroy {
       for (const sub of s.user.pushSubscriptions) {
         const result = await sender.send(sub, NOTIFICATION);
         if (result === "ok") delivered = true;
-        if (result === "gone") await this.prisma.pushSubscription.deleteMany({ where: { id: sub.id } });
+        if (result === "gone") await this.system.pushSubscription.deleteMany({ where: { id: sub.id } });
       }
       if (delivered) {
-        await this.prisma.reminderSetting.update({ where: { userId: s.userId }, data: { lastReminderAt: now } });
+        await this.system.reminderSetting.update({ where: { userId: s.userId }, data: { lastReminderAt: now } });
         await this.audit.record(s.user.householdId, s.userId, "reminder.sent");
         notified++;
       }

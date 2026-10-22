@@ -245,6 +245,45 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - Résultat CI « Images Docker » vert : construction, démarrage de la pile, test de fumée, sauvegarde chiffrée, Trivy.
 - **Gitleaks** : faux positif sur la valeur d'exemple publique de `EXAMPLE_SECRETS` (`config.ts`) → `.gitleaks.toml` (règles par défaut + liste d'autorisation des deux valeurs d'exemple) ; vérifié en local (1 fuite sans, 0 avec).
 
+## Jalon 8b — Sécurité par ligne PostgreSQL (RLS)
+- `apps/api/prisma/migrations/20261021160000_rls_foyer/migration.sql` : crée les rôles `gest_app` (NOBYPASSRLS) et `gest_system` (BYPASSRLS, droits minimaux, sans accès aux comptes, opérations, règles ni fiches de paie), la fonction `app_household()`, active la RLS et une politique `foyer` (USING + WITH CHECK) sur les 10 tables du foyer, et pose les `GRANT` (audit en écriture seule pour l'application, lecture seule des indicateurs).
+- `apps/api/src/prisma/prisma.service.ts` : `scopeClient()` (extension Prisma : chaque requête dans une transaction qui fixe `app.household_id`, accès refusé sans foyer), `$householdTransaction()` (transaction interactive dans le foyer), `runInHousehold()` (contexte asynchrone), jetons `PrismaService` (RLS) et `SystemPrismaService` (hors RLS), `PrismaConnections` (vérifie au démarrage les rôles : refus si `DATABASE_URL` n'est pas `gest_app` ou contourne la RLS, puis les tables).
+- `apps/api/src/app.ts` : hook Fastify `onRequest` qui lit le foyer du jeton vérifié et enveloppe toute la requête (`enterWith` dans une garde Nest perdait le contexte après un `await`).
+- Services : `AuthService` (inscription, connexion, jetons : client système ; TOTP : RLS), `AuditService` (insertion seule par le client système, `createMany` sans RETURNING), `ReminderService.runOnce` et `MarketService` (client système), `HouseholdController.addMember` (unicité de l'e-mail via le client système), `PayslipController` (`$householdTransaction`).
+- `apps/api/scripts/setup-roles.mjs` (`pnpm db:roles`) : pose les mots de passe des rôles à partir des URL, après les migrations ; exécuté par `predev`, `pretest`, le service `migrate` et la CI.
+- `config.ts` : en production, `DATABASE_SYSTEM_URL` obligatoire et `DATABASE_OWNER_URL` interdit dans l'API. `schema.prisma` : `directUrl = DATABASE_OWNER_URL` pour les migrations.
+- Infra : `compose.prod.yml` (secrets `database_owner_url`, `database_url`, `database_system_url` ; seul `migrate` lit le propriétaire), `init-secrets.sh` (génère les trois URL, convertit l'ancien `database_url`), `backup.sh`/`restore.sh` (droits et politiques inclus dans la sauvegarde, rôles créés à la restauration), `test-backup.sh` (étape 6 : politiques et droits identiques après restauration), `ci.yml`.
+- Tests (API : 137, +24) : `rls.int.test.ts` (15 : RLS activée sur toutes les tables, lecture/modification/suppression/écriture interdites entre foyers sans filtre, tables via l'utilisateur, requêtes simultanées, foyer non conservé sur la connexion, transaction interactive atomique, droits de chaque rôle, rôles non super-utilisateurs) ; démarrage et refus de mauvais rôles (`errors.test.ts`) ; configuration de production ; infra (séparation des secrets, migration sans mot de passe). Vérifié que les tests échouent quand la RLS est désactivée sur une table.
+- Correctifs de portabilité Windows : `.gitattributes` (LF pour scripts, Dockerfiles, Caddyfile, YAML), test d'infra qui lit `.dockerignore` en CRLF et le droit d'exécution dans l'index Git (`100755`), tests hermétiques vis-à-vis des clés VAPID de l'environnement.
+- Docs : README (section « Isolation par ligne », démarrage, dépannage), `docs/threat-model.md`, `docs/deploiement.md`, `TODO.md`.
+
+## Jalon 9a — Prévisionnel de trésorerie et objectifs de comportement
+### `packages/finance-core`
+- `forecast.ts` : `projectBalance()` (solde projeté de `today` à +30/60/90 jours : points quotidiens, creux, premier jour de découvert sur les comptes courants, événements à venir, revenus et dépenses attendus ; refuse un horizon hors 1 à 366), `accountBalanceAt()` (solde d'un compte à une date : initial + opérations + occurrences échues), `flowsBetween()` (règles + opérations datées, triées), `dailyBalances()` (soldes jour par jour), `addDays()`.
+- `goals.ts` : `evaluateBehaviorGoal()` (mois en cours, historique depuis la création sur 12 mois maximum, série de mois réussis) et `evaluateMonth()` pour « pas de découvert » (solde le plus bas, découvert déjà subi ou à venir), « reste à vivre positif » (à surveiller sous 10 % des revenus) et « dépenses sous un plafond » (à surveiller dès 80 %) ; helpers de calendrier `lastDay()`, `addMonthsToMonth()`.
+- Tests : 23 nouveaux (couverture du paquet : 100 % des lignes, 97 % des branches).
+### API
+- `GET /forecast?days=30|60|90` (`forecast.controller.ts`) : solde du jour calculé comme `accountBalanceAt()`, puis `projectBalance()` ; noms des comptes et des échéances ajoutés ; lecture pour tous les rôles.
+- `GET /goals/behavior`, `PUT /goals/behavior/:kind` (plafond obligatoire pour `SPENDING_CAP`, interdit sinon), `DELETE /goals/behavior/:kind` (`goals.controller.ts`) : écriture réservée aux adultes, audit sans montant.
+- `common/finance-data.ts` : chargement des comptes, règles et opérations du foyer. Table `BehaviorGoal` (migration `objectifs_comportement` avec RLS et droits), préfixes `/forecast` et `/goals` ajoutés à `routes.ts` et au `Caddyfile`.
+- Tests (API : 146, +9) : horizon invalide, projection et premier découvert, ce qui est déjà dans le solde n'est pas rejoué, règles récurrentes, enfant en lecture, isolation entre foyers ; objectifs : validation du plafond, statuts du mois, droits, audit, isolation.
+### Front
+- `pages/Forecast.tsx` (`ForecastPanel`) : horizons 30/60/90 jours, alerte de découvert, courbe SVG accessible (montants masqués en mode confidentialité), prochaines échéances ; `pages/Goals.tsx` (`GoalsPanel`) : trois objectifs avec statut, mesure, série, activation, plafond et retrait. Tests : 4 nouveaux (front : 51).
+
+## Jalon 9b — Objectifs d'épargne (enveloppes virtuelles) et épargne de secours
+### `packages/finance-core` (`savingsGoals.ts`)
+- `evaluateSavingsGoal()` : avancement (0 à 100 %), reste, mois restants, versement mensuel conseillé et statut (atteint, en bonne voie sur une trajectoire linéaire de la création à l'échéance, en retard, échéance dépassée, sans échéance).
+- `advisedMonthly()` : versement de fin de mois qui amène l'épargne à la cible, intérêts mensuels compris (même convention que `projectSavings`, vérifié par le test), arrondi supérieur ; `monthsUntil()` : mois civils restants (un mois entamé compte).
+- `emergencyFund()` : cibles de 3 et 6 mois, couverture en dixièmes de mois, alerte sous 3 mois ; `averageMonthlyExpenses()` : moyenne des 3 derniers mois terminés avec activité (repli : mois en cours).
+- Tests : 12 nouveaux (couverture 100 %).
+### API
+- `GET/POST /goals/savings`, `PUT/DELETE /goals/savings/:id`, `POST /goals/savings/:id/contributions`, `DELETE /goals/savings/:id/contributions/:cid` (`savings-goals.controller.ts`) : écriture réservée aux adultes ; un retrait ne peut pas dépasser l'épargne de l'objectif (vérifié dans une transaction), pas plus que la suppression d'un versement ; compte lié vérifié (foyer) et libéré si le compte est supprimé ; audit sans montant.
+- `goals.service.ts` : `behavior()` et `savings()` partagés par les pages d'objectifs et par `GET /review/weekly`, qui renvoie désormais l'état des objectifs (comportement, épargne, alerte de secours).
+- Tables `SavingsGoal` et `SavingsContribution` (migration `objectifs_epargne` avec RLS et droits).
+- Tests (API : 155, +9) : validations, avancement, retraits, suppression, compte lié, épargne de secours, droits (enfant en lecture), audit, isolation, bilan hebdomadaire.
+### Front
+- `pages/Savings.tsx` : objectifs avec jauge accessible, versements, retraits, historique, modification, suppression avec confirmation, modèles, bandeau d'épargne de secours et comparaison au reste à vivre ; `pages/Weekly.tsx` : section « Objectifs » du bilan. Tests : 6 nouveaux (front : 57).
+
 ## Circuit Git : branche `develop`
 - `ci.yml`, `docker.yml` : push sur `main`, `develop`, `claude/**` et toute pull request ; `security.yml` : push sur `main` et `develop`, pull requests, lundi, lancement manuel ; `release.yml` : tags `v*`.
 - README : section « Circuit de travail » (branches, pull requests, protections conseillées) ; `CLAUDE.md` : règle du circuit ; test d'infrastructure sur les déclencheurs (API : 114 tests).

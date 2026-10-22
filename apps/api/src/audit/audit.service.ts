@@ -1,12 +1,13 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service.js";
+import { SystemPrismaService } from "../prisma/prisma.service.js";
 
-/** Journal d'audit : actions uniquement, jamais de données financières ni de secrets. */
+/** Journal d'audit : actions uniquement, jamais de données financières ni de secrets. Écriture seule (rôle système) : l'API ne peut pas modifier le journal. */
 @Injectable()
 export class AuditService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: SystemPrismaService) {}
 
   record(householdId: string, userId: string | null, action: string) {
-    return this.prisma.auditLog.create({ data: { householdId, userId, action } });
+    // createMany : pas de RETURNING, le rôle système n'a pas le droit de relire le journal.
+    return this.prisma.auditLog.createMany({ data: [{ householdId, userId, action }] });
   }
 }

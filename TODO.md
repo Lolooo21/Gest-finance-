@@ -66,7 +66,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 |---|---|
 | Modèle de menaces v0 | Terminé |
 | Garde `householdId` (issu du JWT) + tests IDOR | Terminé (jalon 2) |
-| RLS PostgreSQL (défense en profondeur) | À faire : jalon 8b |
+| RLS PostgreSQL (défense en profondeur) | Terminé (jalon 8b) |
 | Chiffrement AES-256-GCM de l'IBAN | Terminé (jalon 3) |
 | Chiffrement des documents | À faire (avec le coffre-fort) |
 | Rate limiting, Helmet/CSP, audit log | Terminé (jalon 2) |
@@ -99,7 +99,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### Prévision et pilotage
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Reste à vivre prévisionnel à 30/60/90 jours | P1 | Réutilise `occurrences()` et `resteAVivre()` de `finance-core` ; ajouter une fonction `projectBalance()` pure + alerte si solde projeté < 0 |
+| Reste à vivre prévisionnel à 30/60/90 jours | P1 · **Terminé (jalon 9a)** | Réutilise `occurrences()` et `resteAVivre()` de `finance-core` ; ajouter une fonction `projectBalance()` pure + alerte si solde projeté < 0 |
 | Enveloppes et budgets par catégorie, alerte à 80 % du plafond | P1 | Alerte à 80 % et 100 %, report optionnel du reliquat au mois suivant |
 | Provisions lissées des dépenses annuelles (impôts, assurances, vacances, rentrée) | P2 | Mensualité = montant annuel / 12 déduite du reste à vivre ; lien avec les enveloppes |
 | Simulateur « et si ? » (crédit, changement de salaire, dépense ponctuelle) | P2 | Scénarios non persistés dans les vraies données, comparés au prévisionnel ; s'appuie sur `projectBalance()` |
@@ -148,12 +148,12 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### Objectifs et bonnes pratiques d'épargne (ajout)
 | Idée | Prio | Notes |
 |---|---|---|
-| Objectifs de comportement mensuels : « pas de découvert ce mois-ci », « reste à vivre positif », « dépenses sous X € » | P1 | Évalués par une fonction pure dans `finance-core` (`projectBalance()` partagée avec le prévisionnel) : statut en bonne voie / à risque / raté, alerte si le solde projeté passe sous zéro, série de mois réussis |
-| Objectifs d'épargne typés : **épargne de secours**, **court terme** (voyage, travaux), **long terme** (retraite, études des enfants) | P1 | Chaque objectif : montant cible, date, comptes d'épargne liés, progression, versement mensuel conseillé calculé avec `projectSavings()` |
-| Épargne de secours : cible calculée automatiquement (3 à 6 mois de dépenses moyennes d'après l'historique), alerte si le fonds passe sous 3 mois | P1 | Supports suggérés : Livret A / LDDS (disponibles, garantis) via les fiches de l'onglet Actualités |
+| Objectifs de comportement mensuels : « pas de découvert ce mois-ci », « reste à vivre positif », « dépenses sous X € » | P1 · **Terminé (jalon 9a)** ; état affiché dans le bilan de la semaine (jalon 9b) | Évalués par une fonction pure dans `finance-core` (`projectBalance()` partagée avec le prévisionnel) : statut en bonne voie / à risque / raté, alerte si le solde projeté passe sous zéro, série de mois réussis |
+| Objectifs d'épargne typés : **épargne de secours**, **court terme** (voyage, travaux), **long terme** (retraite, études des enfants) | P1 · **Terminé (jalon 9b)** : enveloppes virtuelles par objectif ; reste : comptes d'épargne liés avec part, objectifs des enfants | Chaque objectif : montant cible, date, comptes d'épargne liés, progression, versement mensuel conseillé calculé avec `projectSavings()` |
+| Épargne de secours : cible calculée automatiquement (3 à 6 mois de dépenses moyennes d'après l'historique), alerte si le fonds passe sous 3 mois | P1 · **Terminé (jalon 9b)** | Supports suggérés : Livret A / LDDS (disponibles, garantis) via les fiches de l'onglet Actualités |
 | Bonnes pratiques guidées : ordre des priorités (secours → court terme → long terme), « payez-vous en premier » (virement d'épargne dès le salaire), répartition 50/30/20 en simple repère optionnel | P2 | Page d'aide courte, jamais présentée comme un conseil en investissement ; le long terme renvoie vers les fiches adaptées à l'horizon (PEA, assurance-vie, PEL…) |
-| Carte « Objectifs » sur le tableau de bord : statuts, jauges de progression, prochaine action recommandée | P1 | Rappel hebdomadaire : le bilan de la semaine affiche l'état des objectifs |
-| Modèles d'objectifs prédéfinis (fonds d'urgence, vacances, apport immobilier, rentrée scolaire) | P2 | Montant et durée proposés puis modifiables |
+| Carte « Objectifs » sur le tableau de bord : statuts, jauges de progression, prochaine action recommandée | P1 · **Terminé (jalons 9a et 9b)**, hors « prochaine action recommandée » | Rappel hebdomadaire : le bilan de la semaine affiche l'état des objectifs |
+| Modèles d'objectifs prédéfinis (fonds d'urgence, vacances, apport immobilier, rentrée scolaire) | P2 · **Terminé (jalon 9b)** | Montant et durée proposés puis modifiables |
 
 ### Argent de poche des enfants (ajout)
 | Idée | Prio | Notes |

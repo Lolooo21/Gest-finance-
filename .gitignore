@@ -4,3 +4,7 @@ coverage/
 .env
 *.log
 secrets/
+.idea/
+.vite/
+# Le projet utilise pnpm (pnpm-lock.yaml) : un package-lock.json vient d'un « npm install » par erreur
+package-lock.json

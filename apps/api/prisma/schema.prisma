@@ -4,7 +4,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Client (API) : rôle gest_app, soumis à la RLS. Le rôle gest_system utilise DATABASE_SYSTEM_URL (voir prisma.service.ts).
+  url       = env("DATABASE_URL")
+  // Migrations (prisma migrate) : rôle propriétaire des tables, jamais utilisé par l'API.
+  directUrl = env("DATABASE_OWNER_URL")
 }
 
 enum Role {
@@ -23,6 +26,9 @@ model Household {
   transactions Transaction[]
   recurringRules RecurringRule[]
   payslipImports PayslipImport[]
+  behaviorGoals BehaviorGoal[]
+  savingsGoals SavingsGoal[]
+  savingsContributions SavingsContribution[]
 }
 
 model User {
@@ -92,6 +98,7 @@ model BankAccount {
   transactions        Transaction[]
   recurringRules      RecurringRule[]
   payslipImports      PayslipImport[]
+  savingsGoals        SavingsGoal[]
 
   @@index([householdId])
 }
@@ -173,6 +180,69 @@ model PayslipImport {
   createdAt     DateTime @default(now())
 
   @@index([householdId, accountId, periodMonth])
+}
+
+enum BehaviorKind {
+  NO_OVERDRAFT
+  POSITIVE_REMAINING
+  SPENDING_CAP
+}
+
+/// Objectif de comportement mensuel du foyer (un par type) : pas de découvert, reste à vivre positif, dépenses sous un plafond.
+model BehaviorGoal {
+  id          String   @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  kind        BehaviorKind
+  /// Plafond mensuel de dépenses en centimes (SPENDING_CAP uniquement)
+  capCents    Int?
+  /// Les mois évalués commencent au mois de création
+  createdAt   DateTime @default(now())
+
+  @@unique([householdId, kind])
+}
+
+enum SavingsKind {
+  EMERGENCY
+  SHORT_TERM
+  LONG_TERM
+}
+
+/// Objectif d'épargne : une enveloppe virtuelle. Plusieurs objectifs peuvent partager un même livret ; l'avancement vient des versements saisis.
+model SavingsGoal {
+  id           String   @id @default(uuid())
+  householdId  String
+  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name         String
+  kind         SavingsKind
+  targetCents  Int
+  /// Échéance (optionnelle pour l'épargne de secours)
+  targetDate   DateTime? @db.Date
+  /// Compte d'épargne où l'argent est placé (information : aucun mouvement automatique)
+  accountId    String?
+  account      BankAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  /// Taux annuel espéré en points de base (0 = sans intérêts)
+  annualRateBp Int      @default(0)
+  createdAt    DateTime @default(now())
+  contributions SavingsContribution[]
+
+  @@index([householdId])
+}
+
+/// Versement (positif) ou retrait (négatif) dans l'enveloppe d'un objectif ; la somme donne l'épargne de l'objectif.
+model SavingsContribution {
+  id          String   @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  goalId      String
+  goal        SavingsGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  amountCents Int
+  date        DateTime @db.Date
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([goalId, date])
+  @@index([householdId])
 }
 
 /// Indicateur de marché public (BCE, Eurostat) : non rattaché à un foyer, aucune donnée personnelle.

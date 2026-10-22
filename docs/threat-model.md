@@ -25,6 +25,15 @@
 | Information obsolète présentée comme à jour | Statut « donnée ancienne » après 4 jours, alerte « taux périmés » après la période de validité, source et date affichées | Taux réglementés à mettre à jour à la main |
 | Conseil en investissement involontaire | Avertissement permanent, contenu pédagogique sans promesse de rendement | Interprétation par l'utilisateur |
 
+## Isolation entre foyers en base (jalon 8b)
+| Menace | Mesure | Risque résiduel |
+|---|---|---|
+| Une requête oublie son filtre `householdId` et expose un autre foyer (IDOR, régression) | Sécurité par ligne PostgreSQL : le rôle `gest_app` ne voit que les lignes du foyer fixé pour la transaction ; sans foyer, accès refusé ; tests d'isolation en base réelle | Une faille qui permettrait de choisir le foyer fixé (le foyer vient uniquement du jeton signé) |
+| Contournement de la RLS par une mauvaise configuration (URL du propriétaire ou d'un super-utilisateur) | L'API vérifie au démarrage son rôle (`gest_app`, sans `BYPASSRLS` ni super-utilisateur) ; en production, `DATABASE_OWNER_URL` est interdit dans l'API ; secrets séparés, le propriétaire n'est monté que dans le service de migration | Compromission du service de migration pendant son exécution (court, sans réseau sortant) |
+| Abus du client « système » (connexion, audit, rappels) | Rôle `gest_system` aux droits minimaux : aucun accès aux comptes, opérations, règles ni fiches de paie ; journal d'audit en écriture seule | Accès aux utilisateurs, jetons de rafraîchissement et abonnements push (nécessaire à la connexion et aux rappels) |
+| Altération du journal d'audit par l'application | `gest_app` n'a que la lecture, `gest_system` que l'insertion | Le propriétaire (migrations) peut modifier la table |
+| Droits perdus à la restauration d'une sauvegarde | Les `GRANT` et politiques sont inclus dans la sauvegarde ; la restauration crée les rôles manquants ; test automatisé de comparaison des politiques et droits | Mots de passe des rôles à réappliquer (fait par le service de migration) |
+
 ## Production : réseau, secrets, sauvegardes (jalon 8a)
 | Menace | Mesure | Risque résiduel |
 |---|---|---|

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assertProductionConfig, EXAMPLE_SECRETS } from "../src/config.js";
 import { loadSecretsFromFiles } from "../src/secrets.js";
 
-const good = { NODE_ENV: "production", JWT_SECRET: "x".repeat(48), FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"), DATABASE_URL: "postgresql://u:p@db/x" };
+const good = { NODE_ENV: "production", JWT_SECRET: "x".repeat(48), FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"), DATABASE_URL: "postgresql://u:p@db/x", DATABASE_SYSTEM_URL: "postgresql://s:p@db/x" };
 
 describe("loadSecretsFromFiles", () => {
   const files: Record<string, string> = { "/run/secrets/jwt": "  secret-jwt-value  \n", "/run/secrets/empty": " \n" };
@@ -41,7 +41,7 @@ describe("assertProductionConfig", () => {
   });
 
   it("refuse les secrets absents, courts, d'exemple ou invalides, en listant tous les problèmes", () => {
-    expect(() => assertProductionConfig({ NODE_ENV: "production" })).toThrow(/JWT_SECRET.*FIELD_ENCRYPTION_KEY.*DATABASE_URL/);
+    expect(() => assertProductionConfig({ NODE_ENV: "production" })).toThrow(/JWT_SECRET.*FIELD_ENCRYPTION_KEY.*DATABASE_URL.*DATABASE_SYSTEM_URL/);
     expect(() => assertProductionConfig({ ...good, JWT_SECRET: "court" })).toThrow(/32 caractères/);
     expect(() => assertProductionConfig({ ...good, JWT_SECRET: EXAMPLE_SECRETS[0]! })).toThrow(/valeur d'exemple/);
     expect(() => assertProductionConfig({ ...good, FIELD_ENCRYPTION_KEY: EXAMPLE_SECRETS[1]! })).toThrow(/FIELD_ENCRYPTION_KEY est la valeur d'exemple/);
@@ -49,6 +49,7 @@ describe("assertProductionConfig", () => {
   });
 
   it("interdit les cookies non sécurisés en production", () => {
+    expect(() => assertProductionConfig({ ...good, DATABASE_OWNER_URL: "postgresql://gest:p@db/x" })).toThrow(/DATABASE_OWNER_URL ne doit pas être défini/);
     expect(() => assertProductionConfig({ ...good, COOKIE_SECURE: "0" })).toThrow(/COOKIE_SECURE=0 est interdit/);
     expect(() => assertProductionConfig({ ...good, COOKIE_SECURE: "0", ALLOW_INSECURE_COOKIES: "1" })).not.toThrow();
   });

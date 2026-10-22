@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 /** Variables qui peuvent être fournies par un fichier (secrets Docker) via `<NOM>_FILE`. */
-export const SECRET_VARS = ["JWT_SECRET", "FIELD_ENCRYPTION_KEY", "DATABASE_URL", "VAPID_PRIVATE_KEY"] as const;
+export const SECRET_VARS = ["JWT_SECRET", "FIELD_ENCRYPTION_KEY", "DATABASE_URL", "DATABASE_SYSTEM_URL", "VAPID_PRIVATE_KEY"] as const;
 
 /**
  * Secrets Docker : si `JWT_SECRET_FILE=/run/secrets/jwt_secret` est défini, la valeur du fichier devient `JWT_SECRET`.

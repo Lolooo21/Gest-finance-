@@ -46,7 +46,16 @@ PG_PASSWORD="$(openssl rand -hex 24)"
 write postgres_password "$PG_PASSWORD"
 # Si le mot de passe existait déjà, le reprendre pour construire l'URL.
 PG_PASSWORD="$(cat "$DIR/postgres_password")"
-write database_url "postgresql://gest:${PG_PASSWORD}@postgres:5432/gest_finance"
+# Trois rôles PostgreSQL (voir README, « Isolation par ligne ») : propriétaire (migrations seulement), application (RLS) et système.
+# Ancienne installation : l'ancien « database_url » pointait sur le propriétaire ; il devient « database_owner_url ».
+if [ -s "$DIR/database_url" ] && grep -q '^postgresql://gest:' "$DIR/database_url"; then
+  [ -s "$DIR/database_owner_url" ] || cp "$DIR/database_url" "$DIR/database_owner_url"
+  rm -f "$DIR/database_url"
+  say "  ~ database_url (ancien format) converti en database_owner_url"
+fi
+write database_owner_url "postgresql://gest:${PG_PASSWORD}@postgres:5432/gest_finance"
+write database_url "postgresql://gest_app:$(openssl rand -hex 24)@postgres:5432/gest_finance"
+write database_system_url "postgresql://gest_system:$(openssl rand -hex 24)@postgres:5432/gest_finance"
 write jwt_secret "$(openssl rand -base64 48 | tr -d '\n')"
 write field_encryption_key "$(openssl rand -base64 32 | tr -d '\n')"
 

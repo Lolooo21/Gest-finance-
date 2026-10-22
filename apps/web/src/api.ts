@@ -46,12 +46,45 @@ export interface Tx { id: string; accountId: string; amountCents: number; date: 
 export interface Rule { id: string; accountId: string; label: string; amountCents: number; frequency: "WEEKLY" | "MONTHLY" | "YEARLY"; start: string; end: string | null }
 export interface Summary { from: string; to: string; incomeCents: number; fixedChargesCents: number; oneOffExpensesCents: number; remainingCents: number }
 
+export interface ForecastAccountView { id: string; name: string; type: "CHECKING" | "SAVINGS"; endCents: number; minCents: number; minDate: string; firstNegativeDate: string | null }
+export interface ForecastEventView { date: string; account: string; label: string; amountCents: number }
+export interface Forecast {
+  from: string; to: string; days: number; startCents: number; endCents: number; incomeCents: number; expensesCents: number;
+  points: { date: string; totalCents: number; checkingCents: number }[];
+  accounts: ForecastAccountView[]; events: ForecastEventView[];
+  firstNegativeDate: string | null; lowestCheckingCents: number; lowestCheckingDate: string | null;
+}
+
+export type BehaviorKind = "NO_OVERDRAFT" | "POSITIVE_REMAINING" | "SPENDING_CAP";
+export type GoalStatus = "ACHIEVED" | "FAILED" | "ON_TRACK" | "AT_RISK";
+export interface MonthEvaluation { month: string; status: GoalStatus; valueCents: number; limitCents: number }
+export interface BehaviorGoalView { kind: BehaviorKind; capCents: number | null; current: MonthEvaluation; history: MonthEvaluation[]; streak: number; since: string }
+
+export type SavingsKind = "EMERGENCY" | "SHORT_TERM" | "LONG_TERM";
+export type SavingsStatus = "ACHIEVED" | "ON_TRACK" | "BEHIND" | "LATE" | "NO_DATE";
+export interface SavingsContributionView { id: string; date: string; amountCents: number; note: string | null }
+export interface SavingsGoalView {
+  id: string; name: string; kind: SavingsKind; targetCents: number; targetDate: string | null; accountId: string | null; account: string | null; annualRateBp: number;
+  savedCents: number; percent: number; remainingCents: number; monthsLeft: number | null; advisedMonthlyCents: number | null; status: SavingsStatus;
+  contributions: SavingsContributionView[];
+}
+export interface SavingsOverview {
+  goals: SavingsGoalView[];
+  emergency: { averageMonthlyExpensesCents: number; threeMonthsCents: number; sixMonthsCents: number; savedCents: number; coverageTenths: number | null; belowThreeMonths: boolean };
+  capacityCents: number; totalAdvisedCents: number;
+}
+
 export interface Reminder { enabled: boolean; weekday: number; hour: number; timezone: string; lastDoneAt: string | null; due: boolean; pushConfigured: boolean; subscribed: boolean }
 export interface ReviewLine { date: string; label: string; account: string; amountCents: number }
 export interface WeeklyReview {
   from: string; to: string; incomeCents: number; expensesCents: number;
   transactions: (ReviewLine & { id: string })[]; recurringInPeriod: ReviewLine[]; upcoming: ReviewLine[];
   month: Summary;
+  goals?: {
+    behavior: { kind: BehaviorKind; status: GoalStatus; streak: number }[];
+    savings: { id: string; name: string; status: SavingsStatus; percent: number; advisedMonthlyCents: number | null }[];
+    emergencyBelowThreeMonths: boolean;
+  };
 }
 
 export interface PayslipExtraction {

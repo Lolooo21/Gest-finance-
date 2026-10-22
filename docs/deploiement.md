@@ -116,6 +116,12 @@ de base n'est pas annulable automatiquement : en cas de problème de données, r
    `field_encryption_key` et `jwt_secret`), démarrez seulement la base (`docker compose ... up -d postgres`), puis restaurez dans `gest_finance`
    avec `RESTORE_FORCE=yes` (variable d'environnement du conteneur : ajoutez `-e RESTORE_FORCE=yes` à la commande ci-dessus) avant de lancer le reste.
 
+### Rôles de base de données (jalon 8b)
+`init-secrets.sh` crée trois URL : `database_owner_url` (propriétaire des tables, lue **uniquement** par le service `migrate`), `database_url` (rôle `gest_app`, soumis à la sécurité par ligne, pour l'API) et
+`database_system_url` (rôle `gest_system`, droits limités : connexion, audit, rappels, indicateurs). Le service `migrate` applique les migrations puis les mots de passe des deux rôles. Une installation
+faite avant le jalon 8b est convertie automatiquement (l'ancien `database_url` devient `database_owner_url`) : relancez `sh infra/scripts/init-secrets.sh` puis `docker compose ... up -d`.
+La restauration d'une sauvegarde ramène les politiques et les droits ; elle crée les deux rôles s'ils n'existent pas.
+
 ## 9. Sécurité : à retenir
 - Aucun port n'est publié : le serveur n'est joignable que via Tailscale. Ne publiez jamais de port de la base ou de l'API.
 - Les secrets sont des fichiers (dossier `secrets/` en 700, fermé aux autres utilisateurs du serveur), jamais dans les images ni dans Git.

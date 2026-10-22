@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service.js";
+import { SystemPrismaService } from "../prisma/prisma.service.js";
 import { fetchIndicator } from "./fetch-indicator.js";
 import { INDICATORS } from "./indicators.js";
 
@@ -31,7 +31,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger("Marché");
   private timer?: NodeJS.Timeout;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: SystemPrismaService) {}
 
   /** Appels sortants désactivables (`MARKET_REFRESH=off`) ; jamais en test. Aucune donnée du foyer n'est envoyée. */
   get refreshEnabled() {

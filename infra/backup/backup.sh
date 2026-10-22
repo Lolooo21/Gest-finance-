@@ -29,7 +29,7 @@ STAMP="$(date -u '+%Y%m%d-%H%M%S')"
 NAME="gest-${STAMP}.dump.age"
 
 log "Sauvegarde de ${PGDATABASE} sur ${PGHOST}..."
-pg_dump --format=custom --no-owner --no-privileges "$PGDATABASE" > "$TMP/dump"
+pg_dump --format=custom --no-owner "$PGDATABASE" > "$TMP/dump"
 [ -s "$TMP/dump" ] || { log "ERREUR : sauvegarde vide"; exit 1; }
 pg_restore --list "$TMP/dump" > /dev/null || { log "ERREUR : sauvegarde illisible"; exit 1; }
 
