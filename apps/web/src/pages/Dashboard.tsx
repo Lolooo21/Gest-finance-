@@ -6,6 +6,7 @@ import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
 import { ForecastPanel } from "./Forecast";
 import { GoalsPanel } from "./Goals";
+import { SavingsPanel } from "./Savings";
 import { PayslipImport } from "./Payslip";
 import { ReminderSettings, WeeklyReviewPanel } from "./Weekly";
 
@@ -76,6 +77,7 @@ export function Dashboard() {
 
         <ForecastPanel />
         <GoalsPanel />
+        <SavingsPanel accounts={accounts.data ?? []} />
 
         <section className={cardClass}>
           <h2 className="text-lg font-semibold">Comptes</h2>

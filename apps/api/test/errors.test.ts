@@ -44,7 +44,7 @@ describe("AllExceptionsFilter", () => {
 });
 
 describe("PrismaConnections au démarrage", () => {
-  const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot", "auditLog", "refreshToken", "behaviorGoal"];
+  const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot", "auditLog", "refreshToken", "behaviorGoal", "savingsGoal", "savingsContribution"];
   const delegates = (failing?: { model: string; code?: string; message?: string }, missing?: string) => {
     const o: Record<string, unknown> = {};
     for (const model of [...MODELS, "household", "refreshToken", "auditLog"]) {

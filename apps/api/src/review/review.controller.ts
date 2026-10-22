@@ -5,6 +5,7 @@ import { AuthGuard, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
 import { toDate, toIso } from "../common/dates.js";
 import { ZodPipe } from "../common/zod.pipe.js";
+import { GoalsService } from "../goals/goals.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 const addDays = (iso: string, n: number) => toIso(new Date(toDate(iso).getTime() + n * 86_400_000));
@@ -12,7 +13,10 @@ const addDays = (iso: string, n: number) => toIso(new Date(toDate(iso).getTime()
 @Controller("review")
 @UseGuards(AuthGuard)
 export class ReviewController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly goals: GoalsService,
+  ) {}
 
   /** Bilan de la semaine : 7 jours se terminant à `to` (aujourd'hui par défaut), plus les 7 jours à venir. */
   @Get("weekly")
@@ -41,11 +45,18 @@ export class ReviewController {
     const recurringInPeriod = expand(from, to);
     const upcoming = expand(addDays(to, 1), addDays(to, 7));
     const all = [...transactions, ...recurringInPeriod];
+    // État des objectifs : rappelé dans le bilan pour décider de la semaine suivante (vide si aucun objectif).
+    const [behavior, savings] = await Promise.all([this.goals.behavior(user.householdId), this.goals.savings(user.householdId)]);
     return {
       from, to,
       incomeCents: all.filter((x) => x.amountCents > 0).reduce((s, x) => s + x.amountCents, 0),
       expensesCents: all.filter((x) => x.amountCents < 0).reduce((s, x) => s - x.amountCents, 0),
       transactions, recurringInPeriod, upcoming,
+      goals: {
+        behavior: behavior.map((g) => ({ kind: g.kind, status: g.current.status, streak: g.streak })),
+        savings: savings.goals.map((g) => ({ id: g.id, name: g.name, status: g.status, percent: g.percent, advisedMonthlyCents: g.advisedMonthlyCents })),
+        emergencyBelowThreeMonths: savings.emergency.belowThreeMonths && savings.emergency.averageMonthlyExpensesCents > 0,
+      },
       month: { from: monthFrom, to: monthTo, ...resteAVivre(monthFrom, monthTo, rules, monthTx.map((t) => ({ date: toIso(t.date), amountCents: t.amountCents }))) },
     };
   }

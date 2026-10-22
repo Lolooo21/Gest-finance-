@@ -101,6 +101,29 @@ export type BehaviorKind = z.infer<typeof BehaviorKind>;
 export const BehaviorGoalDto = z.object({ capCents: z.number().int().positive("Le plafond doit être positif").max(100_000_000).optional() });
 export type BehaviorGoalDto = z.infer<typeof BehaviorGoalDto>;
 
+/** Objectifs d'épargne (enveloppes virtuelles). */
+export const SavingsKind = z.enum(["EMERGENCY", "SHORT_TERM", "LONG_TERM"]);
+export type SavingsKind = z.infer<typeof SavingsKind>;
+export const SavingsGoalDto = z
+  .object({
+    name: z.string().trim().min(1).max(80),
+    kind: SavingsKind,
+    targetCents: z.number().int().positive("La cible doit être positive").max(100_000_000_00),
+    targetDate: isoDate.nullable().default(null),
+    accountId: z.string().uuid().nullable().default(null),
+    /** Taux annuel espéré, en points de base (0 à 20 %). */
+    annualRateBp: z.number().int().min(0).max(2000).default(0),
+  })
+  .refine((g) => g.kind === "EMERGENCY" || g.targetDate !== null, { message: "Indiquez l'échéance de l'objectif", path: ["targetDate"] });
+export type SavingsGoalDto = z.infer<typeof SavingsGoalDto>;
+export const SavingsContributionDto = z.object({
+  /** Versement positif ou retrait négatif, jamais nul. */
+  amountCents: z.number().int().refine((n) => n !== 0, "Le montant ne peut pas être nul").refine((n) => Math.abs(n) <= 100_000_000_00, "Montant trop élevé"),
+  date: isoDate,
+  note: z.string().trim().max(120).optional(),
+});
+export type SavingsContributionDto = z.infer<typeof SavingsContributionDto>;
+
 const atLeastOne = (o: object) => Object.keys(o).length > 0;
 
 export const AccountPatch = AccountDto.partial().refine(atLeastOne, "aucune modification");

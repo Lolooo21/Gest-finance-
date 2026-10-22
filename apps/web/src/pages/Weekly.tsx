@@ -1,8 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Reminder, type ReviewLine, type WeeklyReview } from "../api";
+import { api, type BehaviorKind, type GoalStatus, type Reminder, type ReviewLine, type SavingsStatus, type WeeklyReview } from "../api";
 import { Money } from "../privacy";
 import { enablePush, pushSupported } from "../push";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useToast } from "../ui";
+
+const BEHAVIOR_LABEL: Record<BehaviorKind, string> = { NO_OVERDRAFT: "Pas de découvert", POSITIVE_REMAINING: "Reste à vivre positif", SPENDING_CAP: "Dépenses sous le plafond" };
+const BEHAVIOR_STATUS: Record<GoalStatus, string> = { ON_TRACK: "en bonne voie", AT_RISK: "à surveiller", FAILED: "raté ce mois-ci", ACHIEVED: "réussi" };
+const SAVINGS_STATUS: Record<SavingsStatus, string> = { ACHIEVED: "atteint", ON_TRACK: "en bonne voie", BEHIND: "en retard", LATE: "échéance dépassée", NO_DATE: "sans échéance" };
 
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -65,6 +69,28 @@ export function WeeklyReviewPanel({ reminder, open, onOpen, onClose }: { reminde
               <Lines title="Opérations de la semaine" lines={review.data.transactions} empty="Aucune opération saisie cette semaine : pensez à tout enregistrer." />
               <Lines title="Récurrences de la semaine" lines={review.data.recurringInPeriod} empty="Aucune récurrence." />
               <Lines title="À venir (7 jours)" lines={review.data.upcoming} empty="Aucune échéance prévue." />
+              {review.data.goals && (review.data.goals.behavior.length > 0 || review.data.goals.savings.length > 0) && (
+                <div aria-label="Objectifs">
+                  <h3 className="mt-4 text-sm font-semibold">Objectifs</h3>
+                  {review.data.goals.emergencyBelowThreeMonths && (
+                    <p className="mt-1 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">Votre épargne de secours couvre moins de 3 mois de dépenses : c'est la priorité du mois.</p>
+                  )}
+                  <ul className="divide-y text-sm">
+                    {review.data.goals.behavior.map((g) => (
+                      <li key={g.kind} className="flex justify-between gap-3 py-2">
+                        <span>{BEHAVIOR_LABEL[g.kind]}</span>
+                        <span>{BEHAVIOR_STATUS[g.status]}{g.streak > 0 ? ` · ${g.streak} mois d'affilée` : ""}</span>
+                      </li>
+                    ))}
+                    {review.data.goals.savings.map((g) => (
+                      <li key={g.id} className="flex justify-between gap-3 py-2">
+                        <span>{g.name} <span className="text-xs text-slate-600">{g.percent} % · {SAVINGS_STATUS[g.status]}</span></span>
+                        <span>{g.advisedMonthlyCents ? <>à verser <Money cents={g.advisedMonthlyCents} /> / mois</> : ""}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Button icon="check" loading={done.isPending} onClick={() => done.mutate()} className="mt-4 w-full">J'ai fait mes comptes</Button>
             </>
           )}
