@@ -240,8 +240,9 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
     if (!f.get("accountId")) return setError("Choisissez un compte. S'il n'y en a pas, ajoutez-en un dans la section « Comptes ».");
     setError("");
     const signed = f.get("kind") === "out" ? -cents : cents;
+    // Vide = catégorie automatique (le serveur propose) ; « none » = sans catégorie.
     const categoryId = String(f.get("categoryId") ?? "");
-    const base = { accountId: f.get("accountId"), label: f.get("label"), amountCents: signed, ...(categoryId ? { categoryId } : {}) };
+    const base = { accountId: f.get("accountId"), label: f.get("label"), amountCents: signed, ...(categoryId ? { categoryId: categoryId === "none" ? null : categoryId } : {}) };
     const end = String(f.get("end") ?? "");
     const req = recurring
       ? { path: "/recurring-rules", body: { ...base, frequency: f.get("frequency"), start: f.get("date"), ...(end ? { end } : {}) } }
@@ -260,7 +261,8 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
       <input name="date" type="date" required defaultValue={todayIso()} aria-label="Date" className={fieldClass} />
       {categories.length > 0 && (
         <select name="categoryId" aria-label="Catégorie" className={fieldClass} defaultValue="">
-          <option value="">Sans catégorie</option>
+          <option value="">Catégorie automatique</option>
+          <option value="none">Sans catégorie</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       )}

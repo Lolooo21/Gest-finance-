@@ -5,6 +5,8 @@ import { ImportConfirmDto, ImportPreviewQuery, MAX_IMPORT_LINES } from "@gest-fi
 import type { FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service.js";
+import { CategoriesService } from "../categories/categories.service.js";
+import { CategorizerService } from "../categories/categorizer.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
 import { toDate, toIso } from "../common/dates.js";
@@ -38,6 +40,8 @@ export class ImportsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly categories: CategoriesService,
+    private readonly categorizer: CategorizerService,
   ) {}
 
   @Post("preview")
@@ -63,21 +67,30 @@ export class ImportsController {
     if (parsed.lines.length > MAX_IMPORT_LINES) throw new BadRequestException(`Relevé trop long : ${MAX_IMPORT_LINES} opérations maximum par import`);
     const keys = importKeys(parsed.lines).map(sha256);
     const dates = parsed.lines.map((l) => l.date).sort();
-    const [existing, rules] = parsed.lines.length === 0
-      ? [[], []]
+    const [existing, rules, suggest] = parsed.lines.length === 0
+      ? [[], [], () => null]
       : await Promise.all([
           this.prisma.transaction.findMany({
             where: { householdId: user.householdId, accountId: account.id, date: { gte: toDate(shift(dates[0]!, -TOLERANCE_DAYS)), lte: toDate(shift(dates.at(-1)!, TOLERANCE_DAYS)) } },
             select: { id: true, date: true, amountCents: true, label: true, importHash: true },
           }),
           this.prisma.recurringRule.findMany({ where: { householdId: user.householdId, accountId: account.id } }),
+          this.categorizer.load(user.householdId),
         ]);
     const lines = reconcile(
       parsed.lines.map((l, i) => ({ ...l, key: keys[i]! })),
       existing.map((t) => ({ id: t.id, date: toIso(t.date), amountCents: t.amountCents, label: t.label, importKey: t.importHash })),
       rules.map((r) => ({ id: r.id, label: r.label, amountCents: r.amountCents, frequency: r.frequency, start: toIso(r.start), ...(r.end ? { end: toIso(r.end) } : {}) })),
       TOLERANCE_DAYS,
-    ).map((l) => ({ key: l.key, date: l.date, amountCents: l.amountCents, label: l.label, status: l.status, ...(l.match ? { match: l.match } : {}) }));
+    ).map((l) => {
+      // Catégorie proposée pour les lignes qui seront créées (les opérations rapprochées gardent la leur).
+      const suggestion = l.status === "NEW" || l.status === "RECURRING" ? suggest(l.label) : null;
+      return {
+        key: l.key, date: l.date, amountCents: l.amountCents, label: l.label, status: l.status,
+        ...(l.match ? { match: l.match } : {}),
+        ...(suggestion ? { suggestion: { categoryId: suggestion.categoryId, source: suggestion.source } } : {}),
+      };
+    });
 
     await this.audit.record(user.householdId, user.userId, "statement.previewed");
     const count = (s: string) => lines.filter((l) => l.status === s).length;
@@ -97,6 +110,10 @@ export class ImportsController {
     const account = await this.prisma.bankAccount.findFirst({ where: { id: dto.accountId, householdId: user.householdId }, select: { id: true } });
     if (!account) throw new NotFoundException("Compte introuvable");
     const unique = [...new Map(dto.lines.map((l) => [l.key, l])).values()];
+    for (const id of new Set(unique.flatMap((l) => (l.categoryId ? [l.categoryId] : [])))) await this.categories.assertCategory(user.householdId, id);
+    // Catégorie absente : proposition automatique ; null : sans catégorie ; choisie : apprise après l'import.
+    const suggest = unique.some((l) => l.action === "CREATE" && l.categoryId === undefined) ? await this.categorizer.load(user.householdId) : null;
+    const categoryOf = (l: (typeof unique)[number]) => (l.categoryId === undefined ? (suggest?.(l.label)?.categoryId ?? null) : l.categoryId);
 
     const result = await this.prisma.$householdTransaction(async (tx) => {
       const known = new Set(
@@ -116,12 +133,13 @@ export class ImportsController {
       }
       const { count: created } = await tx.transaction.createMany({
         data: fresh.filter((x) => x.action === "CREATE").map((l) => ({
-          householdId: user.householdId, accountId: account.id, amountCents: l.amountCents, date: toDate(l.date), label: l.label, importHash: l.key,
+          householdId: user.householdId, accountId: account.id, amountCents: l.amountCents, date: toDate(l.date), label: l.label, importHash: l.key, categoryId: categoryOf(l),
         })),
         skipDuplicates: true,
       });
       return { created, linked, skipped: dto.lines.length - created - linked };
     });
+    await this.categorizer.learn(user.householdId, unique.flatMap((l) => (l.action === "CREATE" && l.categoryId ? [{ label: l.label, categoryId: l.categoryId }] : [])));
     await this.audit.record(user.householdId, user.userId, `statement.imported:${result.created}+${result.linked}`);
     return result;
   }

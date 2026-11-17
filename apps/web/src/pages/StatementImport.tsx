@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { api, ApiError, apiUpload, type Account, type ImportPreview, type ImportStatus } from "../api";
 import { Money } from "../privacy";
 import { Button, cardClass, fieldClass, useToast } from "../ui";
+import { useCategories } from "./Budgets";
 
 export const MAX_STATEMENT_MB = 2;
 
@@ -33,6 +34,9 @@ export function StatementImport({ accounts, onClose }: { accounts: Account[]; on
   const [accountId, setAccountId] = useState("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  /** Catégories changées par l'utilisateur dans l'aperçu ("" = sans catégorie) ; les autres lignes gardent la proposition. */
+  const [chosen, setChosen] = useState<Map<number, string>>(new Map());
+  const categories = useCategories().data?.categories ?? [];
   const [error, setError] = useState("");
 
   const analyse = useMutation({
@@ -40,6 +44,7 @@ export function StatementImport({ accounts, onClose }: { accounts: Account[]; on
     mutationFn: (file: File) => apiUpload<ImportPreview>(`/imports/preview?accountId=${accountId}`, file),
     onSuccess: (r) => {
       setPreview(r);
+      setChosen(new Map());
       setError("");
       // Par défaut : créer les nouvelles lignes et rapprocher celles déjà saisies ; une récurrence est déjà comptée.
       setSelected(new Set(r.lines.flatMap((l, i) => (l.status === "NEW" || l.status === "MATCHED" ? [i] : []))));
@@ -76,10 +81,13 @@ export function StatementImport({ accounts, onClose }: { accounts: Account[]; on
 
   function submit() {
     if (!preview) return;
-    const lines = preview.lines.flatMap((l, i) => {
+    const lines = preview.lines.flatMap((l, i): Record<string, unknown>[] => {
       if (!selected.has(i)) return [];
       const base = { key: l.key, date: l.date, amountCents: l.amountCents, label: l.label };
-      return [l.status === "MATCHED" ? { ...base, action: "LINK", transactionId: l.match!.id } : { ...base, action: "CREATE" }];
+      if (l.status === "MATCHED") return [{ ...base, action: "LINK", transactionId: l.match!.id }];
+      // Proposition non modifiée : le serveur la réapplique ; un choix (ou « sans catégorie ») est envoyé, puis appris.
+      const choice = chosen.get(i);
+      return [{ ...base, action: "CREATE", ...(choice === undefined ? {} : { categoryId: choice || null }) }];
     });
     if (lines.length === 0) return setError("Aucune ligne cochée : rien à importer.");
     setError("");
@@ -127,6 +135,13 @@ export function StatementImport({ accounts, onClose }: { accounts: Account[]; on
                     {l.label} <span className="text-xs text-slate-600">{l.date}</span>
                     <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-semibold ${st.className}`}>{st.label}</span>
                     {l.match && l.status !== "ALREADY_IMPORTED" && <span className="block text-xs text-slate-600">avec « {l.match.label} » du {l.match.date}</span>}
+                    {(l.status === "NEW" || l.status === "RECURRING") && categories.length > 0 && (
+                      <select value={chosen.get(i) ?? l.suggestion?.categoryId ?? ""} aria-label={`Catégorie de ${l.label} du ${l.date}`}
+                        onChange={(e) => setChosen(new Map(chosen).set(i, e.target.value))} className={`${fieldClass} mt-1 min-h-9 w-auto py-1 text-xs`}>
+                        <option value="">Sans catégorie</option>
+                        {categories.map((c) => <option key={c.id} value={c.id}>{c.name}{!chosen.has(i) && l.suggestion?.categoryId === c.id ? " (auto)" : ""}</option>)}
+                      </select>
+                    )}
                   </span>
                   <strong className={l.amountCents < 0 ? "text-red-700" : "text-emerald-700"}><Money cents={l.amountCents} /></strong>
                 </li>

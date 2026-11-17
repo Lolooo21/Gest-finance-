@@ -138,6 +138,12 @@ export const CategoryDto = z.object({
   rollover: z.boolean().default(false),
 });
 export type CategoryDto = z.infer<typeof CategoryDto>;
+/** Règle de catégorisation saisie : mot-clé (un ou plusieurs mots) → catégorie. */
+export const CategoryRuleDto = z.object({
+  pattern: z.string().trim().min(2, "Mot-clé trop court").max(60),
+  categoryId: z.string().uuid(),
+});
+export type CategoryRuleDto = z.infer<typeof CategoryRuleDto>;
 export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional() });
 export type BudgetQuery = z.infer<typeof BudgetQuery>;
 
@@ -154,6 +160,7 @@ export const ImportConfirmDto = z.object({
         label: z.string().trim().min(1).max(120),
         action: z.enum(["CREATE", "LINK"]),
         transactionId: z.string().uuid().optional(),
+        categoryId: z.string().uuid().nullable().optional(),
       }).refine((l) => l.action === "CREATE" || l.transactionId !== undefined, { message: "Opération à rapprocher manquante", path: ["transactionId"] }),
     )
     .min(1, "Aucune ligne à importer")

@@ -23,7 +23,7 @@ function mockApi(handler: Handler) {
     if (url.startsWith("/forecast") && !(r.json as { points?: unknown } | undefined)?.points) r = { json: EMPTY_FORECAST };
     if (url.startsWith("/goals/behavior") && !Array.isArray(r.json)) r = { json: [] };
     if (url === "/goals/savings" && method === "GET" && !(r.json as { goals?: unknown } | undefined)?.goals) r = { json: EMPTY_SAVINGS };
-    if (url.startsWith("/categories") && method === "GET" && !(r.json as { categories?: unknown } | undefined)?.categories) r = { json: EMPTY_BUDGETS };
+    if (/^\/categories(\?|$)/.test(url) && method === "GET" && !(r.json as { categories?: unknown } | undefined)?.categories) r = { json: EMPTY_BUDGETS };
     if (r.network) throw new TypeError("Failed to fetch");
     const status = r.status ?? 200;
     return { ok: status < 400, status, json: async () => { if (r.html) throw new SyntaxError("Unexpected token <"); return r.json ?? {}; } } as Response;
@@ -908,5 +908,121 @@ describe("import de relevés", () => {
     expect(calls.some((c) => c.url.startsWith("/imports"))).toBe(false);
     await user.upload(input, new File(["Date;Libellé;Montant"], "releve.ofx"));
     expect(await within(panel).findByText(/5000 opérations maximum/)).toBeInTheDocument();
+  });
+});
+
+describe("catégorisation automatique", () => {
+  const categories = {
+    month: "2026-11", uncategorizedSpentCents: 0, totals: { availableCents: 0, spentCents: 0 },
+    categories: [
+      { id: "k1", name: "Courses", monthlyBudgetCents: null, rollover: false, spentCents: 0, budget: null },
+      { id: "k2", name: "Santé", monthlyBudgetCents: null, rollover: false, spentCents: 0, budget: null },
+    ],
+  };
+  const base = (extra: Handler): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules" || (u.startsWith("/transactions") && m === "GET")) return { json: [] };
+    if (u === "/categories" && m === "GET") return { json: categories };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("propose la catégorie dans l'aperçu d'import et n'envoie que les choix modifiés", async () => {
+    const k = (c: string) => c.repeat(64);
+    const calls = mockApi(base((m, u) => {
+      if (u === "/imports/preview?accountId=a1") {
+        return { json: {
+          format: "CSV", warnings: [], skipped: 0, summary: { NEW: 3, MATCHED: 0, RECURRING: 0, ALREADY_IMPORTED: 0 },
+          lines: [
+            { key: k("a"), date: "2026-11-03", amountCents: -4_530, label: "CB CARREFOUR", status: "NEW", suggestion: { categoryId: "k1", source: "RULE" } },
+            { key: k("b"), date: "2026-11-04", amountCents: -1_200, label: "CB PHARMACIE", status: "NEW" },
+            { key: k("c"), date: "2026-11-05", amountCents: -900, label: "CB LECLERC", status: "NEW", suggestion: { categoryId: "k1", source: "MODEL" } },
+          ],
+        } };
+      }
+      if (u === "/imports/confirm") return { status: 201, json: { created: 3, linked: 0, skipped: 0 } };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Importer un relevé" }));
+    const panel = screen.getByLabelText("Importer un relevé");
+    await waitFor(() => expect(within(panel).getByLabelText("Compte du relevé")).toHaveTextContent("Courant"));
+    await user.selectOptions(within(panel).getByLabelText("Compte du relevé"), "a1");
+    await user.upload(within(panel).getByLabelText("Fichier du relevé"), new File(["x"], "releve.csv"));
+
+    const carrefour = await within(panel).findByLabelText("Catégorie de CB CARREFOUR du 2026-11-03");
+    expect(carrefour).toHaveValue("k1");
+    expect(within(carrefour).getByRole("option", { name: "Courses (auto)" })).toBeInTheDocument();
+    expect(within(panel).getByLabelText("Catégorie de CB PHARMACIE du 2026-11-04")).toHaveValue("");
+    await user.selectOptions(within(panel).getByLabelText("Catégorie de CB PHARMACIE du 2026-11-04"), "k2");
+    await user.selectOptions(within(panel).getByLabelText("Catégorie de CB LECLERC du 2026-11-05"), "");
+    await user.click(within(panel).getByRole("button", { name: "Importer 3 lignes" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/imports/confirm")).toBe(true));
+    const sent = (calls.find((c) => c.url === "/imports/confirm")!.body as { lines: object[] }).lines;
+    expect(sent[0]).not.toHaveProperty("categoryId");
+    expect(sent[1]).toMatchObject({ categoryId: "k2" });
+    expect(sent[2]).toMatchObject({ categoryId: null });
+  });
+
+  it("laisse la catégorie automatique par défaut à la saisie, ou force « sans catégorie »", async () => {
+    const calls = mockApi(base((m, u) => (u === "/transactions" && m === "POST" ? { status: 201, json: {} } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup();
+    const form = (await screen.findByRole("heading", { name: "Ajouter une entrée ou une sortie" })).closest("section")!;
+    await waitFor(() => expect(within(form).getByLabelText("Catégorie")).toHaveValue(""));
+    expect(within(form).getByLabelText("Catégorie")).toHaveTextContent("Catégorie automatique");
+    const fill = async (label: string) => {
+      await user.selectOptions(within(form).getByLabelText("Compte"), "a1");
+      await user.type(within(form).getByLabelText("Libellé"), label);
+      await user.type(within(form).getByLabelText("Montant"), "5");
+    };
+    await fill("CB CARREFOUR");
+    await user.click(within(form).getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.filter((c) => c.url === "/transactions" && c.method === "POST")).toHaveLength(1));
+    expect(calls.find((c) => c.url === "/transactions" && c.method === "POST")!.body).not.toHaveProperty("categoryId");
+
+    await fill("Cadeau");
+    await user.selectOptions(within(form).getByLabelText("Catégorie"), "none");
+    await user.click(within(form).getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.filter((c) => c.url === "/transactions" && c.method === "POST")).toHaveLength(2));
+    expect(calls.filter((c) => c.url === "/transactions" && c.method === "POST")[1]!.body).toMatchObject({ categoryId: null });
+  });
+
+  it("classe les opérations sans catégorie et gère les règles", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/categories/auto") return { json: { categorized: 4 } };
+      if (u === "/categories/rules" && m === "GET") {
+        return { json: [
+          { id: "r1", pattern: "carrefour", categoryId: "k1", category: "Courses", source: "LEARNED", hits: 3 },
+          { id: "r2", pattern: "pharmacie", categoryId: "k2", category: "Santé", source: "MANUAL", hits: 0 },
+        ] };
+      }
+      if (u === "/categories/rules" && m === "POST") return { status: 201, json: { id: "r3", pattern: "lidl" } };
+      if (u === "/categories/rules/r1" && m === "DELETE") return { status: 204 };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const zone = await screen.findByLabelText("Catégorisation automatique");
+    await user.click(within(zone).getByRole("button", { name: "Classer les opérations sans catégorie" }));
+    expect(await screen.findByText("4 opérations classées automatiquement.")).toBeInTheDocument();
+
+    await user.click(within(zone).getByRole("button", { name: "Règles de catégorisation" }));
+    const list = await within(zone).findByLabelText("Règles");
+    await waitFor(() => expect(list).toHaveTextContent("« carrefour » → Courses apprise · 3 fois"));
+    expect(list).toHaveTextContent("« pharmacie » → Santé saisie");
+
+    await user.click(within(zone).getByRole("button", { name: "Ajouter la règle" }));
+    expect(within(zone).getByRole("alert")).toHaveTextContent("Indiquez un mot-clé");
+    await user.type(within(zone).getByLabelText("Mot-clé"), "Lidl");
+    await user.click(within(zone).getByRole("button", { name: "Ajouter la règle" }));
+    expect(within(zone).getByRole("alert")).toHaveTextContent("Choisissez la catégorie");
+    await user.selectOptions(within(zone).getByLabelText("Catégorie de la règle"), "k1");
+    await user.click(within(zone).getByRole("button", { name: "Ajouter la règle" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/categories/rules" && c.method === "POST")?.body).toEqual({ pattern: "Lidl", categoryId: "k1" }));
+
+    await user.click(within(zone).getByRole("button", { name: "Supprimer la règle carrefour" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/categories/rules/r1" && c.method === "DELETE")).toBe(true));
   });
 });
