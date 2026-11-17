@@ -115,9 +115,31 @@ if ! exists rclone_conf allow-empty; then
   esac
 fi
 
+# --- E-mails (réinitialisation du mot de passe), facultatif ---
+MAIL_FROM_VALUE=""
+if ! exists smtp_url allow-empty; then
+  ANSWER="$(ask "Configurer maintenant l'envoi d'e-mails (lien « mot de passe oublié ») ? (o/N) : ")"
+  case "$ANSWER" in
+    o|O|oui|OUI)
+      SMTP="$(ask 'URL SMTP (ex. smtp://utilisateur:motdepasse@smtp.exemple.fr:587) : ')"
+      case "$SMTP" in smtp://*|smtps://*) ;; *) say "URL SMTP invalide (doit commencer par smtp:// ou smtps://)." >&2; exit 1 ;; esac
+      printf '%s' "$SMTP" > "$DIR/smtp_url"
+      MAIL_FROM_VALUE="$(ask 'Expéditeur (ex. Gest-finance <no-reply@exemple.fr>) : ')"
+      say "  + smtp_url créé"
+      ;;
+    *)
+      # Fichier vide = envoi désactivé (Docker exige que le fichier existe).
+      : > "$DIR/smtp_url"
+      say "  + smtp_url vide créé (envoi d'e-mails désactivé, à renseigner plus tard)"
+      ;;
+  esac
+  chmod 644 "$DIR/smtp_url"
+fi
+
 # --- infra/docker/.env (valeurs non secrètes) ---
 if [ ! -f "$ENV_FILE" ]; then
-  printf 'GEST_VERSION=local\nBACKUP_REMOTE=%s\n' "$REMOTE" > "$ENV_FILE"
+  # APP_URL : adresse https de l'application (liens des e-mails), à compléter avec le nom Tailscale une fois connu.
+  printf 'GEST_VERSION=local\nBACKUP_REMOTE=%s\nMAIL_FROM=%s\nAPP_URL=\n' "$REMOTE" "$MAIL_FROM_VALUE" > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
   say "  + $(basename "$ENV_FILE") créé"
 fi

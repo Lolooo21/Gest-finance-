@@ -25,6 +25,7 @@ erDiagram
     Household ||--o{ RecurringRule : "possède"
     Household ||--o{ AuditLog : "journal"
     User ||--o{ RefreshToken : "sessions"
+    User ||--o{ PasswordResetToken : "liens de réinitialisation"
     User ||--o| ReminderSetting : "rappel hebdo"
     User ||--o{ PushSubscription : "appareils"
     BankAccount ||--o{ Transaction : "opérations"
@@ -57,6 +58,13 @@ erDiagram
         bool totpEnabled
         int failedLogins
         datetime lockedUntil
+    }
+    PasswordResetToken {
+        uuid id PK
+        uuid userId FK
+        string tokenHash UK "SHA-256 du lien"
+        datetime expiresAt "30 minutes"
+        datetime usedAt "usage unique"
     }
     RefreshToken {
         uuid id PK
@@ -194,6 +202,7 @@ erDiagram
 - `Category` : une **catégorie de dépenses** du foyer (Courses, Loisirs…), au nom unique dans le foyer, à laquelle on rattache (facultativement) des opérations et des règles récurrentes ; la supprimer les laisse **sans catégorie**. Elle peut porter un **budget mensuel** (`monthlyBudgetCents`, une enveloppe) : les dépenses nettes du mois (sorties moins remboursements, récurrences du mois comprises) sont comparées au plafond, avec alerte à **80 %** puis à **100 %**. Avec `rollover`, le reliquat positif de chaque mois s'ajoute au plafond du suivant, à partir du mois où le budget a été fixé (`budgetSince`) ; un dépassement n'est jamais reporté. Rien n'est stocké : `finance-core` recalcule à chaque lecture.
 - `CategoryRule` : une **règle de catégorisation automatique** « mot-clé → catégorie ». Un libellé qui contient le mot-clé (mots entiers, sans accents ni casse) reçoit la catégorie. Les règles `LEARNED` naissent quand un adulte classe une opération : le premier mot significatif du libellé (en général le commerçant : « CB CARREFOUR EVRY 12/11 » → « carrefour ») pointe vers la catégorie choisie, et suit la dernière correction. Les règles `MANUAL` sont saisies et ne sont jamais écrasées par un classement. Sans règle applicable, un **classifieur bayésien naïf** entraîné sur les opérations déjà classées du foyer propose une catégorie s'il est assez sûr (5 exemples au moins, probabilité ≥ 60 %). Tout est calculé sur le serveur, rien n'est envoyé à un tiers.
 - `MarketSnapshot` (indépendante des foyers, **aucune donnée personnelle**) mémorise les indicateurs publics récupérés chaque jour (taux de dépôt de la BCE, OAT 10 ans France, inflation IPCH France) : une ligne par indicateur et par période observée. Les taux réglementés (Livret A, LDDS, LEP, PEL) ne sont pas en base : ils sont dans une configuration versionnée avec source et période de validité (`apps/api/src/market/regulated-rates.ts`), car ils ne changent que les 1er février et 1er août.
+- `PasswordResetToken` : lien « mot de passe oublié » envoyé par e-mail. Seule l'empreinte SHA-256 du jeton est stockée ; le lien vaut 30 minutes, une seule fois, et un nouveau lien annule les précédents. Table réservée au rôle `gest_system` (RLS activée sans droit pour `gest_app`).
 - `RefreshToken` stocke uniquement l'empreinte SHA-256 du jeton de session, avec rotation et révocation. `AuditLog` garde les actions (connexion, ajout…), sans montants ni secrets.
 
 ### Isolation par ligne (RLS PostgreSQL, jalon 8b)
@@ -210,7 +219,8 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 
 | Domaine | Fonctionnalité |
 |---|---|
-| Authentification | Inscription d'un foyer, connexion, déconnexion ; mot de passe Argon2id ; cookies HttpOnly + SameSite=Strict ; refresh token à rotation (réutilisation détectée = sessions révoquées) ; verrouillage 15 min après 5 échecs ; réponses identiques pour compte inconnu ou mauvais mot de passe |
+| Authentification | Inscription d'un foyer, connexion, déconnexion ; mot de passe Argon2id ; cookies HttpOnly + SameSite=Strict ; refresh token à rotation (réutilisation détectée = sessions révoquées) ; verrouillage 15 min après 5 échecs ; réponses identiques pour compte inconnu ou mauvais mot de passe ; bouton afficher / masquer le mot de passe à la connexion, à l'inscription et à la réinitialisation |
+| Mot de passe oublié | Lien par e-mail (SMTP ; Mailpit en développement) valable 30 minutes et à usage unique ; réponse identique et immédiate que l'adresse existe ou non ; 5 demandes par minute et par IP ; le nouveau mot de passe déverrouille le compte et ferme toutes les sessions ouvertes ; sans SMTP configuré, rien n'est envoyé |
 | 2FA | Activation TOTP depuis le tableau de bord ; code exigé à la connexion ensuite |
 | Foyer et rôles | Ajout de membres par le propriétaire ; `OWNER`/`ADULT` écrivent, `CHILD` en lecture seule ; journal d'audit (API, propriétaire) |
 | Comptes | Création, liste (solde courant, IBAN masqué), modification, suppression ; IBAN chiffré AES-256-GCM |
@@ -232,15 +242,15 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | Catégories et budgets | Catégories du foyer (`/categories`) avec budget mensuel facultatif : jauge, alerte à 80 % puis « plafond atteint » à 100 %, montant restant ou dépassement, report optionnel du reliquat sur le mois suivant ; catégorie choisie à la saisie d'une opération ou d'une récurrence et modifiable ensuite ; dépenses sans catégorie affichées ; écarts vs budget rappelés dans le bilan de la semaine ; écriture par un adulte, lecture pour tous |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (111 tests, ≥ 95 %), API sur PostgreSQL réel (171 tests, dont l'isolation par ligne et les droits des rôles), front (67 tests) |
+| Tests | `finance-core` (111 tests, ≥ 95 %), API sur PostgreSQL réel (178 tests, dont l'isolation par ligne et les droits des rôles), front (70 tests) |
 
-À venir (voir `TODO.md`) : affichage du mot de passe à la saisie et réinitialisation par e-mail, détection des abonnements, OCR des scans, historique et alertes sur les taux, passkeys.
+À venir (voir `TODO.md`) : détection des abonnements, OCR des scans, historique et alertes sur les taux, passkeys.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker.
 ```
 pnpm install
-docker compose -f infra/docker/compose.dev.yml up -d     # PostgreSQL + Redis
+docker compose -f infra/docker/compose.dev.yml up -d     # PostgreSQL + Redis + Mailpit (e-mails de test : http://localhost:8025)
 copy apps\api\.env.example apps\api\.env                  # (cp sous Linux/macOS)
 pnpm dev                                                  # API :3000 + front http://localhost:5173
 pnpm test

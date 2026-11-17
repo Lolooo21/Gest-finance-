@@ -46,6 +46,12 @@ export type LoginDto = z.infer<typeof LoginDto>;
 export const TotpCodeDto = z.object({ code: z.string().regex(/^\d{6}$/) });
 export type TotpCodeDto = z.infer<typeof TotpCodeDto>;
 
+/** Mot de passe oublié : la réponse est toujours la même, que le compte existe ou non. */
+export const ForgotPasswordDto = z.object({ email: z.string().email().max(254).transform((e) => e.toLowerCase()) });
+export type ForgotPasswordDto = z.infer<typeof ForgotPasswordDto>;
+export const ResetPasswordDto = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Lien invalide"), password });
+export type ResetPasswordDto = z.infer<typeof ResetPasswordDto>;
+
 export const AddMemberDto = z.object({
   email: z.string().email().max(254).transform((e) => e.toLowerCase()),
   password,

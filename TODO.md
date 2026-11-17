@@ -30,8 +30,9 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Recalcul du reste à vivre à chaque entrée/sortie (`GET /summary`, recalculé à la lecture ; cache/événements à faire si besoin de perf) | Terminé (jalon 3) |
 | Auth foyer : users, Argon2id, 2FA TOTP, rôles OWNER/ADULT/CHILD | Terminé (jalon 2) |
 | Passkeys WebAuthn | À faire (reporté du jalon 2) |
-| Afficher / masquer le mot de passe à la connexion et à l'inscription | À faire (prochain) |
-| Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | À faire (prochain) |
+| Afficher / masquer le mot de passe à la connexion et à l'inscription | Terminé (jalon 12) |
+| Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | Terminé (jalon 12) ; envoi réel à vérifier avec votre SMTP en production |
+| Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | À faire |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | À faire |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
 | Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) |

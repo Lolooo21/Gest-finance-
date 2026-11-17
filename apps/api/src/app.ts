@@ -9,7 +9,7 @@ import { JwtService } from "@nestjs/jwt";
 import { AppModule } from "./app.module.js";
 import { runInHousehold } from "./prisma/prisma.service.js";
 
-export async function createApp(opts: { rateLimitMax?: number } = {}): Promise<NestFastifyApplication> {
+export async function createApp(opts: { rateLimitMax?: number; resetLimitMax?: number } = {}): Promise<NestFastifyApplication> {
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: process.env.TRUST_PROXY === "1" }), { logger: process.env.NODE_ENV === "test" ? false : ["error", "warn"], abortOnError: false });
   app.useGlobalFilters(new AllExceptionsFilter(app.getHttpAdapter()));
   await app.register(helmet, { contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } } });
@@ -32,9 +32,11 @@ export async function createApp(opts: { rateLimitMax?: number } = {}): Promise<N
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 } });
   // L'import de PDF (coûteux) a son propre plafond et son propre compteur, par IP.
   const isUpload = (url: string) => url.startsWith("/payslips/parse");
+  // Les demandes de lien de réinitialisation (envoi d'e-mail) ont aussi leur plafond : 5 par minute et par IP.
+  const isResetRequest = (url: string) => url.startsWith("/auth/password/forgot");
   await app.register(rateLimit, {
-    max: (req) => (isUpload(req.url) ? 10 : (opts.rateLimitMax ?? 100)),
-    keyGenerator: (req) => (isUpload(req.url) ? `upload:${req.ip}` : req.ip),
+    max: (req) => (isResetRequest(req.url) ? (opts.resetLimitMax ?? 5) : isUpload(req.url) ? 10 : (opts.rateLimitMax ?? 100)),
+    keyGenerator: (req) => (isResetRequest(req.url) ? `reset:${req.ip}` : isUpload(req.url) ? `upload:${req.ip}` : req.ip),
     timeWindow: "1 minute",
   });
   return app;

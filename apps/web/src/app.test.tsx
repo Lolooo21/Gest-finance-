@@ -50,7 +50,7 @@ describe("App", () => {
     renderApp();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("E-mail"), "Ada@Example.com");
-    await user.type(screen.getByLabelText(/Mot de passe/), "correct-horse-battery");
+    await user.type(screen.getByLabelText("Mot de passe"), "correct-horse-battery");
     await user.click(screen.getByRole("button", { name: "Se connecter" }));
     expect(await screen.findByLabelText("Reste à vivre")).toBeInTheDocument();
     expect(calls.find((c) => c.url === "/auth/login")?.body).toMatchObject({ email: "Ada@Example.com", password: "correct-horse-battery" });
@@ -1024,5 +1024,84 @@ describe("catégorisation automatique", () => {
 
     await user.click(within(zone).getByRole("button", { name: "Supprimer la règle carrefour" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/categories/rules/r1" && c.method === "DELETE")).toBe(true));
+  });
+});
+
+describe("mot de passe", () => {
+  const anonymous = (extra: Handler = () => undefined as never): Handler => (m, u, b) => {
+    if (u === "/household/members") return { status: 401 };
+    if (u === "/auth/refresh") return { status: 401 };
+    return extra(m, u, b) ?? { json: {} };
+  };
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("affiche et masque le mot de passe à la connexion et à l'inscription", async () => {
+    mockApi(anonymous());
+    renderApp();
+    const user = userEvent.setup();
+    const field = await screen.findByLabelText("Mot de passe");
+    expect(field).toHaveAttribute("type", "password");
+    // Un visiteur non connecté ne voit pas « session expirée ».
+    expect(screen.queryByText(/session a expiré/)).not.toBeInTheDocument();
+    await user.type(field, "secret-visible");
+    await user.click(screen.getByRole("button", { name: "Afficher : Mot de passe" }));
+    expect(field).toHaveAttribute("type", "text");
+    expect(field).toHaveValue("secret-visible");
+    expect(screen.getByRole("button", { name: "Masquer : Mot de passe" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Masquer : Mot de passe" }));
+    expect(field).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /Créer un foyer/ }));
+    const registerField = screen.getByLabelText(/^Mot de passe/);
+    expect(registerField).toHaveAttribute("type", "password");
+    expect(registerField).toHaveAttribute("autocomplete", "new-password");
+    await user.click(screen.getByRole("button", { name: "Afficher : Mot de passe" }));
+    expect(registerField).toHaveAttribute("type", "text");
+  });
+
+  it("demande un lien de réinitialisation et affiche une confirmation neutre", async () => {
+    const calls = mockApi(anonymous((m, u) => (u === "/auth/password/forgot" ? { status: 202, json: { ok: true } } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Mot de passe oublié ?" }));
+    expect(screen.getByRole("heading", { name: "Mot de passe oublié" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("E-mail"), "ada@example.com");
+    await user.click(screen.getByRole("button", { name: "Recevoir le lien" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Si un compte correspond à cette adresse");
+    expect(calls.find((c) => c.url === "/auth/password/forgot")?.body).toEqual({ email: "ada@example.com" });
+    expect(screen.queryByRole("button", { name: "Recevoir le lien" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retour à la connexion" }));
+    expect(screen.getByRole("heading", { name: "Connexion" })).toBeInTheDocument();
+  });
+
+  it("choisit un nouveau mot de passe depuis le lien, vérifie la confirmation, puis revient à la connexion", async () => {
+    const token = "a".repeat(43);
+    window.history.replaceState(null, "", `/?reinitialisation=${token}`);
+    let attempts = 0;
+    const calls = mockApi(anonymous((m, u) => {
+      if (u !== "/auth/password/reset") return undefined as never;
+      attempts++;
+      return attempts === 1 ? { status: 400, json: { message: "Lien invalide ou expiré : demandez-en un nouveau." } } : { json: { ok: true } };
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    expect(await screen.findByRole("heading", { name: "Nouveau mot de passe" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("E-mail")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^Nouveau mot de passe/), "nouveau-mot-de-passe");
+    await user.type(screen.getByLabelText("Confirmez le mot de passe"), "autre-mot-de-passe");
+    await user.click(screen.getByRole("button", { name: "Enregistrer le mot de passe" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("ne sont pas identiques");
+    expect(calls.some((c) => c.url === "/auth/password/reset")).toBe(false);
+
+    await user.clear(screen.getByLabelText("Confirmez le mot de passe"));
+    await user.type(screen.getByLabelText("Confirmez le mot de passe"), "nouveau-mot-de-passe");
+    await user.click(screen.getByRole("button", { name: "Enregistrer le mot de passe" }));
+    expect(await screen.findByText("Lien invalide ou expiré : demandez-en un nouveau.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Enregistrer le mot de passe" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Mot de passe modifié");
+    expect(calls.filter((c) => c.url === "/auth/password/reset").at(-1)?.body).toEqual({ token, password: "nouveau-mot-de-passe" });
+    expect(screen.getByRole("heading", { name: "Connexion" })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
   });
 });
