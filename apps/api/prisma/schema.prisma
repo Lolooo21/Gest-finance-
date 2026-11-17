@@ -30,6 +30,7 @@ model Household {
   savingsGoals SavingsGoal[]
   savingsContributions SavingsContribution[]
   categories Category[]
+  categoryRules CategoryRule[]
 }
 
 model User {
@@ -270,8 +271,33 @@ model Category {
   createdAt          DateTime @default(now())
   transactions       Transaction[]
   recurringRules     RecurringRule[]
+  rules              CategoryRule[]
 
   @@unique([householdId, name])
+}
+
+enum RuleSource {
+  MANUAL
+  LEARNED
+}
+
+/// Règle de catégorisation automatique : un libellé contenant le mot-clé (mots entiers, normalisés) reçoit la catégorie.
+/// MANUAL = saisie par un adulte ; LEARNED = apprise quand un adulte classe une opération (une règle saisie n'est jamais écrasée).
+model CategoryRule {
+  id          String     @id @default(uuid())
+  householdId String
+  household   Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  /// Mot-clé normalisé (minuscules, sans accents), un ou plusieurs mots
+  pattern     String
+  categoryId  String
+  category    Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  source      RuleSource
+  /// Nombre de fois où la règle a été confirmée par un classement
+  hits        Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  @@unique([householdId, pattern])
+  @@index([categoryId])
 }
 
 /// Indicateur de marché public (BCE, Eurostat) : non rattaché à un foyer, aucune donnée personnelle.

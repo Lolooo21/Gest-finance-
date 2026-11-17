@@ -316,6 +316,24 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Front
 - `pages/StatementImport.tsx` : action rapide « Importer un relevé » ; choix du compte et du fichier (contrôle de l'extension et de la taille avant envoi), aperçu avec résumé, avertissements, statut et rapprochement de chaque ligne, cases cochées par défaut pour les nouvelles et les déjà saisies, import puis notification. Tests : 2 nouveaux (front : 64).
 
+## Jalon 11b — Catégorisation automatique (règles apprises et classifieur local)
+### `packages/finance-core` (`categorize.ts`)
+- `significantTokens()` (sans bruit bancaire : CB, PRLV, SEPA, VIR…, ni chiffres, ni mois), `labelPattern()` (mot-clé appris : premier mot significatif), `normalizePattern()`, `patternMatches()` (mots entiers : « free » ne correspond pas à « freebox »).
+- `matchRule()` : règle saisie avant règle apprise, puis mot-clé le plus long, puis la plus utilisée.
+- `trainClassifier()` / `classify()` : bayésien naïf multinomial avec lissage de Laplace, abstention sous 5 exemples, sans mot connu ou sous 60 % de probabilité.
+- Compteurs du classifieur en `Map` (alerte CodeQL : un mot comme « constructor » tombait sur une propriété héritée d'objet).
+- `suggestCategory()` : règle, sinon classifieur, sinon rien. Tests : 8 nouveaux (finance-core : 111).
+### API
+- Table `CategoryRule` (mot-clé unique par foyer, source `MANUAL`/`LEARNED`, `hits`, suppression en cascade avec la catégorie ; migration `categorisation_auto` avec RLS et droits).
+- `categorizer.service.ts` : `load()` (règles + classifieur entraîné sur les 3 000 dernières opérations classées), `resolve()` (catégorie absente = automatique, `null` = sans, choisie = vérifiée et apprise), `learn()` (le dernier choix l'emporte, une règle saisie n'est jamais modifiée), `applyToUncategorized()`.
+- `POST /transactions` et `POST /recurring-rules` : catégorie automatique si absente ; `PATCH` : un reclassement est appris. `POST /imports/preview` : `suggestion` (catégorie et source) pour les lignes à créer ; `POST /imports/confirm` : `categoryId` par ligne (absent = proposition, vérifié contre le foyer), choix appris.
+- `GET/POST /categories/rules`, `DELETE /categories/rules/:id`, `POST /categories/auto` ; écriture réservée aux adultes ; audit sans mot-clé.
+- Tests (API : 171, +5) : apprentissage et correction, priorité des règles saisies, classement en masse (règle puis classifieur), proposition et choix à l'import, catégorie d'un autre foyer refusée, isolation, droits, audit.
+### Front
+- `pages/CategoryRules.tsx` (dans la carte des budgets) : « Classer les opérations sans catégorie », règles listées (saisie / apprise · n fois), ajout avec contrôle et suppression.
+- `pages/StatementImport.tsx` : catégorie proposée par ligne (« (auto) »), modifiable ; seules les modifications sont envoyées. `pages/Dashboard.tsx` : « Catégorie automatique » par défaut, « Sans catégorie » explicite.
+- Tests : 3 nouveaux (front : 67).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
