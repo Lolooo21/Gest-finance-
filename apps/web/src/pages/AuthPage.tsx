@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
 import { Button, fieldClass, Icon } from "../ui";
 
@@ -10,7 +10,7 @@ const label = "flex flex-col gap-1 text-sm font-medium";
 export const resetTokenFromUrl = () => new URLSearchParams(window.location.search).get("reinitialisation");
 
 /** Champ mot de passe avec un bouton pour l'afficher en clair (vérifier sa saisie), masqué par défaut. */
-function PasswordField({ name, label: text, hint, autoComplete, minLength }: { name: string; label: string; hint?: string; autoComplete: string; minLength: number }) {
+export function PasswordField({ name, label: text, hint, autoComplete, minLength }: { name: string; label: string; hint?: string; autoComplete: string; minLength: number }) {
   const [visible, setVisible] = useState(false);
   return (
     <label className={label}>
@@ -34,6 +34,12 @@ export function AuthPage({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Inscription fermée dès qu'un foyer existe : le bouton « Créer un foyer » n'est proposé que pour la première installation.
+  const [registrationOpen, setRegistrationOpen] = useState(true);
+  useEffect(() => {
+    api<{ open?: boolean }>("GET", "/auth/registration").then((r) => setRegistrationOpen(r.open !== false), () => undefined);
+  }, []);
 
   const go = (m: Mode) => { setMode(m); setError(""); setNotice(""); };
 
@@ -91,7 +97,9 @@ export function AuthPage({ onDone }: { onDone: () => void }) {
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {!(mode === "forgot" && notice) && <Button type="submit" loading={busy}>{action}</Button>}
         {mode === "login" && <Button variant="ghost" onClick={() => go("forgot")}>Mot de passe oublié ?</Button>}
-        {mode === "login" || mode === "register" ? (
+        {mode === "login" && !registrationOpen ? (
+          <p className="text-center text-xs text-slate-600">Pas encore de compte ? Demandez au propriétaire du foyer de vous ajouter.</p>
+        ) : mode === "login" || mode === "register" ? (
           <Button variant="secondary" onClick={() => go(mode === "login" ? "register" : "login")}>
             {mode === "login" ? "Pas encore de compte ? Créer un foyer" : "J'ai déjà un compte : me connecter"}
           </Button>

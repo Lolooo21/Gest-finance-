@@ -52,6 +52,10 @@ export type ForgotPasswordDto = z.infer<typeof ForgotPasswordDto>;
 export const ResetPasswordDto = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Lien invalide"), password });
 export type ResetPasswordDto = z.infer<typeof ResetPasswordDto>;
 
+/** Changement de mot de passe d'un utilisateur connecté : l'ancien est exigé. */
+export const ChangePasswordDto = z.object({ currentPassword: z.string().min(1).max(128), newPassword: password });
+export type ChangePasswordDto = z.infer<typeof ChangePasswordDto>;
+
 export const AddMemberDto = z.object({
   email: z.string().email().max(254).transform((e) => e.toLowerCase()),
   password,

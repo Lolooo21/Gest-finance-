@@ -12,7 +12,7 @@ import { MailSender, SmtpMailSender } from "../mail/mail.sender.js";
       useFactory: () => {
         const secret = process.env.JWT_SECRET;
         if (!secret || secret.length < 32) throw new Error("JWT_SECRET (>= 32 caractères) est obligatoire");
-        return { secret, signOptions: { expiresIn: "15m" } };
+        return { secret, signOptions: { expiresIn: "15m", algorithm: "HS256" }, verifyOptions: { algorithms: ["HS256"] } };
       },
     }),
   ],

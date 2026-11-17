@@ -51,8 +51,10 @@ done
 echo "== Parcours complet"
 EMAIL="smoke-$(date +%s)@example.com"
 code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' -c "$JAR" -H 'Content-Type: application/json' -X POST "$BASE/auth/register" \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"smoke-test-password-123\",\"displayName\":\"Test\",\"householdName\":\"Foyer test\"}")"
+  -d "{\"email\":\"$EMAIL\",\"password\":\"cheval-agrafe-batterie-correcte\",\"displayName\":\"Test\",\"householdName\":\"Foyer test\"}")"
 [ "$code" = "201" ] && ok "inscription (201)" || fail "inscription : code $code"
+code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' -b "$JAR" -H 'Content-Type: application/json' -H 'Origin: https://site-malveillant.example' -X POST "$BASE/accounts" -d '{"name":"CSRF","type":"CHECKING","initialBalanceCents":0}')"
+[ "$code" = "403" ] && ok "requête d'un autre site refusée (CSRF)" || fail "requête d'un autre site acceptée : code $code"
 grep -qi 'HttpOnly' "$JAR" && ok "cookie de session HttpOnly" || fail "cookie sans HttpOnly"
 ACCOUNT="$(curl -s -m 10 -b "$JAR" -H 'Content-Type: application/json' -X POST "$BASE/accounts" -d '{"name":"Courant","type":"CHECKING","initialBalanceCents":100000,"iban":"FR7630006000011234567890189"}')"
 echo "$ACCOUNT" | grep -q '"ibanMasked":"FR76' && ok "compte créé, IBAN masqué" || fail "création de compte : $ACCOUNT"

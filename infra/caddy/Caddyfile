@@ -2,6 +2,10 @@
 	# HTTP interne : le HTTPS (certificat *.ts.net) est terminé par Tailscale devant ce proxy.
 	auto_https off
 	admin off
+	# Seuls des proxys internes (Tailscale, réseau Docker privé) atteignent Caddy : on leur fait confiance pour l'IP du client.
+	servers {
+		trusted_proxies static private_ranges 100.64.0.0/10
+	}
 }
 
 :8080 {
@@ -21,7 +25,7 @@
 	@api path /auth /auth/* /household /household/* /accounts /accounts/* /transactions /transactions/* /recurring-rules /recurring-rules/* /summary /summary/* /reminder /reminder/* /push /push/* /review /review/* /payslips /payslips/* /market /market/* /savings /savings/* /forecast /forecast/* /goals /goals/* /categories /categories/* /imports /imports/* /subscriptions /subscriptions/* /health /health/*
 	handle @api {
 		reverse_proxy api:3000 {
-			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-For {client_ip}
 			transport http {
 				dial_timeout 5s
 				response_header_timeout 30s

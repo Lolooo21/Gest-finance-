@@ -44,6 +44,10 @@ model User {
   role          Role
   totpSecret    String?
   totpEnabled   Boolean  @default(false)
+  /// Dernier pas TOTP (30 s) accepté : un même code ne sert qu'une fois
+  totpLastStep  Int?
+  /// Incrémentée à chaque changement de mot de passe : invalide aussitôt tous les jetons d'accès déjà émis
+  sessionVersion Int     @default(0)
   failedLogins  Int      @default(0)
   lockedUntil   DateTime?
   createdAt     DateTime @default(now())

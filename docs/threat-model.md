@@ -43,3 +43,23 @@
 | Perte ou vol des sauvegardes | Chiffrées avec age par une clé publique : la clé privée n'est jamais sur le serveur ni chez le fournisseur S3 ; restauration vers la production bloquée sans confirmation ; test de restauration automatisé | Perte de la clé privée = sauvegardes définitivement illisibles ; perte de `field_encryption_key` = IBAN illisibles |
 | Chaîne d'approvisionnement | Images de base versionnées (Dependabot), `--frozen-lockfile`, Trivy/hadolint/Semgrep/CodeQL, provenance, SBOM et signature cosign à la publication | Dépendance compromise non encore signalée |
 | Inscription ouverte à tout le réseau privé | Réseau Tailscale restreint à vos appareils | Tout appareil du réseau peut créer un foyer : désactivation de l'inscription à prévoir |
+
+## Durcissement de l'authentification et des requêtes (jalon 14)
+| Menace | Mesure | Risque résiduel |
+|---|---|---|
+| Force brute sur la connexion | Verrouillage du compte 15 min après 5 échecs ; 10 tentatives d'authentification par minute et par IP (connexion, inscription, codes 2FA, changement et réinitialisation de mot de passe), compteur séparé du reste de l'API ; Argon2id ; même réponse et même coût pour un compte inconnu | Un attaquant du réseau Tailscale peut verrouiller un compte 15 min (déni de service ciblé) |
+| Vraie IP du client masquée par les proxys | Caddy fait confiance aux seuls proxys internes (plages privées et Tailscale `100.64.0.0/10`) et transmet l'IP du client (`{client_ip}`) : chaque appareil a son propre compteur | À vérifier au premier déploiement : si Tailscale ne transmet pas l'IP, tous les appareils partagent un compteur |
+| Rejeu d'un code 2FA intercepté | Dernier pas TOTP accepté mémorisé (`totpLastStep`) : un code ne sert qu'une fois, fenêtre de tolérance de ± 30 s | — |
+| Mot de passe faible | 12 caractères minimum ; refus des mots très courants, des mots de passe faits de chiffres ou de caractères répétés, et de ceux qui reprennent le nom, l'e-mail ou le foyer (inscription, ajout de membre, changement, réinitialisation) | Pas de vérification contre les bases de mots de passe divulgués (aucun appel externe, par choix) |
+| CSRF (requête forgée depuis un autre site) | Cookies `SameSite=Strict` ; en plus, toute requête qui modifie des données est refusée (403) si le navigateur la déclare inter-sites (`Sec-Fetch-Site`) ou si son `Origin` n'est ni l'hôte appelé, ni `APP_URL`, ni une origine de `CSRF_TRUSTED_ORIGINS` ; pas de CORS | — |
+| Injection SQL | Requêtes Prisma paramétrées ; les seules requêtes brutes sont des modèles balisés (paramétrés) ; un test échoue si `$queryRawUnsafe`, `$executeRawUnsafe` ou `Prisma.raw(` apparaît dans l'API ; RLS en défense en profondeur | `scripts/setup-roles.mjs` construit un `ALTER ROLE` (les mots de passe ne peuvent pas y être paramétrés) : valeur fournie par l'administrateur, apostrophes échappées, hors API |
+| Jeton d'accès volé ou session à couper | Version de session dans le jeton, relue à chaque requête : changement ou réinitialisation de mot de passe et réutilisation d'un jeton de rafraîchissement volé coupent aussitôt tous les jetons d'accès ; algorithme JWT imposé (HS256, ni `none` ni autre) | Après une simple déconnexion, un jeton d'accès copié reste valable jusqu'à 15 min |
+| Inscription d'inconnus | Inscription ouverte seulement tant qu'aucun foyer n'existe (première installation), sauf `ALLOW_REGISTRATION=1` ; les membres sont ajoutés par le propriétaire | — |
+| Données financières en cache | `Cache-Control: no-store` sur toutes les réponses de l'API ; le service worker ne met jamais l'API en cache | — |
+| XSS | React échappe tout le texte ; aucun `dangerouslySetInnerHTML` ; CSP stricte (`script-src 'self'`) ; cookies HttpOnly | — |
+
+### Risques résiduels à connaître
+- **Données en base** : seul l'IBAN est chiffré champ par champ ; montants et libellés sont en clair dans PostgreSQL (protégés par la RLS, les droits des rôles et l'absence de port ouvert). Les sauvegardes sont chiffrées. Pour le disque du VPS, préférez un hébergement avec disque chiffré et ne gardez jamais `secrets/` hors du serveur sans chiffrement.
+- **Réseau Tailscale** : toute personne admise sur le réseau atteint l'application ; n'y invitez que le foyer, activez la 2FA du compte Tailscale.
+- **Lecture des PDF** dans le processus de l'API (fiches de paie) : à isoler dans un processus avec délai maximal (voir `TODO.md`).
+- **Pas de test d'intrusion dynamique** (DAST) automatisé : ZAP est prévu dans la CI.

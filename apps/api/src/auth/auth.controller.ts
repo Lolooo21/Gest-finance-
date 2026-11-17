@@ -1,6 +1,6 @@
 import "@fastify/cookie";
-import { Body, Controller, HttpCode, Logger, Post, Req, Res, UseGuards, UnauthorizedException } from "@nestjs/common";
-import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, TotpCodeDto } from "@gest-finance/shared";
+import { Body, Controller, Get, HttpCode, Logger, Post, Req, Res, UseGuards, UnauthorizedException } from "@nestjs/common";
+import { ChangePasswordDto, ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, TotpCodeDto } from "@gest-finance/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { AuthGuard, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
@@ -19,6 +19,12 @@ export class AuthController {
   private readonly logger = new Logger("Auth");
 
   constructor(private readonly auth: AuthService) {}
+
+  /** L'écran d'inscription n'est proposé que si elle est ouverte (première installation ou ALLOW_REGISTRATION=1). */
+  @Get("registration")
+  async registration() {
+    return { open: await this.auth.registrationOpen() };
+  }
 
   @Post("register")
   async register(@Body(new ZodPipe(RegisterDto)) dto: RegisterDto, @Res({ passthrough: true }) res: FastifyReply) {
@@ -66,6 +72,14 @@ export class AuthController {
   @HttpCode(200)
   async reset(@Body(new ZodPipe(ResetPasswordDto)) dto: ResetPasswordDto) {
     await this.auth.resetPassword(dto);
+    return { ok: true };
+  }
+
+  @Post("password/change")
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  async change(@CurrentUser() user: AuthUser, @Body(new ZodPipe(ChangePasswordDto)) dto: ChangePasswordDto, @Res({ passthrough: true }) res: FastifyReply) {
+    setSession(res, await this.auth.changePassword(user.userId, dto));
     return { ok: true };
   }
 

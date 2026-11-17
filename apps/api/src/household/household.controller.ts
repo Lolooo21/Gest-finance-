@@ -41,6 +41,7 @@ export class HouseholdController {
   @Roles("OWNER")
   async addMember(@CurrentUser() user: AuthUser, @Body(new ZodPipe(AddMemberDto)) dto: AddMemberDto) {
     // Unicité de l'e-mail sur tous les foyers : la RLS cache les autres foyers, donc contrôle par le client système.
+    this.auth.assertStrongPassword(dto.password, [dto.email, dto.displayName]);
     if (await this.system.user.findUnique({ where: { email: dto.email }, select: { id: true } })) throw new ConflictException("Ajout impossible");
     const member = await this.prisma.user.create({
       data: {

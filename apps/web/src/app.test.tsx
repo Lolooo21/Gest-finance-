@@ -1193,3 +1193,49 @@ describe("abonnements détectés", () => {
     expect(text).toMatch(/Canal hausse de 12 %.*-24,99 € → -27,99 €/);
   });
 });
+
+describe("sécurité du compte", () => {
+  it("ne propose pas de créer un foyer quand l'inscription est fermée", async () => {
+    mockApi((m, u) => {
+      if (u === "/household/members") return { status: 401 };
+      if (u === "/auth/refresh") return { status: 401 };
+      if (u === "/auth/registration") return { json: { open: false } };
+      return { json: {} };
+    });
+    renderApp();
+    expect(await screen.findByText(/Demandez au propriétaire du foyer de vous ajouter/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Créer un foyer/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mot de passe oublié ?" })).toBeInTheDocument();
+  });
+
+  it("change le mot de passe en vérifiant la confirmation, et affiche le refus du serveur", async () => {
+    let attempts = 0;
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      if (u === "/auth/password/change") {
+        attempts++;
+        return attempts === 1 ? { status: 400, json: { message: "Mot de passe actuel incorrect" } } : { json: { ok: true } };
+      }
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Changer le mot de passe" }));
+    const panel = screen.getByLabelText("Changer le mot de passe");
+    await user.type(within(panel).getByLabelText("Mot de passe actuel"), "ancien-mot-de-passe");
+    await user.type(within(panel).getByLabelText(/^Nouveau mot de passe/), "une-phrase-toute-neuve");
+    await user.type(within(panel).getByLabelText("Confirmez le nouveau mot de passe"), "une-autre-phrase");
+    await user.click(within(panel).getByRole("button", { name: "Changer le mot de passe" }));
+    expect(within(panel).getByRole("alert")).toHaveTextContent("ne sont pas identiques");
+    expect(calls.some((c) => c.url === "/auth/password/change")).toBe(false);
+
+    await user.clear(within(panel).getByLabelText("Confirmez le nouveau mot de passe"));
+    await user.type(within(panel).getByLabelText("Confirmez le nouveau mot de passe"), "une-phrase-toute-neuve");
+    await user.click(within(panel).getByRole("button", { name: "Changer le mot de passe" }));
+    expect(await within(panel).findByText("Mot de passe actuel incorrect")).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Changer le mot de passe" }));
+    expect(await screen.findByText(/vos autres appareils devront se reconnecter/)).toBeInTheDocument();
+    expect(calls.filter((c) => c.url === "/auth/password/change").at(-1)?.body).toEqual({ currentPassword: "ancien-mot-de-passe", newPassword: "une-phrase-toute-neuve" });
+  });
+});
