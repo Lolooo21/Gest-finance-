@@ -9,11 +9,13 @@ beforeAll(async () => {
 afterAll(() => app.close());
 beforeEach(() => resetDb(app));
 
-const member = { email: "enfant@example.com", password: "mot-de-passe-enfant-1", displayName: "Léa", role: "CHILD" };
+const member = { email: "enfant@example.com", password: "cheval-agrafe-batterie", displayName: "Léa", role: "CHILD" };
 
 describe("foyer et rôles", () => {
   it("le propriétaire ajoute un membre ; un enfant ne peut pas ajouter ni lire l'audit", async () => {
     const a = sessionCookies(await post(app, "/auth/register", owner(1)));
+    // Un mot de passe qui reprend l'adresse du membre est refusé.
+    expect((await post(app, "/household/members", { ...member, password: "mot-de-passe-enfant-1" }, { access: a.access! })).statusCode).toBe(400);
     const added = await post(app, "/household/members", member, { access: a.access! });
     expect(added.statusCode).toBe(201);
     expect(added.json()).not.toHaveProperty("passwordHash");

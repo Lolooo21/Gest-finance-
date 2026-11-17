@@ -58,6 +58,8 @@ erDiagram
         string totpSecret "2FA"
         bool totpEnabled
         int failedLogins
+        int totpLastStep "dernier code 2FA utilisé (anti-rejeu)"
+        int sessionVersion "coupe les jetons d'accès émis"
         datetime lockedUntil
     }
     PasswordResetToken {
@@ -226,7 +228,7 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 
 | Domaine | Fonctionnalité |
 |---|---|
-| Authentification | Inscription d'un foyer, connexion, déconnexion ; mot de passe Argon2id ; cookies HttpOnly + SameSite=Strict ; refresh token à rotation (réutilisation détectée = sessions révoquées) ; verrouillage 15 min après 5 échecs ; réponses identiques pour compte inconnu ou mauvais mot de passe ; bouton afficher / masquer le mot de passe à la connexion, à l'inscription et à la réinitialisation |
+| Authentification | Inscription d'un foyer, connexion, déconnexion ; mot de passe Argon2id ; cookies HttpOnly + SameSite=Strict ; refresh token à rotation (réutilisation détectée = sessions révoquées) ; verrouillage 15 min après 5 échecs ; réponses identiques pour compte inconnu ou mauvais mot de passe ; bouton afficher / masquer le mot de passe à la connexion, à l'inscription et à la réinitialisation ; inscription ouverte seulement pour le premier foyer (`ALLOW_REGISTRATION=1` pour la rouvrir) ; changement de mot de passe (l'ancien exigé, autres appareils déconnectés) ; politique de mot de passe (mots courants, chiffres seuls, nom ou e-mail repris refusés) |
 | Mot de passe oublié | Lien par e-mail (SMTP ; Mailpit en développement) valable 30 minutes et à usage unique ; réponse identique et immédiate que l'adresse existe ou non ; 5 demandes par minute et par IP ; le nouveau mot de passe déverrouille le compte et ferme toutes les sessions ouvertes ; sans SMTP configuré, rien n'est envoyé |
 | 2FA | Activation TOTP depuis le tableau de bord ; code exigé à la connexion ensuite |
 | Foyer et rôles | Ajout de membres par le propriétaire ; `OWNER`/`ADULT` écrivent, `CHILD` en lecture seule ; journal d'audit (API, propriétaire) |
@@ -248,11 +250,12 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | Abonnements | Carte « Abonnements détectés » (`/subscriptions`) : prélèvements réguliers sans récurrence (fréquence, nombre d'occurrences, prochaine échéance, hausse de prix), ajout aux récurrences en un clic (nom modifiable, à partir de la prochaine échéance, catégorie reprise), récurrences dont le prix réel a changé avec « Appliquer le nouveau prix », « Ignorer » mémorisé et « Réafficher » ; rappel dans le bilan de la semaine ; écriture par un adulte |
 | Catégorisation automatique | Catégorie proposée à l'import (modifiable ligne par ligne, « (auto) ») et à la saisie (« Catégorie automatique » par défaut, « Sans catégorie » possible) ; apprentissage de chaque classement ou correction ; règles saisies prioritaires ; bouton « Classer les opérations sans catégorie » ; liste des règles (saisies ou apprises, nombre d'utilisations) avec ajout et suppression ; classifieur local en repli |
 | Catégories et budgets | Catégories du foyer (`/categories`) avec budget mensuel facultatif : jauge, alerte à 80 % puis « plafond atteint » à 100 %, montant restant ou dépassement, report optionnel du reliquat sur le mois suivant ; catégorie choisie à la saisie d'une opération ou d'une récurrence et modifiable ensuite ; dépenses sans catégorie affichées ; écarts vs budget rappelés dans le bilan de la semaine ; écriture par un adulte, lecture pour tous |
+| Durcissement (jalon 14) | 10 tentatives d'authentification par minute et par IP ; codes 2FA à usage unique (anti-rejeu) ; protection CSRF par vérification de l'origine en plus de SameSite=Strict ; jetons d'accès coupés aussitôt après un changement de mot de passe ou un vol de jeton détecté (version de session) ; algorithme JWT imposé ; `Cache-Control: no-store` ; vraie IP du client transmise par Caddy ; test interdisant le SQL non paramétré ; détail et risques résiduels dans `docs/threat-model.md` |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (121 tests, ≥ 95 %), API sur PostgreSQL réel (184 tests, dont l'isolation par ligne et les droits des rôles), front (73 tests) |
+| Tests | `finance-core` (121 tests, ≥ 95 %), API sur PostgreSQL réel (197 tests, dont l'isolation par ligne, les droits des rôles, CSRF, force brute et sessions), front (75 tests) |
 
-À venir (voir `TODO.md`) : inscription fermée une fois le foyer créé, comptes individuels ou joints, page du journal d'audit, export et suppression des données, passkeys, OCR des scans.
+À venir (voir `TODO.md`) : comptes individuels ou joints, page du journal d'audit, export et suppression des données, passkeys, test d'intrusion automatisé (ZAP), OCR des scans.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker. Mise en production : [`docs/deploiement.md`](docs/deploiement.md) et le guide pas à pas OVH [`docs/deploiement-ovh.md`](docs/deploiement-ovh.md).
