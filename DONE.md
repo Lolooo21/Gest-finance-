@@ -303,7 +303,8 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
-- Image proxy : `go-jose` relevé en 4.1.6 dans la compilation de Caddy (CVE-2026-116587, signalée par Trivy).
+- Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
+- CI : job `build-test` épinglé sur Ubuntu 24.04 avec `postgresql-client-16` (le runner `ubuntu-latest` installait le client 18, dont le dump ne se restaure pas sur PostgreSQL 16).
 
 ## Circuit Git : branche `develop`
 - `ci.yml`, `docker.yml` : push sur `main`, `develop`, `claude/**` et toute pull request ; `security.yml` : push sur `main` et `develop`, pull requests, lundi, lancement manuel ; `release.yml` : tags `v*`.
