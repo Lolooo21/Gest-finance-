@@ -10,6 +10,8 @@ Vos appareils ──(Tailscale, HTTPS)──► [VPS] tailscale ► proxy (Caddy
                                           backup ──(chiffré avec age)──► stockage S3
 ```
 
+> **Guide pas à pas OVH** (achat du VPS, nom de domaine et DNS, SMTP, Tailscale, Portainer, budget) : [`deploiement-ovh.md`](deploiement-ovh.md).
+
 > **État de validation** : les fichiers de ce dossier ont été testés par des tests automatiques (syntaxe, cohérence, scripts de
 > sauvegarde/restauration sur un vrai PostgreSQL). La construction des images et le démarrage de la pile sont vérifiés par la CI
 > GitHub (workflow « Images Docker »). **Le premier déploiement réel sur un VPS n'a pas encore été fait** : suivez ce guide pas à pas
