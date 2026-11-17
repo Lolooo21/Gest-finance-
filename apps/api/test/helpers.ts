@@ -15,6 +15,8 @@ export async function startApp(rateLimitMax = 1000, resetLimitMax = 1000, authLi
   process.env.APP_URL = "";
   // Les tests créent plusieurs foyers : inscription ouverte (fermée par défaut dès qu'un foyer existe ; testé à part).
   process.env.ALLOW_REGISTRATION = "1";
+  // Pas d'état de sauvegarde sauf dans les tests qui en créent un.
+  process.env.BACKUP_STATUS_DIR = "";
   const app = await createApp({ rateLimitMax, resetLimitMax, authLimitMax });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();

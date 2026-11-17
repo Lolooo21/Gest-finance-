@@ -3,7 +3,7 @@
 FROM alpine:3.22
 RUN apk add --no-cache postgresql16-client age rclone tzdata ca-certificates \
     && addgroup -S -g 10001 app && adduser -S -u 10001 -G app app \
-    && mkdir -p /backups && chown app:app /backups
+    && mkdir -p /backups /backup-status && chown app:app /backups /backup-status
 COPY --chmod=0755 backup.sh restore.sh scheduler.sh /usr/local/bin/
 USER app
 VOLUME ["/backups"]

@@ -377,6 +377,39 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Front
 - `pages/ChangePassword.tsx` (action rapide « Changer le mot de passe », confirmation vérifiée) ; `pages/AuthPage.tsx` : « Créer un foyer » masqué quand l'inscription est fermée. Tests : 2 nouveaux (front : 75).
 
+## Jalon 15 — État des sauvegardes dans l'application
+### Infra
+- `infra/backup/backup.sh` : écrit `last-success.json` (date, taille, copie distante `ok` / `none` / `failed`) et, à chaque tentative même en échec, `last-attempt.json` (date, code de sortie), par écriture atomique, dans `BACKUP_STATUS_DIR`. `test-backup.sh` vérifie ces fichiers, l'enregistrement d'un échec et la conservation de la dernière réussite.
+- `compose.prod.yml` : volume dédié `backupstatus`, en écriture pour `backup`, en **lecture seule** pour `api` (l'API ne voit jamais les sauvegardes) ; dossier `/backup-status` créé avec le même propriétaire dans les deux images (volume toujours inscriptible par la sauvegarde).
+### API
+- `backups/backup-status.ts` : `evaluateBackupStatus()` (fonction pure : alerte après 26 h, alerte grave après 50 h ou sans aucune réussite, copie distante absente ou en échec, tentative ratée après la dernière réussite ; problèmes classés du plus grave au moins grave) ; `readBackupStatus()` (fichiers absents ou corrompus tolérés ; non configuré sans `BACKUP_STATUS_DIR`).
+- `GET /backups/status` (tout membre connecté, aucune donnée du foyer) ; `/backups` ajouté à `routes.ts` et au `Caddyfile`.
+- Tests (API : 202, +5).
+### Front
+- `pages/BackupStatus.tsx` : alerte en haut du tableau de bord (à vérifier / en danger) et carte « Sauvegardes » (dernière sauvegarde, copie distante, dernière tentative en échec), relues toutes les 30 minutes, rien hors production. Tests : 3 nouveaux (front : 78).
+### Divers
+- `TODO.md` : lignes du backlog déjà réalisées cochées (rappel hebdomadaire interactif, mode confidentialité, objectifs d'épargne).
+
+## Jalon 16 — Administration du foyer (membres, mot de passe d'un membre, journal d'activité)
+### API
+- `GET /household/me` (utilisateur connecté et rôle : le front adapte l'écran).
+- `GET /household/audit?before=&security=1` : 50 entrées par page du plus récent au plus ancien, curseur `next`, nom de l'auteur, filtre des événements d'authentification ; date du curseur validée.
+- `POST /household/members/:id/password` (propriétaire) : `AuthService.resetMemberPassword()` exige le mot de passe du propriétaire (un échec compte comme un échec de connexion), refuse son propre compte et un membre d'un autre foyer (404), applique la politique de mot de passe, déverrouille le membre, incrémente sa version de session et ferme ses sessions ; audit `household.member_password_reset:<rôle>`.
+- Tests (API : 207, +5) : identité et rôle, réinitialisation complète (déverrouillage, sessions coupées, ancien mot de passe refusé, propriétaire toujours connecté), refus (mauvais mot de passe du propriétaire compté, mot de passe faible, soi-même, autre foyer, enfant ou adulte non propriétaire), pagination sur 61 entrées, filtre sécurité.
+### Front
+- `pages/Household.tsx` : carte « Administration du foyer » (propriétaire seulement) : membres et rôles, ajout d'un membre (rôle adulte ou enfant, mot de passe confirmé), nouveau mot de passe pour un membre (confirmation et mot de passe du propriétaire), journal d'activité en français (alertes de sécurité en rouge, « Voir les plus anciens », « Sécurité uniquement »). Tests : 3 nouveaux (front : 81).
+- Constat corrigé : depuis la fermeture de l'inscription (jalon 14), aucun écran ne permettait d'ajouter les membres du foyer.
+
+## Jalon 17 — Refonte de l'interface (5 onglets, palette) et tutoriel de première connexion
+### Front
+- `pages/Shell.tsx` : application connectée en 5 onglets (Accueil, Opérations, Budgets, Objectifs, Plus) avec barre de navigation fixe en bas, en-tête par écran (titre, bouton « Masquer les montants »), bouton « + » qui ouvre la saisie, sous-écrans de Plus avec « Retour », adresses directes (`#operations`, `#budgets`, `#objectifs`, `#plus`, `#plus:<écran>`, `#actualites`, `?bilan=1`).
+- `pages/Home.tsx` : accueil réduit à l'essentiel (reste à vivre et avancée du mois, « À faire » : premier compte, bilan dû, budgets à 80 % ou dépassés, abonnements et hausses à vérifier, chaque ligne menant au bon onglet ; budgets les plus entamés ; solde prévu à 30 jours et découvert éventuel).
+- `pages/Operations.tsx` (ex-`Dashboard.tsx`) : saisie, imports, comptes, prévisionnel, historique, récurrences. `pages/More.tsx` : onglet Plus en listes courtes (suivi, sécurité, foyer réservé au propriétaire, déconnexion). `pages/Tutorial.tsx` : 5 étapes en plein écran, « Passer le tutoriel » toujours visible, Précédent / Suivant / Terminer, focus sur le titre de chaque étape, Échap ferme. `Header.tsx` supprimé.
+- Palette dans `index.css` (`@theme` : jetons `brand-*` et teintes existantes redéfinies), cartes à bordure fine, boutons arrondis, `theme-color` et manifeste PWA aux nouvelles couleurs ; aucune police externe (CSP stricte).
+- Tests : 87 (+6 : accueil et « À faire », bouton +, onglet Plus selon le rôle, tutoriel parcouru, passé, relancé) ; tests existants adaptés à la navigation par onglets.
+### API
+- `User.tutorialSeenAt` (migration `tutoriel`) ; `GET /household/me` renvoie `tutorialDone` ; `POST /household/me/tutorial`. Tests (API : 208, +1).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

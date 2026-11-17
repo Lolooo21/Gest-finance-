@@ -36,7 +36,7 @@ describe("foyer et rôles", () => {
     expect(membersB).toHaveLength(1);
     expect(membersB[0].email).toBe(owner(2).email);
 
-    const auditB = (await get(app, "/household/audit", { access: b.access! })).json() as { action: string }[];
+    const auditB = (await get(app, "/household/audit", { access: b.access! })).json().entries as { action: string }[];
     expect(auditB.some((e) => e.action.startsWith("household.member_added"))).toBe(false);
   });
 

@@ -12,7 +12,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Dockerfiles multi-stage non-root, compose prod + Caddy + Tailscale | Terminé (jalon 8a) ; construction, démarrage, test de fumée et Trivy vérifiés par la CI GitHub (pas de déploiement réel sur VPS) |
 | Premier déploiement réel sur un VPS suivant `docs/deploiement.md` | À faire (utilisateur) |
 | Sauvegardes chiffrées (age) + envoi S3 + restauration testée + runbook | Terminé (jalon 8a) |
-| Sauvegardes : afficher la date de la dernière sauvegarde dans l'application et alerter si trop ancienne | À faire |
+| Sauvegardes : afficher la date de la dernière sauvegarde dans l'application et alerter si trop ancienne | Terminé (jalon 15) ; reste : notification push en cas d'alerte |
 | CI complète : Semgrep, CodeQL (dépôt public), Trivy, hadolint, Gitleaks, build des images + test de fumée | Terminé (jalon 8a) ; « Images Docker » vert ; hadolint/Semgrep corrigés, à confirmer au prochain push sur develop ou à la première pull request |
 | CI : e2e Playwright et ZAP baseline | À faire |
 | Publication des images GHCR signées (tags `v*`) | Terminé (jalon 8a), non exécutée |
@@ -32,11 +32,11 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Passkeys WebAuthn | À faire (reporté du jalon 2) |
 | Afficher / masquer le mot de passe à la connexion et à l'inscription | Terminé (jalon 12) |
 | Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | Terminé (jalon 12) ; envoi réel à vérifier avec votre SMTP en production |
-| Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | À faire |
+| Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | Terminé (jalon 16) |
 | Sécurité : vérifier au premier déploiement que chaque appareil Tailscale a sa propre IP côté API (limites de débit) | À faire (déploiement) |
 | Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | À étudier |
 | Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
-| Page de consultation du journal d'audit (API prête : `GET /household/audit`) | À faire |
+| Page de consultation du journal d'audit (API prête : `GET /household/audit`) | Terminé (jalon 16) ; reste : export du journal |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
 | Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) |
 | Modification d'un compte, d'une opération ou d'une règle (PATCH + édition en ligne) | Terminé (jalon 4) |
@@ -47,7 +47,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Mode confidentialité (masquer les montants) | Terminé (jalon 3) |
 | Messages d'erreur clairs, notifications, confirmations, boutons et actions rapides lisibles | Terminé |
 | Accessibilité : audit complet (clavier, lecteur d'écran, contrastes) et tests Playwright | À faire |
-| Interface : thème sombre, navigation par pages (comptes, opérations, paramètres) si l'écran devient trop long | À faire |
+| Interface : thème sombre, navigation par pages (comptes, opérations, paramètres) si l'écran devient trop long | Navigation par onglets et palette : Terminé (jalon 17) ; reste : thème sombre, vérification visuelle sur téléphone |
 | Rappel hebdomadaire « faire les comptes » (planificateur interne + Web Push + bannière) | Terminé (jalon 5) |
 | Bilan hebdomadaire interactif (entrées/sorties, récurrences, à venir, « bilan fait ») | Terminé (jalon 5) |
 | Rappel : déplacer le planificateur dans un worker dédié (BullMQ) si plusieurs instances de l'API | À faire |
@@ -120,14 +120,14 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### Objectifs et patrimoine
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Objectifs d'épargne avec progression et versement mensuel conseillé | P2 | Versement conseillé = reste / mois restants, plafonné par le reste à vivre |
+| Objectifs d'épargne avec progression et versement mensuel conseillé | P2 · **Terminé (jalon 9b)** | Versement conseillé = reste / mois restants, plafonné par le reste à vivre |
 | Suivi du patrimoine net avec courbe d'évolution | P2 | Snapshot mensuel : comptes + épargne − crédits |
 | Suivi des crédits : tableau d'amortissement, simulation de remboursement anticipé | P2 | Fonctions pures dans `finance-core` (mensualité, capital restant dû, économie d'intérêts) |
 
 ### Documents et rappels
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Rappel hebdomadaire interactif : push → assistant « bilan de la semaine » en 2 minutes | P1 | Remplace le rappel simple : opérations à valider, écarts vs budget, reste à vivre ; état « bilan fait » enregistré |
+| Rappel hebdomadaire interactif : push → assistant « bilan de la semaine » en 2 minutes | P1 · **Terminé (jalon 5, enrichi aux jalons 9 à 13)** | Remplace le rappel simple : opérations à valider, écarts vs budget, reste à vivre ; état « bilan fait » enregistré |
 | Coffre-fort de justificatifs (factures, contrats, garanties) avec rappels d'échéance (fin de garantie, résiliation d'assurance) | P2 | Réutilise le stockage chiffré des documents ; date d'échéance + alerte J-60/J-30 (loi Hamon / résiliation infra-annuelle) |
 | OCR des tickets et factures (pas seulement fiches de paie) | P3 | Même pipeline worker local (Tesseract), validation humaine obligatoire |
 
@@ -136,9 +136,9 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 |---|---|---|
 | Passkeys WebAuthn (verrouillage biométrique) en plus ou à la place du TOTP | P1 | Intégré à l'auth dès le jalon 2 plutôt qu'en ajout tardif |
 | Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
-| Mode confidentialité (masquer les montants d'un geste) | P1 | Purement front, quasi gratuit, stocké par appareil |
+| Mode confidentialité (masquer les montants d'un geste) | P1 · **Terminé (jalon 3)** | Purement front, quasi gratuit, stocké par appareil |
 | Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
-| Journal d'audit des accès et modifications (consultable par le propriétaire) | P1 | Déjà prévu en base ; ajouter une page de consultation |
+| Journal d'audit des accès et modifications (consultable par le propriétaire) | P1 · **Terminé (jalon 16)** | Déjà prévu en base ; ajouter une page de consultation |
 
 ### IA locale
 | Idée | Prio | Notes / ajustements |

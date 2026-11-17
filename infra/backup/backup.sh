@@ -10,9 +10,24 @@ KEEP_LOCAL="${KEEP_LOCAL:-7}"          # sauvegardes conservées sur le serveur
 KEEP_REMOTE_DAYS="${KEEP_REMOTE_DAYS:-35}"   # jours conservés à distance (quotidiennes)
 KEEP_MONTHLY="${KEEP_MONTHLY:-12}"     # sauvegardes mensuelles conservées à distance
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+# État lisible par l'application (volume dédié, monté en lecture seule dans l'API) : jamais de contenu de la base.
+STATUS_DIR="${BACKUP_STATUS_DIR:-}"
 
 log() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
+now() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
+
+write_status() { # fichier contenu-json : écriture atomique (fichier temporaire puis renommage)
+  [ -n "$STATUS_DIR" ] || return 0
+  mkdir -p "$STATUS_DIR" && printf '%s\n' "$2" > "$STATUS_DIR/.$1.tmp" && mv "$STATUS_DIR/.$1.tmp" "$STATUS_DIR/$1"
+}
+
+on_exit() {
+  code=$?
+  # Chaque tentative laisse sa trace, réussie ou non : un échec silencieux devient visible dans l'application.
+  write_status last-attempt.json "{\"at\":\"$(now)\",\"exitCode\":$code}" || true
+  rm -rf "$TMP"
+}
+trap on_exit EXIT
 
 # Secrets : fichiers (secrets Docker) ou variables.
 if [ -z "${PGPASSWORD:-}" ] && [ -n "${PGPASSWORD_FILE:-}" ]; then PGPASSWORD="$(cat "$PGPASSWORD_FILE")"; export PGPASSWORD; fi
@@ -60,4 +75,6 @@ fi
 ls -1t "$BACKUP_DIR"/gest-*.dump.age 2>/dev/null | tail -n "+$((KEEP_LOCAL + 1))" | while read -r old; do rm -f "$old"; done
 
 printf '%s\n%s\n%s octets\n%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$NAME" "$SIZE" "$REMOTE_STATUS" > "$BACKUP_DIR/last-success.txt"
+case "$REMOTE_STATUS" in "copie distante OK") REMOTE=ok ;; ÉCHEC*) REMOTE=failed ;; *) REMOTE=none ;; esac
+write_status last-success.json "{\"at\":\"$(now)\",\"sizeBytes\":$SIZE,\"remote\":\"$REMOTE\"}"
 case "$REMOTE_STATUS" in ÉCHEC*) exit 3 ;; esac

@@ -1,5 +1,7 @@
 import "reflect-metadata";
 import { API_ROUTE_PREFIXES } from "@gest-finance/shared";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module.js";
 
@@ -26,6 +28,12 @@ describe("préfixes de routes de l'API", () => {
     const prefixes = [...controllers, ...imported].flatMap(firstSegments);
     expect(prefixes.length).toBeGreaterThanOrEqual(10);
     for (const prefix of prefixes) expect(API_ROUTE_PREFIXES, `préfixe manquant : ${prefix}`).toContain(prefix);
+  });
+
+  it("le proxy de développement transmet l'hôte du navigateur (sinon la protection CSRF refuse connexion et inscription)", () => {
+    const vite = readFileSync(join(__dirname, "../../web/vite.config.ts"), "utf8");
+    expect(vite).toMatch(/changeOrigin: false/);
+    expect(vite).not.toMatch(/\[r, API\]\)/);
   });
 
   it("inclut les routes des fiches de paie et du rappel", () => {

@@ -12,10 +12,19 @@ RECIPIENT="$(sed -n 's/^Public key: //p' "$WORK/pub.txt")"
 [ -n "$RECIPIENT" ] || RECIPIENT="$(age-keygen -y "$WORK/key.txt")"
 
 echo "== 1. Sauvegarde chiffrée"
-BACKUP_DIR="$WORK/backups" AGE_RECIPIENT="$RECIPIENT" "$SCRIPTS/backup.sh"
+BACKUP_DIR="$WORK/backups" BACKUP_STATUS_DIR="$WORK/status" AGE_RECIPIENT="$RECIPIENT" "$SCRIPTS/backup.sh"
 FILE="$(ls "$WORK"/backups/gest-*.dump.age)"
 if grep -q "PGDMP" "$FILE"; then echo "ÉCHEC : le fichier contient un en-tête pg_dump en clair" >&2; exit 1; fi
 echo "   fichier chiffré : $(basename "$FILE")"
+
+echo "== 1b. État lu par l'application : réussite et tentative, sans contenu de la base"
+grep -q '"remote":"none"' "$WORK/status/last-success.json" || { echo "ÉCHEC : last-success.json absent ou incomplet" >&2; exit 1; }
+grep -q '"exitCode":0' "$WORK/status/last-attempt.json" || { echo "ÉCHEC : last-attempt.json absent ou code inattendu" >&2; exit 1; }
+if BACKUP_DIR="$WORK/backups" BACKUP_STATUS_DIR="$WORK/status" AGE_RECIPIENT="AGE-SECRET-KEY-1FAUX" "$SCRIPTS/backup.sh" > /dev/null 2>&1; then
+  echo "ÉCHEC : une clé privée a été acceptée" >&2; exit 1
+fi
+grep -q '"exitCode":2' "$WORK/status/last-attempt.json" || { echo "ÉCHEC : la tentative en échec n'est pas enregistrée" >&2; exit 1; }
+grep -q '"remote":"none"' "$WORK/status/last-success.json" || { echo "ÉCHEC : l'échec a effacé la dernière réussite" >&2; exit 1; }
 
 echo "== 2. Restauration refusée sans la bonne clé"
 age-keygen -o "$WORK/autre.txt" 2> /dev/null

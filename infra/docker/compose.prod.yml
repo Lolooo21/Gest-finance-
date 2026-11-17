@@ -75,7 +75,10 @@ services:
       SMTP_URL_FILE: /run/secrets/smtp_url
       MAIL_FROM: ${MAIL_FROM:-}
       APP_URL: ${APP_URL:-}
+      # État des sauvegardes affiché dans l'application (lecture seule : l'API ne voit jamais les sauvegardes elles-mêmes).
+      BACKUP_STATUS_DIR: /backup-status
     secrets: [jwt_secret, field_encryption_key, database_url, database_system_url, smtp_url]
+    volumes: [backupstatus:/backup-status:ro]
     # Docker monte les tmpfs en « noexec » : SWC (compilateur TypeScript chargé au démarrage) extrait son module natif dans /tmp
     # et doit pouvoir l'exécuter. Exception limitée à ce conteneur, avec nosuid/nodev et une taille bornée.
     tmpfs: ["/tmp:rw,exec,nosuid,nodev,size=128m"]
@@ -130,8 +133,9 @@ services:
       PGPASSWORD_FILE: /run/secrets/postgres_password
       AGE_RECIPIENT_FILE: /run/secrets/age_recipient
       RCLONE_CONFIG: /run/secrets/rclone_conf
+      BACKUP_STATUS_DIR: /backup-status
     secrets: [postgres_password, age_recipient, rclone_conf]
-    volumes: [backups:/backups]
+    volumes: [backups:/backups, backupstatus:/backup-status]
     tmpfs: ["/tmp"]
     networks: [backend, egress]
     depends_on:
@@ -154,6 +158,7 @@ volumes:
   pgdata:
   tsstate:
   backups:
+  backupstatus:
 
 networks:
   backend: { internal: true }
