@@ -4,6 +4,7 @@ import { api, ApiError, type Account, type CategoryView, type Reminder, type Rul
 import { centsToInput, monthRange, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
+import { BackupAlert, BackupSummary } from "./BackupStatus";
 import { BudgetsPanel, useCategories } from "./Budgets";
 import { ChangePassword } from "./ChangePassword";
 import { ForecastPanel } from "./Forecast";
@@ -62,6 +63,8 @@ export function Dashboard() {
     <>
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-4">
         {failed && <ErrorBanner message={failed.error instanceof Error ? failed.error.message : "Impossible de charger vos données."} onRetry={() => void refresh()} />}
+
+        <BackupAlert />
 
         <section className="rounded-xl bg-teal-700 p-4 text-white shadow" aria-label="Reste à vivre">
           <p className="text-sm opacity-90">Reste à vivre ce mois-ci</p>
@@ -149,6 +152,7 @@ export function Dashboard() {
         </section>
 
         <ReminderSettings reminder={reminder.data} />
+        <BackupSummary />
 
         <section className={cardClass}>
           <h2 className="text-lg font-semibold">Dernières opérations</h2>

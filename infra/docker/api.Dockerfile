@@ -46,7 +46,10 @@ RUN apt-get update \
     # npm, npx et Corepack ne servent qu'à la construction : les retirer supprime leurs modules embarqués (tar, brace-expansion...)
     # que les scanners signalent, et réduit la surface d'attaque.
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
-              /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+              /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    # Point de montage de l'état des sauvegardes (lecture seule ici) : même propriétaire que dans l'image de sauvegarde, pour que
+    # le volume reste inscriptible par la sauvegarde quel que soit le conteneur qui le crée en premier.
+    && mkdir -p /backup-status && chown 10001:10001 /backup-status
 ENV NODE_ENV=production \
     PORT=3000 \
     TRUST_PROXY=1 \
