@@ -284,6 +284,28 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Front
 - `pages/Savings.tsx` : objectifs avec jauge accessible, versements, retraits, historique, modification, suppression avec confirmation, modèles, bandeau d'épargne de secours et comparaison au reste à vivre ; `pages/Weekly.tsx` : section « Objectifs » du bilan. Tests : 6 nouveaux (front : 57).
 
+## Jalon 10 — Catégories et budgets mensuels (enveloppes)
+### `packages/finance-core` (`budgets.ts`)
+- `categorySpent(categoryId, month, rules, oneOffs)` : dépenses nettes d'une catégorie sur un mois (sorties moins remboursements, toutes les occurrences récurrentes du mois comprises, jamais négatives) ; `null` mesure les opérations sans catégorie.
+- `budgetStatus(spent, available)` : `OK`, `WARNING` dès 80 % (`BUDGET_WARNING_PERCENT`), `EXCEEDED` à 100 %.
+- `evaluateBudget(budget, categoryId, month, rules, oneOffs)` : plafond, reliquat reporté (cumulé depuis `since` si `rollover`, jamais un dépassement), disponible, dépensé, reste, pourcentage, statut ; refuse un plafond nul.
+- Tests : 8 nouveaux (couverture 100 %, finance-core : 92).
+### API
+- Table `Category` (nom unique par foyer, `monthlyBudgetCents`, `rollover`, `budgetSince`) et colonne `categoryId` (SET NULL) sur `Transaction` et `RecurringRule` ; migration `categories_budgets` avec RLS et droits.
+- `categories.controller.ts` : `GET /categories?month=AAAA-MM` (catégories, dépenses, état du budget, dépenses sans catégorie, totaux), `POST`, `PUT /:id`, `DELETE /:id` ; écriture réservée aux adultes ; nom en double → 409 avec message clair ; `budgetSince` fixé au mois où le budget est posé (pas de report rétroactif) ; audit sans montant.
+- `categories.service.ts` : `budgets()` partagé avec `GET /review/weekly` (nouveau champ `budgets` : écarts vs budget du mois) ; `assertCategory()` refuse une catégorie d'un autre foyer à la création et à la modification d'une opération ou d'une récurrence (IDOR).
+- `/categories` ajouté à `routes.ts` et au `Caddyfile`.
+- Tests (API : 162, +7) : validations, unicité, alertes 80 %/100 %, remboursements, récurrences, reclassement, IDOR, report du reliquat, suppression (opérations conservées sans catégorie), droits (enfant en lecture), isolation, audit, bilan hebdomadaire.
+### Front
+- `pages/Budgets.tsx` : carte « Budgets du mois » (jauge accessible plafonnée à 100 %, statut, reliquat reporté, reste ou dépassement, catégories sans budget, dépenses non classées), création, modification, suppression avec confirmation ; `useCategories()`.
+- `pages/Dashboard.tsx` : choix de la catégorie à la saisie, catégorie affichée et modifiable (liste déroulante dans l'édition en ligne) pour les opérations et les récurrences ; `pages/Weekly.tsx` : section « Budgets du mois » du bilan.
+- Tests : 5 nouveaux (front : 62).
+
+## Correctifs de sécurité des dépendances (novembre 2026)
+- `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
+- Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
+- CI : job `build-test` épinglé sur Ubuntu 24.04 avec `postgresql-client-16` (le runner `ubuntu-latest` installait le client 18, dont le dump ne se restaure pas sur PostgreSQL 16).
+
 ## Circuit Git : branche `develop`
 - `ci.yml`, `docker.yml` : push sur `main`, `develop`, `claude/**` et toute pull request ; `security.yml` : push sur `main` et `develop`, pull requests, lundi, lancement manuel ; `release.yml` : tags `v*`.
 - README : section « Circuit de travail » (branches, pull requests, protections conseillées) ; `CLAUDE.md` : règle du circuit ; test d'infrastructure sur les déclencheurs (API : 114 tests).

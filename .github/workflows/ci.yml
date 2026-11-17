@@ -10,7 +10,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 épinglé : son client PostgreSQL 16 correspond au serveur (un pg_dump 18 écrit des réglages inconnus de PostgreSQL 16).
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -45,7 +46,7 @@ jobs:
         run: pnpm audit --prod --audit-level high
       - name: Sauvegarde, chiffrement et restauration (vrai PostgreSQL)
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq age postgresql-client
+          sudo apt-get update -qq && sudo apt-get install -y -qq age postgresql-client-16
           PGHOST=localhost PGUSER=gest PGPASSWORD=gest_ci PGDATABASE=gest_finance sh infra/backup/test-backup.sh
   secrets-scan:
     runs-on: ubuntu-latest

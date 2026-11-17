@@ -29,6 +29,7 @@ model Household {
   behaviorGoals BehaviorGoal[]
   savingsGoals SavingsGoal[]
   savingsContributions SavingsContribution[]
+  categories Category[]
 }
 
 model User {
@@ -113,11 +114,14 @@ model Transaction {
   amountCents Int
   date        DateTime @db.Date
   label       String
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
   payslipImport PayslipImport?
 
   @@index([householdId, date])
   @@index([accountId])
+  @@index([categoryId])
 }
 
 model RecurringRule {
@@ -131,9 +135,12 @@ model RecurringRule {
   frequency   Frequency
   start       DateTime @db.Date
   end         DateTime? @db.Date
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
 
   @@index([householdId])
+  @@index([categoryId])
 }
 
 model ReminderSetting {
@@ -243,6 +250,25 @@ model SavingsContribution {
 
   @@index([goalId, date])
   @@index([householdId])
+}
+
+/// Catégorie de dépenses du foyer, avec un budget mensuel optionnel (enveloppe). Supprimer une catégorie laisse ses opérations sans catégorie.
+model Category {
+  id                 String   @id @default(uuid())
+  householdId        String
+  household          Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name               String
+  /// Plafond mensuel en centimes (null = catégorie sans budget)
+  monthlyBudgetCents Int?
+  /// Report du reliquat positif d'un mois sur le suivant
+  rollover           Boolean  @default(false)
+  /// Début du budget : aucun reliquat n'est reporté depuis un mois antérieur (null = sans budget)
+  budgetSince        DateTime? @db.Date
+  createdAt          DateTime @default(now())
+  transactions       Transaction[]
+  recurringRules     RecurringRule[]
+
+  @@unique([householdId, name])
 }
 
 /// Indicateur de marché public (BCE, Eurostat) : non rattaché à un foyer, aucune donnée personnelle.

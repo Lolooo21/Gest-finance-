@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { api, ApiError, type Account, type Reminder, type Rule, type Summary, type Tx } from "../api";
+import { api, ApiError, type Account, type CategoryView, type Reminder, type Rule, type Summary, type Tx } from "../api";
 import { centsToInput, monthRange, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
+import { BudgetsPanel, useCategories } from "./Budgets";
 import { ForecastPanel } from "./Forecast";
 import { GoalsPanel } from "./Goals";
 import { SavingsPanel } from "./Savings";
@@ -24,6 +25,7 @@ export function Dashboard() {
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<Account[]>("GET", "/accounts") });
   const txs = useQuery({ queryKey: ["tx"], queryFn: () => api<Tx[]>("GET", "/transactions?limit=50") });
   const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("GET", "/recurring-rules") });
+  const categories = useCategories();
   const reminder = useQuery({ queryKey: ["reminder"], queryFn: () => api<Reminder>("GET", "/reminder"), refetchInterval: 5 * 60_000 });
   // Le reste à vivre est recalculé côté serveur : on le relit après chaque modification.
   const summary = useQuery({ queryKey: ["summary", range.from], queryFn: () => api<Summary>("GET", `/summary?from=${range.from}&to=${range.to}`) });
@@ -39,6 +41,10 @@ export function Dashboard() {
     onSuccess: (_r, v) => { toast.success(v.done); return refresh(); },
   });
   const names = new Map((accounts.data ?? []).map((a) => [a.id, a.name]));
+  const categoryList = categories.data?.categories ?? [];
+  const categoryName = new Map(categoryList.map((c) => [c.id, c.name]));
+  const categoryField = (value: string | null): Field => ({ name: "categoryId", label: "Catégorie", value: value ?? "", options: [{ value: "", label: "Sans catégorie" }, ...categoryList.map((c) => ({ value: c.id, label: c.name }))] });
+  const withCategory = (categoryId: string | null) => (categoryId && categoryName.has(categoryId) ? ` · ${categoryName.get(categoryId)}` : "");
 
   async function askDelete(path: string, what: string, extra: string, done: string) {
     if (await confirm({ title: `Supprimer ${what} ?`, message: `${extra} Cette action est définitive.`, confirmLabel: "Supprimer" })) remove.mutate({ path, done });
@@ -77,6 +83,7 @@ export function Dashboard() {
 
         <ForecastPanel />
         <GoalsPanel />
+        <BudgetsPanel />
         <SavingsPanel accounts={accounts.data ?? []} />
 
         <section className={cardClass}>
@@ -106,7 +113,7 @@ export function Dashboard() {
         <section id="ajout" className={cardClass}>
           <h2 className="text-lg font-semibold">Ajouter une entrée ou une sortie</h2>
           <p className="mb-3 text-sm text-slate-600">Ponctuelle (courses, remboursement…) ou récurrente (loyer, abonnement, salaire…).</p>
-          <EntryForm accounts={accounts.data ?? []} onDone={refresh} />
+          <EntryForm accounts={accounts.data ?? []} categories={categoryList} onDone={refresh} />
         </section>
 
         <section className={cardClass}>
@@ -115,12 +122,12 @@ export function Dashboard() {
             {rules.data?.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                 {editing === r.id ? (
-                  <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }]}
+                  <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }, categoryField(r.categoryId)]}
                     sign={r.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
-                    onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/recurring-rules/${r.id}`, body: { label: v.label, amountCents: sign === "out" ? -c : c } }); }} />
+                    onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/recurring-rules/${r.id}`, body: { label: v.label, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null } }); }} />
                 ) : (
                   <>
-                    <span>{r.label} · {FREQ[r.frequency]} <span className="text-xs text-slate-600">({names.get(r.accountId)})</span></span>
+                    <span>{r.label} · {FREQ[r.frequency]} <span className="text-xs text-slate-600">({names.get(r.accountId)}{withCategory(r.categoryId)})</span></span>
                     <span className="flex flex-wrap items-center gap-2">
                       <strong className={r.amountCents < 0 ? "text-red-700" : "text-emerald-700"}><Money cents={r.amountCents} /></strong>
                       <RowActions label={r.label} onEdit={() => setEditing(r.id)} onDelete={() => askDelete(`/recurring-rules/${r.id}`, `la récurrence « ${r.label} »`, "Elle ne sera plus comptée dans le reste à vivre.", "Récurrence supprimée.")} />
@@ -141,12 +148,12 @@ export function Dashboard() {
             {txs.data?.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                 {editing === t.id ? (
-                  <EditForm fields={[{ name: "label", label: "Libellé", value: t.label }, { name: "amount", label: "Montant (€)", value: centsToInput(t.amountCents) }, { name: "date", label: "Date", value: t.date, type: "date" }]}
+                  <EditForm fields={[{ name: "label", label: "Libellé", value: t.label }, { name: "amount", label: "Montant (€)", value: centsToInput(t.amountCents) }, { name: "date", label: "Date", value: t.date, type: "date" }, categoryField(t.categoryId)]}
                     sign={t.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
-                    onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/transactions/${t.id}`, body: { label: v.label, date: v.date, amountCents: sign === "out" ? -c : c } }); }} />
+                    onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/transactions/${t.id}`, body: { label: v.label, date: v.date, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null } }); }} />
                 ) : (
                   <>
-                    <span>{t.label} <span className="text-xs text-slate-600">{t.date} · {names.get(t.accountId)}</span></span>
+                    <span>{t.label} <span className="text-xs text-slate-600">{t.date} · {names.get(t.accountId)}{withCategory(t.categoryId)}</span></span>
                     <span className="flex flex-wrap items-center gap-2">
                       <strong className={t.amountCents < 0 ? "text-red-700" : "text-emerald-700"}><Money cents={t.amountCents} /></strong>
                       <RowActions label={t.label} onEdit={() => setEditing(t.id)} onDelete={() => askDelete(`/transactions/${t.id}`, `l'opération « ${t.label} »`, "Le solde du compte et le reste à vivre seront recalculés.", "Opération supprimée.")} />
@@ -211,7 +218,7 @@ function AccountForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function EntryForm({ accounts, onDone }: { accounts: Account[]; onDone: () => void }) {
+function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; categories: CategoryView[]; onDone: () => void }) {
   const toast = useToast();
   const [error, setError] = useState("");
   const [recurring, setRecurring] = useState(false);
@@ -230,7 +237,8 @@ function EntryForm({ accounts, onDone }: { accounts: Account[]; onDone: () => vo
     if (!f.get("accountId")) return setError("Choisissez un compte. S'il n'y en a pas, ajoutez-en un dans la section « Comptes ».");
     setError("");
     const signed = f.get("kind") === "out" ? -cents : cents;
-    const base = { accountId: f.get("accountId"), label: f.get("label"), amountCents: signed };
+    const categoryId = String(f.get("categoryId") ?? "");
+    const base = { accountId: f.get("accountId"), label: f.get("label"), amountCents: signed, ...(categoryId ? { categoryId } : {}) };
     const end = String(f.get("end") ?? "");
     const req = recurring
       ? { path: "/recurring-rules", body: { ...base, frequency: f.get("frequency"), start: f.get("date"), ...(end ? { end } : {}) } }
@@ -247,6 +255,12 @@ function EntryForm({ accounts, onDone }: { accounts: Account[]; onDone: () => vo
       <input name="label" required maxLength={120} placeholder="Libellé (ex. Courses)" aria-label="Libellé" className={fieldClass} />
       <input name="amount" required placeholder="Montant (€)" aria-label="Montant" inputMode="decimal" className={fieldClass} />
       <input name="date" type="date" required defaultValue={todayIso()} aria-label="Date" className={fieldClass} />
+      {categories.length > 0 && (
+        <select name="categoryId" aria-label="Catégorie" className={fieldClass} defaultValue="">
+          <option value="">Sans catégorie</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      )}
       <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} className="h-5 w-5" /> Récurrent (se répète)</label>
       {recurring && (
         <>
@@ -260,7 +274,8 @@ function EntryForm({ accounts, onDone }: { accounts: Account[]; onDone: () => vo
   );
 }
 
-interface Field { name: string; label: string; value: string; type?: string }
+/** Champ de saisie, ou liste déroulante si `options` est fourni (valeur vide autorisée). */
+interface Field { name: string; label: string; value: string; type?: string; options?: { value: string; label: string }[] }
 
 /** Formulaire de modification en ligne. `onSave` peut renvoyer un message d'erreur de validation. */
 function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: "in" | "out"; onSave: (v: Record<string, string>, sign: "in" | "out") => string | void; onCancel: () => void }) {
@@ -273,7 +288,11 @@ function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: 
   }
   return (
     <form onSubmit={submit} className="flex w-full flex-wrap items-center gap-2">
-      {fields.map((x) => <input key={x.name} name={x.name} type={x.type} defaultValue={x.value} aria-label={x.label} required className={`${fieldClass} min-w-0 flex-1`} />)}
+      {fields.map((x) => x.options ? (
+        <select key={x.name} name={x.name} defaultValue={x.value} aria-label={x.label} className={`${fieldClass} w-auto`}>
+          {x.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : <input key={x.name} name={x.name} type={x.type} defaultValue={x.value} aria-label={x.label} required className={`${fieldClass} min-w-0 flex-1`} />)}
       {sign && <select name="sign" defaultValue={sign} aria-label="Sens" className={`${fieldClass} w-auto`}><option value="out">Sortie</option><option value="in">Entrée</option></select>}
       <Button type="submit" icon="check">Enregistrer</Button>
       <Button variant="ghost" onClick={onCancel}>Annuler</Button>

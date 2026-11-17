@@ -1,24 +1,26 @@
 import { z } from "zod";
 
 /** Messages de validation en français pour l'utilisateur (les messages explicites des schémas restent prioritaires). */
-z.setErrorMap((issue, ctx) => {
-  switch (issue.code) {
-    case "invalid_type":
-      return { message: issue.received === "undefined" ? "Champ obligatoire" : "Valeur invalide" };
-    case "invalid_string":
-      if (issue.validation === "email") return { message: "Adresse e-mail invalide" };
-      if (issue.validation === "uuid") return { message: "Identifiant invalide" };
-      if (issue.validation === "url") return { message: "Adresse invalide" };
-      return { message: "Format invalide" };
-    case "too_small":
-      return { message: issue.type === "string" ? `${issue.minimum} caractère(s) minimum` : `Valeur trop petite (minimum ${issue.minimum})` };
-    case "too_big":
-      return { message: issue.type === "string" ? `${issue.maximum} caractère(s) maximum` : `Valeur trop grande (maximum ${issue.maximum})` };
-    case "invalid_enum_value":
-      return { message: "Valeur non autorisée" };
-    default:
-      return { message: ctx.defaultError };
-  }
+z.config({
+  customError: (issue) => {
+    switch (issue.code) {
+      case "invalid_type":
+        return issue.input === undefined ? "Champ obligatoire" : "Valeur invalide";
+      case "invalid_format":
+        if (issue.format === "email") return "Adresse e-mail invalide";
+        if (issue.format === "uuid") return "Identifiant invalide";
+        if (issue.format === "url") return "Adresse invalide";
+        return "Format invalide";
+      case "too_small":
+        return issue.origin === "string" ? `${issue.minimum} caractère(s) minimum` : `Valeur trop petite (minimum ${issue.minimum})`;
+      case "too_big":
+        return issue.origin === "string" ? `${issue.maximum} caractère(s) maximum` : `Valeur trop grande (maximum ${issue.maximum})`;
+      case "invalid_value":
+        return "Valeur non autorisée";
+      default:
+        return undefined;
+    }
+  },
 });
 
 export const Role = z.enum(["OWNER", "ADULT", "CHILD"]);
@@ -67,11 +69,15 @@ export const AccountDto = z.object({
 });
 export type AccountDto = z.infer<typeof AccountDto>;
 
+/** Catégorie facultative d'une opération ou d'une récurrence (null = sans catégorie). */
+const categoryId = z.string().uuid().nullable().optional();
+
 export const TransactionDto = z.object({
   accountId: z.string().uuid(),
   amountCents,
   date: isoDate,
   label: z.string().min(1).max(120),
+  categoryId,
 });
 export type TransactionDto = z.infer<typeof TransactionDto>;
 
@@ -82,6 +88,7 @@ export const RecurringRuleDto = z.object({
   frequency: Frequency,
   start: isoDate,
   end: isoDate.optional(),
+  categoryId,
 });
 export type RecurringRuleDto = z.infer<typeof RecurringRuleDto>;
 
@@ -123,6 +130,16 @@ export const SavingsContributionDto = z.object({
   note: z.string().trim().max(120).optional(),
 });
 export type SavingsContributionDto = z.infer<typeof SavingsContributionDto>;
+
+/** Catégories de dépenses et budget mensuel optionnel (enveloppe). */
+export const CategoryDto = z.object({
+  name: z.string().trim().min(1).max(60),
+  monthlyBudgetCents: z.number().int().positive("Le plafond doit être positif").max(100_000_000).nullable().default(null),
+  rollover: z.boolean().default(false),
+});
+export type CategoryDto = z.infer<typeof CategoryDto>;
+export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional() });
+export type BudgetQuery = z.infer<typeof BudgetQuery>;
 
 const atLeastOne = (o: object) => Object.keys(o).length > 0;
 

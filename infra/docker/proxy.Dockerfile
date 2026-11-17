@@ -23,10 +23,10 @@ RUN pnpm --filter @gest-finance/web build
 FROM golang:1.27-alpine3.23 AS caddy-build
 ENV CGO_ENABLED=0
 WORKDIR /build
-# golang.org/x/net est relevé (0.60.0 : correctif CVE-2026-78669, HTTP/2) par-dessus la version choisie par Caddy 2.11.7.
+# golang.org/x/net (0.62.0 : correctifs CVE-2026-78669 HTTP/2 et CVE-2026-78661 html) et go-jose (4.1.6 : correctif CVE-2026-116587, déni de service) sont relevés par-dessus les versions choisies par Caddy 2.11.7.
 RUN go mod init caddy-build \
     && printf 'package main\n\nimport (\n\tcaddycmd "github.com/caddyserver/caddy/v2/cmd"\n\t_ "github.com/caddyserver/caddy/v2/modules/standard"\n)\n\nfunc main() { caddycmd.Main() }\n' > main.go \
-    && go get github.com/caddyserver/caddy/v2@v2.11.7 golang.org/x/net@v0.60.0 \
+    && go get github.com/caddyserver/caddy/v2@v2.11.7 golang.org/x/net@v0.62.0 github.com/go-jose/go-jose/v4@v4.1.6 \
     && go mod tidy \
     && go build -trimpath -ldflags "-s -w" -o /go/bin/caddy .
 
