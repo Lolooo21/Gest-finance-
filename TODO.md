@@ -32,11 +32,11 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Passkeys WebAuthn | À faire (reporté du jalon 2) |
 | Afficher / masquer le mot de passe à la connexion et à l'inscription | Terminé (jalon 12) |
 | Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | Terminé (jalon 12) ; envoi réel à vérifier avec votre SMTP en production |
-| Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | À faire |
+| Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | Terminé (jalon 16) |
 | Sécurité : vérifier au premier déploiement que chaque appareil Tailscale a sa propre IP côté API (limites de débit) | À faire (déploiement) |
 | Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | À étudier |
 | Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
-| Page de consultation du journal d'audit (API prête : `GET /household/audit`) | À faire |
+| Page de consultation du journal d'audit (API prête : `GET /household/audit`) | Terminé (jalon 16) ; reste : export du journal |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
 | Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) |
 | Modification d'un compte, d'une opération ou d'une règle (PATCH + édition en ligne) | Terminé (jalon 4) |
@@ -138,7 +138,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 | Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
 | Mode confidentialité (masquer les montants d'un geste) | P1 · **Terminé (jalon 3)** | Purement front, quasi gratuit, stocké par appareil |
 | Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
-| Journal d'audit des accès et modifications (consultable par le propriétaire) | P1 | Déjà prévu en base ; ajouter une page de consultation |
+| Journal d'audit des accès et modifications (consultable par le propriétaire) | P1 · **Terminé (jalon 16)** | Déjà prévu en base ; ajouter une page de consultation |
 
 ### IA locale
 | Idée | Prio | Notes / ajustements |

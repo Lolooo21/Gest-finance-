@@ -105,6 +105,9 @@ export interface BackupStatus {
   sizeBytes: number | null; remote: "ok" | "none" | "failed" | null; lastFailureAt: string | null;
 }
 
+export interface Member { id: string; email: string; displayName: string; role: "OWNER" | "ADULT" | "CHILD" }
+export interface AuditPage { entries: { id: string; action: string; createdAt: string; user: string | null }[]; next: string | null }
+
 export interface Reminder { enabled: boolean; weekday: number; hour: number; timezone: string; lastDoneAt: string | null; due: boolean; pushConfigured: boolean; subscribed: boolean }
 export interface ReviewLine { date: string; label: string; account: string; amountCents: number }
 export interface WeeklyReview {

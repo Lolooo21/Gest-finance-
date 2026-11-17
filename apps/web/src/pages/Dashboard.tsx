@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { api, ApiError, type Account, type CategoryView, type Reminder, type Rule, type Summary, type Tx } from "../api";
+import { api, ApiError, type Account, type CategoryView, type Member, type Reminder, type Rule, type Summary, type Tx } from "../api";
 import { centsToInput, monthRange, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
 import { BackupAlert, BackupSummary } from "./BackupStatus";
 import { BudgetsPanel, useCategories } from "./Budgets";
 import { ChangePassword } from "./ChangePassword";
+import { HouseholdAdmin } from "./Household";
 import { ForecastPanel } from "./Forecast";
 import { SubscriptionsPanel } from "./Subscriptions";
 import { GoalsPanel } from "./Goals";
@@ -30,6 +31,7 @@ export function Dashboard() {
   const txs = useQuery({ queryKey: ["tx"], queryFn: () => api<Tx[]>("GET", "/transactions?limit=50") });
   const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("GET", "/recurring-rules") });
   const categories = useCategories();
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<Member>("GET", "/household/me") });
   const reminder = useQuery({ queryKey: ["reminder"], queryFn: () => api<Reminder>("GET", "/reminder"), refetchInterval: 5 * 60_000 });
   // Le reste à vivre est recalculé côté serveur : on le relit après chaque modification.
   const summary = useQuery({ queryKey: ["summary", range.from], queryFn: () => api<Summary>("GET", `/summary?from=${range.from}&to=${range.to}`) });
@@ -153,6 +155,7 @@ export function Dashboard() {
 
         <ReminderSettings reminder={reminder.data} />
         <BackupSummary />
+        {me.data?.role === "OWNER" && <HouseholdAdmin />}
 
         <section className={cardClass}>
           <h2 className="text-lg font-semibold">Dernières opérations</h2>

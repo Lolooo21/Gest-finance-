@@ -390,6 +390,16 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Divers
 - `TODO.md` : lignes du backlog déjà réalisées cochées (rappel hebdomadaire interactif, mode confidentialité, objectifs d'épargne).
 
+## Jalon 16 — Administration du foyer (membres, mot de passe d'un membre, journal d'activité)
+### API
+- `GET /household/me` (utilisateur connecté et rôle : le front adapte l'écran).
+- `GET /household/audit?before=&security=1` : 50 entrées par page du plus récent au plus ancien, curseur `next`, nom de l'auteur, filtre des événements d'authentification ; date du curseur validée.
+- `POST /household/members/:id/password` (propriétaire) : `AuthService.resetMemberPassword()` exige le mot de passe du propriétaire (un échec compte comme un échec de connexion), refuse son propre compte et un membre d'un autre foyer (404), applique la politique de mot de passe, déverrouille le membre, incrémente sa version de session et ferme ses sessions ; audit `household.member_password_reset:<rôle>`.
+- Tests (API : 207, +5) : identité et rôle, réinitialisation complète (déverrouillage, sessions coupées, ancien mot de passe refusé, propriétaire toujours connecté), refus (mauvais mot de passe du propriétaire compté, mot de passe faible, soi-même, autre foyer, enfant ou adulte non propriétaire), pagination sur 61 entrées, filtre sécurité.
+### Front
+- `pages/Household.tsx` : carte « Administration du foyer » (propriétaire seulement) : membres et rôles, ajout d'un membre (rôle adulte ou enfant, mot de passe confirmé), nouveau mot de passe pour un membre (confirmation et mot de passe du propriétaire), journal d'activité en français (alertes de sécurité en rouge, « Voir les plus anciens », « Sécurité uniquement »). Tests : 3 nouveaux (front : 81).
+- Constat corrigé : depuis la fermeture de l'inscription (jalon 14), aucun écran ne permettait d'ajouter les membres du foyer.
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

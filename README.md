@@ -231,7 +231,7 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | Authentification | Inscription d'un foyer, connexion, déconnexion ; mot de passe Argon2id ; cookies HttpOnly + SameSite=Strict ; refresh token à rotation (réutilisation détectée = sessions révoquées) ; verrouillage 15 min après 5 échecs ; réponses identiques pour compte inconnu ou mauvais mot de passe ; bouton afficher / masquer le mot de passe à la connexion, à l'inscription et à la réinitialisation ; inscription ouverte seulement pour le premier foyer (`ALLOW_REGISTRATION=1` pour la rouvrir) ; changement de mot de passe (l'ancien exigé, autres appareils déconnectés) ; politique de mot de passe (mots courants, chiffres seuls, nom ou e-mail repris refusés) |
 | Mot de passe oublié | Lien par e-mail (SMTP ; Mailpit en développement) valable 30 minutes et à usage unique ; réponse identique et immédiate que l'adresse existe ou non ; 5 demandes par minute et par IP ; le nouveau mot de passe déverrouille le compte et ferme toutes les sessions ouvertes ; sans SMTP configuré, rien n'est envoyé |
 | 2FA | Activation TOTP depuis le tableau de bord ; code exigé à la connexion ensuite |
-| Foyer et rôles | Ajout de membres par le propriétaire ; `OWNER`/`ADULT` écrivent, `CHILD` en lecture seule ; journal d'audit (API, propriétaire) |
+| Foyer et rôles | Carte « Administration du foyer » réservée au propriétaire : membres et rôles, ajout d'un membre (adulte ou enfant en lecture seule), nouveau mot de passe pour un membre qui l'a oublié (mot de passe du propriétaire exigé, membre déverrouillé, ses sessions fermées), journal d'activité lisible (qui, quoi, quand ; sans montant ni libellé), paginé, filtre « sécurité uniquement », alertes en rouge ; `OWNER`/`ADULT` écrivent, `CHILD` en lecture seule |
 | Comptes | Création, liste (solde courant, IBAN masqué), modification, suppression ; IBAN chiffré AES-256-GCM |
 | Opérations | Création, liste, modification, suppression ; le compte doit appartenir au foyer |
 | Récurrences | Création, liste, modification (dont fin), suppression ; hebdo, mensuel, annuel |
@@ -254,9 +254,9 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | État des sauvegardes | Carte « Sauvegardes » (date de la dernière sauvegarde chiffrée, copie distante, dernière tentative en échec) et alerte en haut du tableau de bord si la sauvegarde de la nuit manque (26 h), si deux nuits manquent (50 h), si la copie distante est absente ou en échec ; état lu sur un volume dédié en lecture seule (`GET /backups/status`), sans accès de l'API aux sauvegardes ; rien n'est affiché hors production |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (121 tests, ≥ 95 %), API sur PostgreSQL réel (202 tests, dont l'isolation par ligne, les droits des rôles, CSRF, force brute et sessions), front (78 tests) |
+| Tests | `finance-core` (121 tests, ≥ 95 %), API sur PostgreSQL réel (207 tests, dont l'isolation par ligne, les droits des rôles, CSRF, force brute et sessions), front (81 tests) |
 
-À venir (voir `TODO.md`) : comptes individuels ou joints, page du journal d'audit, export et suppression des données, passkeys, test d'intrusion automatisé (ZAP), OCR des scans.
+À venir (voir `TODO.md`) : comptes individuels ou joints, export et suppression des données, passkeys, test d'intrusion automatisé (ZAP), OCR des scans.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker. Mise en production : [`docs/deploiement.md`](docs/deploiement.md) et le guide pas à pas OVH [`docs/deploiement-ovh.md`](docs/deploiement-ovh.md).

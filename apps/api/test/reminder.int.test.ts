@@ -64,7 +64,7 @@ describe("réglages du rappel", () => {
     const done = await post(app, "/reminder/done", undefined, c);
     expect(done.json()).toMatchObject({ due: false });
     expect(done.json().lastDoneAt).not.toBeNull();
-    expect((await get(app, "/household/audit", c)).json().some((e: { action: string }) => e.action === "review.done")).toBe(true);
+    expect((await get(app, "/household/audit", c)).json().entries.some((e: { action: string }) => e.action === "review.done")).toBe(true);
   });
 
   it("un enfant gère son propre rappel", async () => {
