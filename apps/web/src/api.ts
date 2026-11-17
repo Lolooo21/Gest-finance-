@@ -81,6 +81,14 @@ export interface BudgetEvaluation {
 export interface CategoryView { id: string; name: string; monthlyBudgetCents: number | null; rollover: boolean; spentCents: number; budget: BudgetEvaluation | null }
 export interface BudgetsOverview { month: string; categories: CategoryView[]; uncategorizedSpentCents: number; totals: { availableCents: number; spentCents: number } }
 
+export type ImportStatus = "NEW" | "MATCHED" | "RECURRING" | "ALREADY_IMPORTED";
+export interface ImportLine {
+  key: string; date: string; amountCents: number; label: string; status: ImportStatus; match?: { id: string; date: string; label: string };
+  suggestion?: { categoryId: string; source: "RULE" | "MODEL" };
+}
+export interface CategoryRuleView { id: string; pattern: string; categoryId: string; category: string; source: "MANUAL" | "LEARNED"; hits: number }
+export interface ImportPreview { format: "CSV" | "OFX"; warnings: string[]; skipped: number; summary: Record<ImportStatus, number>; lines: ImportLine[] }
+
 export interface Reminder { enabled: boolean; weekday: number; hour: number; timezone: string; lastDoneAt: string | null; due: boolean; pushConfigured: boolean; subscribed: boolean }
 export interface ReviewLine { date: string; label: string; account: string; amountCents: number }
 export interface WeeklyReview {

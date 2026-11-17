@@ -23,7 +23,7 @@ function mockApi(handler: Handler) {
     if (url.startsWith("/forecast") && !(r.json as { points?: unknown } | undefined)?.points) r = { json: EMPTY_FORECAST };
     if (url.startsWith("/goals/behavior") && !Array.isArray(r.json)) r = { json: [] };
     if (url === "/goals/savings" && method === "GET" && !(r.json as { goals?: unknown } | undefined)?.goals) r = { json: EMPTY_SAVINGS };
-    if (url.startsWith("/categories") && method === "GET" && !(r.json as { categories?: unknown } | undefined)?.categories) r = { json: EMPTY_BUDGETS };
+    if (/^\/categories(\?|$)/.test(url) && method === "GET" && !(r.json as { categories?: unknown } | undefined)?.categories) r = { json: EMPTY_BUDGETS };
     if (r.network) throw new TypeError("Failed to fetch");
     const status = r.status ?? 200;
     return { ok: status < 400, status, json: async () => { if (r.html) throw new SyntaxError("Unexpected token <"); return r.json ?? {}; } } as Response;
@@ -50,7 +50,7 @@ describe("App", () => {
     renderApp();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("E-mail"), "Ada@Example.com");
-    await user.type(screen.getByLabelText(/Mot de passe/), "correct-horse-battery");
+    await user.type(screen.getByLabelText("Mot de passe"), "correct-horse-battery");
     await user.click(screen.getByRole("button", { name: "Se connecter" }));
     expect(await screen.findByLabelText("Reste à vivre")).toBeInTheDocument();
     expect(calls.find((c) => c.url === "/auth/login")?.body).toMatchObject({ email: "Ada@Example.com", password: "correct-horse-battery" });
@@ -833,5 +833,275 @@ describe("budgets par catégorie", () => {
     const text = (await screen.findByLabelText("Budgets")).textContent?.replace(/\s/g, " ");
     expect(text).toMatch(/Courses.*105 % · plafond atteint.*dépassé de 20,00 €/);
     expect(text).toMatch(/Loisirs.*20 % · dans le budget.*reste 80,00 €/);
+  });
+});
+
+describe("import de relevés", () => {
+  const k = (c: string) => c.repeat(64);
+  const preview = {
+    format: "CSV", warnings: ["1 ligne(s) ignorée(s) : date ou montant illisible."], skipped: 1,
+    summary: { NEW: 1, MATCHED: 1, RECURRING: 1, ALREADY_IMPORTED: 1 },
+    lines: [
+      { key: k("a"), date: "2026-11-03", amountCents: -4_530, label: "CB CARREFOUR", status: "MATCHED", match: { id: "t1", date: "2026-11-02", label: "Courses" } },
+      { key: k("b"), date: "2026-11-05", amountCents: -80_000, label: "PRLV LOYER", status: "RECURRING", match: { id: "r1", date: "2026-11-05", label: "Loyer" } },
+      { key: k("c"), date: "2026-11-06", amountCents: -320, label: "CB BOULANGERIE", status: "NEW" },
+      { key: k("d"), date: "2026-11-01", amountCents: -1_000, label: "DÉJÀ LÀ", status: "ALREADY_IMPORTED" },
+    ],
+  };
+  const base = (extra: Handler): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules" || (u.startsWith("/transactions") && m === "GET")) return { json: [] };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+  const open = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole("button", { name: "Importer un relevé" }));
+    const panel = screen.getByLabelText("Importer un relevé");
+    await waitFor(() => expect(within(panel).getByLabelText("Compte du relevé")).toHaveTextContent("Courant"));
+    return panel;
+  };
+
+  it("affiche l'aperçu rapproché, coche nouvelles et saisies par défaut, et envoie création et rapprochement", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/imports/preview?accountId=a1") return { json: preview };
+      if (u === "/imports/confirm") return { status: 201, json: { created: 1, linked: 1, skipped: 0 } };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await open(user);
+    await user.selectOptions(within(panel).getByLabelText("Compte du relevé"), "a1");
+    await user.upload(within(panel).getByLabelText("Fichier du relevé"), new File(["Date;Libellé;Montant"], "releve.csv", { type: "text/csv" }));
+
+    const apercu = await within(panel).findByLabelText("Aperçu du relevé");
+    expect(apercu).toHaveTextContent("1 nouvelle, 1 déjà saisie (rapprochée), 1 récurrence, 1 déjà importée");
+    expect(apercu).toHaveTextContent("1 ligne(s) ignorée(s)");
+    expect(apercu).toHaveTextContent("avec « Courses » du 2026-11-02");
+    expect(within(apercu).getByLabelText("Rapprocher CB CARREFOUR du 2026-11-03")).toBeChecked();
+    expect(within(apercu).getByLabelText("Importer PRLV LOYER du 2026-11-05")).not.toBeChecked();
+    expect(within(apercu).getByLabelText("Importer CB BOULANGERIE du 2026-11-06")).toBeChecked();
+    expect(within(apercu).getByLabelText("Importer DÉJÀ LÀ du 2026-11-01")).toBeDisabled();
+
+    await user.click(within(apercu).getByRole("button", { name: "Importer 2 lignes" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/imports/confirm")).toBe(true));
+    expect(calls.find((c) => c.url === "/imports/confirm")?.body).toEqual({
+      accountId: "a1",
+      lines: [
+        { key: k("a"), date: "2026-11-03", amountCents: -4_530, label: "CB CARREFOUR", action: "LINK", transactionId: "t1" },
+        { key: k("c"), date: "2026-11-06", amountCents: -320, label: "CB BOULANGERIE", action: "CREATE" },
+      ],
+    });
+    expect(await screen.findByText("1 opération importée, 1 rapprochée.")).toBeInTheDocument();
+  });
+
+  it("refuse un PDF ou un fichier sans compte avant tout envoi, et affiche l'erreur du serveur", async () => {
+    const calls = mockApi(base((m, u) => (u.startsWith("/imports/preview") ? { status: 400, json: { message: "Relevé trop long : 5000 opérations maximum par import" } } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup({ applyAccept: false });
+    const panel = await open(user);
+    const input = within(panel).getByLabelText("Fichier du relevé");
+    await user.upload(input, new File(["x"], "releve.csv"));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("Choisissez d'abord le compte");
+    await user.selectOptions(within(panel).getByLabelText("Compte du relevé"), "a1");
+    await user.upload(input, new File(["%PDF"], "releve.pdf", { type: "application/pdf" }));
+    expect(within(panel).getByRole("alert")).toHaveTextContent("exportez vos opérations en CSV ou en OFX");
+    expect(calls.some((c) => c.url.startsWith("/imports"))).toBe(false);
+    await user.upload(input, new File(["Date;Libellé;Montant"], "releve.ofx"));
+    expect(await within(panel).findByText(/5000 opérations maximum/)).toBeInTheDocument();
+  });
+});
+
+describe("catégorisation automatique", () => {
+  const categories = {
+    month: "2026-11", uncategorizedSpentCents: 0, totals: { availableCents: 0, spentCents: 0 },
+    categories: [
+      { id: "k1", name: "Courses", monthlyBudgetCents: null, rollover: false, spentCents: 0, budget: null },
+      { id: "k2", name: "Santé", monthlyBudgetCents: null, rollover: false, spentCents: 0, budget: null },
+    ],
+  };
+  const base = (extra: Handler): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules" || (u.startsWith("/transactions") && m === "GET")) return { json: [] };
+    if (u === "/categories" && m === "GET") return { json: categories };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("propose la catégorie dans l'aperçu d'import et n'envoie que les choix modifiés", async () => {
+    const k = (c: string) => c.repeat(64);
+    const calls = mockApi(base((m, u) => {
+      if (u === "/imports/preview?accountId=a1") {
+        return { json: {
+          format: "CSV", warnings: [], skipped: 0, summary: { NEW: 3, MATCHED: 0, RECURRING: 0, ALREADY_IMPORTED: 0 },
+          lines: [
+            { key: k("a"), date: "2026-11-03", amountCents: -4_530, label: "CB CARREFOUR", status: "NEW", suggestion: { categoryId: "k1", source: "RULE" } },
+            { key: k("b"), date: "2026-11-04", amountCents: -1_200, label: "CB PHARMACIE", status: "NEW" },
+            { key: k("c"), date: "2026-11-05", amountCents: -900, label: "CB LECLERC", status: "NEW", suggestion: { categoryId: "k1", source: "MODEL" } },
+          ],
+        } };
+      }
+      if (u === "/imports/confirm") return { status: 201, json: { created: 3, linked: 0, skipped: 0 } };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Importer un relevé" }));
+    const panel = screen.getByLabelText("Importer un relevé");
+    await waitFor(() => expect(within(panel).getByLabelText("Compte du relevé")).toHaveTextContent("Courant"));
+    await user.selectOptions(within(panel).getByLabelText("Compte du relevé"), "a1");
+    await user.upload(within(panel).getByLabelText("Fichier du relevé"), new File(["x"], "releve.csv"));
+
+    const carrefour = await within(panel).findByLabelText("Catégorie de CB CARREFOUR du 2026-11-03");
+    expect(carrefour).toHaveValue("k1");
+    expect(within(carrefour).getByRole("option", { name: "Courses (auto)" })).toBeInTheDocument();
+    expect(within(panel).getByLabelText("Catégorie de CB PHARMACIE du 2026-11-04")).toHaveValue("");
+    await user.selectOptions(within(panel).getByLabelText("Catégorie de CB PHARMACIE du 2026-11-04"), "k2");
+    await user.selectOptions(within(panel).getByLabelText("Catégorie de CB LECLERC du 2026-11-05"), "");
+    await user.click(within(panel).getByRole("button", { name: "Importer 3 lignes" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/imports/confirm")).toBe(true));
+    const sent = (calls.find((c) => c.url === "/imports/confirm")!.body as { lines: object[] }).lines;
+    expect(sent[0]).not.toHaveProperty("categoryId");
+    expect(sent[1]).toMatchObject({ categoryId: "k2" });
+    expect(sent[2]).toMatchObject({ categoryId: null });
+  });
+
+  it("laisse la catégorie automatique par défaut à la saisie, ou force « sans catégorie »", async () => {
+    const calls = mockApi(base((m, u) => (u === "/transactions" && m === "POST" ? { status: 201, json: {} } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup();
+    const form = (await screen.findByRole("heading", { name: "Ajouter une entrée ou une sortie" })).closest("section")!;
+    await waitFor(() => expect(within(form).getByLabelText("Catégorie")).toHaveValue(""));
+    expect(within(form).getByLabelText("Catégorie")).toHaveTextContent("Catégorie automatique");
+    const fill = async (label: string) => {
+      await user.selectOptions(within(form).getByLabelText("Compte"), "a1");
+      await user.type(within(form).getByLabelText("Libellé"), label);
+      await user.type(within(form).getByLabelText("Montant"), "5");
+    };
+    await fill("CB CARREFOUR");
+    await user.click(within(form).getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.filter((c) => c.url === "/transactions" && c.method === "POST")).toHaveLength(1));
+    expect(calls.find((c) => c.url === "/transactions" && c.method === "POST")!.body).not.toHaveProperty("categoryId");
+
+    await fill("Cadeau");
+    await user.selectOptions(within(form).getByLabelText("Catégorie"), "none");
+    await user.click(within(form).getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.filter((c) => c.url === "/transactions" && c.method === "POST")).toHaveLength(2));
+    expect(calls.filter((c) => c.url === "/transactions" && c.method === "POST")[1]!.body).toMatchObject({ categoryId: null });
+  });
+
+  it("classe les opérations sans catégorie et gère les règles", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/categories/auto") return { json: { categorized: 4 } };
+      if (u === "/categories/rules" && m === "GET") {
+        return { json: [
+          { id: "r1", pattern: "carrefour", categoryId: "k1", category: "Courses", source: "LEARNED", hits: 3 },
+          { id: "r2", pattern: "pharmacie", categoryId: "k2", category: "Santé", source: "MANUAL", hits: 0 },
+        ] };
+      }
+      if (u === "/categories/rules" && m === "POST") return { status: 201, json: { id: "r3", pattern: "lidl" } };
+      if (u === "/categories/rules/r1" && m === "DELETE") return { status: 204 };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const zone = await screen.findByLabelText("Catégorisation automatique");
+    await user.click(within(zone).getByRole("button", { name: "Classer les opérations sans catégorie" }));
+    expect(await screen.findByText("4 opérations classées automatiquement.")).toBeInTheDocument();
+
+    await user.click(within(zone).getByRole("button", { name: "Règles de catégorisation" }));
+    const list = await within(zone).findByLabelText("Règles");
+    await waitFor(() => expect(list).toHaveTextContent("« carrefour » → Courses apprise · 3 fois"));
+    expect(list).toHaveTextContent("« pharmacie » → Santé saisie");
+
+    await user.click(within(zone).getByRole("button", { name: "Ajouter la règle" }));
+    expect(within(zone).getByRole("alert")).toHaveTextContent("Indiquez un mot-clé");
+    await user.type(within(zone).getByLabelText("Mot-clé"), "Lidl");
+    await user.click(within(zone).getByRole("button", { name: "Ajouter la règle" }));
+    expect(within(zone).getByRole("alert")).toHaveTextContent("Choisissez la catégorie");
+    await user.selectOptions(within(zone).getByLabelText("Catégorie de la règle"), "k1");
+    await user.click(within(zone).getByRole("button", { name: "Ajouter la règle" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/categories/rules" && c.method === "POST")?.body).toEqual({ pattern: "Lidl", categoryId: "k1" }));
+
+    await user.click(within(zone).getByRole("button", { name: "Supprimer la règle carrefour" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/categories/rules/r1" && c.method === "DELETE")).toBe(true));
+  });
+});
+
+describe("mot de passe", () => {
+  const anonymous = (extra: Handler = () => undefined as never): Handler => (m, u, b) => {
+    if (u === "/household/members") return { status: 401 };
+    if (u === "/auth/refresh") return { status: 401 };
+    return extra(m, u, b) ?? { json: {} };
+  };
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("affiche et masque le mot de passe à la connexion et à l'inscription", async () => {
+    mockApi(anonymous());
+    renderApp();
+    const user = userEvent.setup();
+    const field = await screen.findByLabelText("Mot de passe");
+    expect(field).toHaveAttribute("type", "password");
+    // Un visiteur non connecté ne voit pas « session expirée ».
+    expect(screen.queryByText(/session a expiré/)).not.toBeInTheDocument();
+    await user.type(field, "secret-visible");
+    await user.click(screen.getByRole("button", { name: "Afficher : Mot de passe" }));
+    expect(field).toHaveAttribute("type", "text");
+    expect(field).toHaveValue("secret-visible");
+    expect(screen.getByRole("button", { name: "Masquer : Mot de passe" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Masquer : Mot de passe" }));
+    expect(field).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /Créer un foyer/ }));
+    const registerField = screen.getByLabelText(/^Mot de passe/);
+    expect(registerField).toHaveAttribute("type", "password");
+    expect(registerField).toHaveAttribute("autocomplete", "new-password");
+    await user.click(screen.getByRole("button", { name: "Afficher : Mot de passe" }));
+    expect(registerField).toHaveAttribute("type", "text");
+  });
+
+  it("demande un lien de réinitialisation et affiche une confirmation neutre", async () => {
+    const calls = mockApi(anonymous((m, u) => (u === "/auth/password/forgot" ? { status: 202, json: { ok: true } } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Mot de passe oublié ?" }));
+    expect(screen.getByRole("heading", { name: "Mot de passe oublié" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("E-mail"), "ada@example.com");
+    await user.click(screen.getByRole("button", { name: "Recevoir le lien" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Si un compte correspond à cette adresse");
+    expect(calls.find((c) => c.url === "/auth/password/forgot")?.body).toEqual({ email: "ada@example.com" });
+    expect(screen.queryByRole("button", { name: "Recevoir le lien" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retour à la connexion" }));
+    expect(screen.getByRole("heading", { name: "Connexion" })).toBeInTheDocument();
+  });
+
+  it("choisit un nouveau mot de passe depuis le lien, vérifie la confirmation, puis revient à la connexion", async () => {
+    const token = "a".repeat(43);
+    window.history.replaceState(null, "", `/?reinitialisation=${token}`);
+    let attempts = 0;
+    const calls = mockApi(anonymous((m, u) => {
+      if (u !== "/auth/password/reset") return undefined as never;
+      attempts++;
+      return attempts === 1 ? { status: 400, json: { message: "Lien invalide ou expiré : demandez-en un nouveau." } } : { json: { ok: true } };
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    expect(await screen.findByRole("heading", { name: "Nouveau mot de passe" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("E-mail")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^Nouveau mot de passe/), "nouveau-mot-de-passe");
+    await user.type(screen.getByLabelText("Confirmez le mot de passe"), "autre-mot-de-passe");
+    await user.click(screen.getByRole("button", { name: "Enregistrer le mot de passe" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("ne sont pas identiques");
+    expect(calls.some((c) => c.url === "/auth/password/reset")).toBe(false);
+
+    await user.clear(screen.getByLabelText("Confirmez le mot de passe"));
+    await user.type(screen.getByLabelText("Confirmez le mot de passe"), "nouveau-mot-de-passe");
+    await user.click(screen.getByRole("button", { name: "Enregistrer le mot de passe" }));
+    expect(await screen.findByText("Lien invalide ou expiré : demandez-en un nouveau.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Enregistrer le mot de passe" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Mot de passe modifié");
+    expect(calls.filter((c) => c.url === "/auth/password/reset").at(-1)?.body).toEqual({ token, password: "nouveau-mot-de-passe" });
+    expect(screen.getByRole("heading", { name: "Connexion" })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
   });
 });

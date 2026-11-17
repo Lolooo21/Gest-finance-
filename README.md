@@ -11,7 +11,7 @@ Monorepo pnpm, TypeScript partout.
 |---|---|
 | `apps/api` | API NestJS + Fastify, Prisma, PostgreSQL |
 | `apps/web` | Front React + Vite + TanStack Query + Tailwind, PWA installable |
-| `packages/finance-core` | Domaine pur, sans E/S : `occurrences()` (récurrences), `resteAVivre()`, prévisionnel, objectifs, budgets (`evaluateBudget()`) |
+| `packages/finance-core` | Domaine pur, sans E/S : `occurrences()` (récurrences), `resteAVivre()`, prévisionnel, objectifs, budgets (`evaluateBudget()`), lecture et rapprochement des relevés (`parseStatement()`, `reconcile()`), catégorisation (`suggestCategory()`) |
 | `packages/shared` | Schémas Zod partagés entre l'API et le front |
 | `infra/docker` | PostgreSQL et Redis de développement |
 
@@ -25,6 +25,7 @@ erDiagram
     Household ||--o{ RecurringRule : "possède"
     Household ||--o{ AuditLog : "journal"
     User ||--o{ RefreshToken : "sessions"
+    User ||--o{ PasswordResetToken : "liens de réinitialisation"
     User ||--o| ReminderSetting : "rappel hebdo"
     User ||--o{ PushSubscription : "appareils"
     BankAccount ||--o{ Transaction : "opérations"
@@ -39,6 +40,7 @@ erDiagram
     Household ||--o{ Category : "catégories"
     Category ||--o{ Transaction : "classe (SET NULL)"
     Category ||--o{ RecurringRule : "classe (SET NULL)"
+    Category ||--o{ CategoryRule : "règles (CASCADE)"
 
     Household {
         uuid id PK
@@ -56,6 +58,13 @@ erDiagram
         bool totpEnabled
         int failedLogins
         datetime lockedUntil
+    }
+    PasswordResetToken {
+        uuid id PK
+        uuid userId FK
+        string tokenHash UK "SHA-256 du lien"
+        datetime expiresAt "30 minutes"
+        datetime usedAt "usage unique"
     }
     RefreshToken {
         uuid id PK
@@ -104,6 +113,7 @@ erDiagram
         date date
         string label
         uuid categoryId FK "facultative"
+        string importHash "empreinte de la ligne de relevé, unique par compte"
     }
     Category {
         uuid id PK
@@ -112,6 +122,14 @@ erDiagram
         int monthlyBudgetCents "plafond mensuel, null = sans budget"
         bool rollover "report du reliquat"
         date budgetSince "début du budget (report)"
+    }
+    CategoryRule {
+        uuid id PK
+        uuid householdId FK
+        string pattern UK "mot-clé normalisé, unique dans le foyer"
+        uuid categoryId FK
+        enum source "MANUAL, LEARNED"
+        int hits "classements confirmés"
     }
     PayslipImport {
         uuid id PK
@@ -174,7 +192,7 @@ erDiagram
 **Lecture du schéma.**
 - Un **foyer** (`Household`) regroupe des **utilisateurs** (`User`, rôles `OWNER`, `ADULT`, `CHILD`) et toutes les données financières. Chaque table de données porte un `householdId` : toutes les requêtes de l'API sont filtrées par le foyer du jeton, jamais par un paramètre envoyé par le client.
 - Un **compte bancaire** (`BankAccount`) porte un solde initial et un IBAN chiffré. Son **solde courant** n'est pas stocké : il est calculé = solde initial + opérations + occurrences de règles récurrentes déjà échues.
-- Une **opération** (`Transaction`) est ponctuelle, en centimes signés (entrée positive, sortie négative).
+- Une **opération** (`Transaction`) est ponctuelle, en centimes signés (entrée positive, sortie négative). Si elle vient d'un relevé importé, ou a été rapprochée d'une ligne de relevé, elle garde l'**empreinte** SHA-256 de cette ligne (`importHash`, unique par compte) : un même relevé n'est jamais importé deux fois. L'empreinte part de l'identifiant bancaire (OFX) ou, à défaut, de la date, du montant, du libellé normalisé et du rang parmi les lignes identiques du fichier.
 - Une **règle récurrente** (`RecurringRule`) décrit un salaire, un loyer, un abonnement… (hebdomadaire, mensuel, annuel, avec fin optionnelle). Les occurrences ne sont pas stockées : `finance-core` les génère à la demande.
 - `ReminderSetting` (une ligne par utilisateur) décrit son rappel hebdomadaire : jour, heure, fuseau. Le **créneau** du rappel est le dernier instant où tombent ce jour et cette heure ; le bilan est « dû » si ce créneau est postérieur à l'activation (`since`) et au dernier bilan fait (`lastDoneAt`). `lastReminderAt` garantit une seule notification par créneau.
 - `PushSubscription` : un appareil abonné aux notifications. L'API n'envoie qu'aux services push connus des navigateurs (liste blanche anti-SSRF) ; la notification ne contient aucune donnée financière.
@@ -182,14 +200,16 @@ erDiagram
 - `BehaviorGoal` : un **objectif de comportement mensuel** du foyer, au plus un par type : « pas de découvert » (aucun compte courant sous zéro, jour après jour), « reste à vivre positif », « dépenses sous un plafond » (`capCents`). L'évaluation n'est jamais stockée : `finance-core` la recalcule à chaque lecture à partir des comptes, règles et opérations (statut du mois en cours *en bonne voie / à surveiller / raté*, mois terminés *réussi / raté* depuis la création, 12 mois maximum, série de mois réussis d'affilée). Seuils : alerte à 80 % du plafond de dépenses, à moins de 10 % des revenus pour le reste à vivre.
 - `SavingsGoal` : un **objectif d'épargne** (épargne de secours, court ou long terme) sous forme d'**enveloppe virtuelle** : plusieurs objectifs peuvent partager un même livret sans se mélanger, et aucun mouvement n'est fait sur un compte bancaire. L'épargne de l'objectif est la **somme de ses versements** (`SavingsContribution`, positifs ou négatifs, jamais en dessous de zéro) ; le compte lié (`accountId`) est indicatif. Avancement, statut (*atteint, en bonne voie, en retard, échéance dépassée, sans échéance*) et **versement mensuel conseillé** (reste à épargner réparti sur les mois restants, avec les intérêts si un taux est indiqué) sont recalculés à chaque lecture par `finance-core`, comme l'épargne de secours : cible de 3 à 6 mois des dépenses habituelles (moyenne des 3 derniers mois terminés), alerte sous 3 mois.
 - `Category` : une **catégorie de dépenses** du foyer (Courses, Loisirs…), au nom unique dans le foyer, à laquelle on rattache (facultativement) des opérations et des règles récurrentes ; la supprimer les laisse **sans catégorie**. Elle peut porter un **budget mensuel** (`monthlyBudgetCents`, une enveloppe) : les dépenses nettes du mois (sorties moins remboursements, récurrences du mois comprises) sont comparées au plafond, avec alerte à **80 %** puis à **100 %**. Avec `rollover`, le reliquat positif de chaque mois s'ajoute au plafond du suivant, à partir du mois où le budget a été fixé (`budgetSince`) ; un dépassement n'est jamais reporté. Rien n'est stocké : `finance-core` recalcule à chaque lecture.
+- `CategoryRule` : une **règle de catégorisation automatique** « mot-clé → catégorie ». Un libellé qui contient le mot-clé (mots entiers, sans accents ni casse) reçoit la catégorie. Les règles `LEARNED` naissent quand un adulte classe une opération : le premier mot significatif du libellé (en général le commerçant : « CB CARREFOUR EVRY 12/11 » → « carrefour ») pointe vers la catégorie choisie, et suit la dernière correction. Les règles `MANUAL` sont saisies et ne sont jamais écrasées par un classement. Sans règle applicable, un **classifieur bayésien naïf** entraîné sur les opérations déjà classées du foyer propose une catégorie s'il est assez sûr (5 exemples au moins, probabilité ≥ 60 %). Tout est calculé sur le serveur, rien n'est envoyé à un tiers.
 - `MarketSnapshot` (indépendante des foyers, **aucune donnée personnelle**) mémorise les indicateurs publics récupérés chaque jour (taux de dépôt de la BCE, OAT 10 ans France, inflation IPCH France) : une ligne par indicateur et par période observée. Les taux réglementés (Livret A, LDDS, LEP, PEL) ne sont pas en base : ils sont dans une configuration versionnée avec source et période de validité (`apps/api/src/market/regulated-rates.ts`), car ils ne changent que les 1er février et 1er août.
+- `PasswordResetToken` : lien « mot de passe oublié » envoyé par e-mail. Seule l'empreinte SHA-256 du jeton est stockée ; le lien vaut 30 minutes, une seule fois, et un nouveau lien annule les précédents. Table réservée au rôle `gest_system` (RLS activée sans droit pour `gest_app`).
 - `RefreshToken` stocke uniquement l'empreinte SHA-256 du jeton de session, avec rotation et révocation. `AuditLog` garde les actions (connexion, ajout…), sans montants ni secrets.
 
 ### Isolation par ligne (RLS PostgreSQL, jalon 8b)
 Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : même si une requête oubliait son filtre, la base ne renverrait que les lignes du foyer connecté.
 - **Trois rôles SQL** : `gest` (propriétaire des tables, utilisé **seulement** par les migrations et les tests, jamais par l'API), `gest_app` (requêtes des utilisateurs connectés, **soumis à la RLS**) et `gest_system` (inscription, connexion, journal d'audit, rappels, indicateurs : droits limités aux tables nécessaires, aucun accès aux comptes, opérations, règles ni fiches de paie). Les rôles sont créés par la migration `rls_foyer` ; leurs mots de passe viennent des URL de connexion (`pnpm db:roles`).
 - **Foyer courant** : un hook Fastify lit le foyer dans le jeton vérifié et le garde pour toute la requête ; chaque requête SQL s'exécute dans une transaction qui fixe `app.household_id` (`set_config(..., true)`, local à la transaction). Les politiques `foyer` de chaque table comparent `householdId` à ce réglage. **Sans foyer, l'accès est refusé** (erreur) plutôt que silencieusement vide.
-- **Tables** : `Household`, `User`, `AuditLog`, `BankAccount`, `Transaction`, `RecurringRule`, `PayslipImport`, `BehaviorGoal`, `SavingsGoal`, `SavingsContribution`, `Category` (par `householdId`) ; `RefreshToken`, `ReminderSetting`, `PushSubscription` (via l'utilisateur). `MarketSnapshot` (public) n'a pas de RLS. Le journal d'audit est en écriture seule pour l'application.
+- **Tables** : `Household`, `User`, `AuditLog`, `BankAccount`, `Transaction`, `RecurringRule`, `PayslipImport`, `BehaviorGoal`, `SavingsGoal`, `SavingsContribution`, `Category`, `CategoryRule` (par `householdId`) ; `RefreshToken`, `ReminderSetting`, `PushSubscription` (via l'utilisateur). `MarketSnapshot` (public) n'a pas de RLS. Le journal d'audit est en écriture seule pour l'application.
 - **Garde-fous** : l'API refuse de démarrer si `DATABASE_URL` n'est pas le rôle `gest_app` (ou si ce rôle contourne la RLS) ; en production, `DATABASE_OWNER_URL` ne doit pas exister dans l'API ; un test échoue si une table est ajoutée sans RLS.
 - **Nouvelle table du foyer** : dans sa migration, `ENABLE ROW LEVEL SECURITY`, une politique `foyer`, et les `GRANT` strictement nécessaires aux deux rôles.
 
@@ -199,7 +219,8 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 
 | Domaine | Fonctionnalité |
 |---|---|
-| Authentification | Inscription d'un foyer, connexion, déconnexion ; mot de passe Argon2id ; cookies HttpOnly + SameSite=Strict ; refresh token à rotation (réutilisation détectée = sessions révoquées) ; verrouillage 15 min après 5 échecs ; réponses identiques pour compte inconnu ou mauvais mot de passe |
+| Authentification | Inscription d'un foyer, connexion, déconnexion ; mot de passe Argon2id ; cookies HttpOnly + SameSite=Strict ; refresh token à rotation (réutilisation détectée = sessions révoquées) ; verrouillage 15 min après 5 échecs ; réponses identiques pour compte inconnu ou mauvais mot de passe ; bouton afficher / masquer le mot de passe à la connexion, à l'inscription et à la réinitialisation |
+| Mot de passe oublié | Lien par e-mail (SMTP ; Mailpit en développement) valable 30 minutes et à usage unique ; réponse identique et immédiate que l'adresse existe ou non ; 5 demandes par minute et par IP ; le nouveau mot de passe déverrouille le compte et ferme toutes les sessions ouvertes ; sans SMTP configuré, rien n'est envoyé |
 | 2FA | Activation TOTP depuis le tableau de bord ; code exigé à la connexion ensuite |
 | Foyer et rôles | Ajout de membres par le propriétaire ; `OWNER`/`ADULT` écrivent, `CHILD` en lecture seule ; journal d'audit (API, propriétaire) |
 | Comptes | Création, liste (solde courant, IBAN masqué), modification, suppression ; IBAN chiffré AES-256-GCM |
@@ -216,18 +237,20 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | Prévisionnel de trésorerie | Solde projeté à 30, 60 ou 90 jours (`GET /forecast`) : point de départ = solde d'aujourd'hui, puis règles récurrentes à venir et opérations déjà saisies avec une date future ; courbe jour par jour, solde le plus bas, **alerte au premier découvert prévu** (comptes courants seulement), prochaines échéances. Fonction pure `projectBalance()` de `finance-core` |
 | Objectifs de comportement | « Pas de découvert », « reste à vivre positif », « dépenses sous un plafond » (`/goals/behavior`) : statut du mois en cours, mesure, historique et série de mois réussis ; activation et retrait par un adulte, lecture pour tous |
 | Objectifs d'épargne | Enveloppes virtuelles par objectif (`/goals/savings`) : avancement, versements et retraits saisis, versement mensuel conseillé comparé au reste à vivre du mois, **épargne de secours** (couverture en mois de dépenses, alerte sous 3 mois), modèles prédéfinis (fonds d'urgence, vacances, rentrée scolaire, apport immobilier), rappel de l'ordre conseillé (secours → court terme → long terme) ; l'état de tous les objectifs figure aussi dans le bilan de la semaine |
+| Import de relevés | CSV (point-virgule, virgule ou tabulation, en-têtes de banque, colonnes Montant ou Débit/Crédit, UTF-8 ou Windows-1252) et OFX, 2 Mo maximum, fichier jamais conservé ; **aperçu avant validation** : chaque ligne est classée *nouvelle*, *déjà saisie* (rapprochée d'une opération saisie à la main, même montant à 2 jours près), *récurrence* (déjà comptée par une règle récurrente : non importée par défaut, pour ne pas compter deux fois le loyer) ou *déjà importée* ; lignes à cocher, puis import et rapprochement en une transaction ; réimporter le même relevé (ou le même relevé dans l'autre format) ne crée aucun doublon ; relevés PDF refusés avec un message clair |
+| Catégorisation automatique | Catégorie proposée à l'import (modifiable ligne par ligne, « (auto) ») et à la saisie (« Catégorie automatique » par défaut, « Sans catégorie » possible) ; apprentissage de chaque classement ou correction ; règles saisies prioritaires ; bouton « Classer les opérations sans catégorie » ; liste des règles (saisies ou apprises, nombre d'utilisations) avec ajout et suppression ; classifieur local en repli |
 | Catégories et budgets | Catégories du foyer (`/categories`) avec budget mensuel facultatif : jauge, alerte à 80 % puis « plafond atteint » à 100 %, montant restant ou dépassement, report optionnel du reliquat sur le mois suivant ; catégorie choisie à la saisie d'une opération ou d'une récurrence et modifiable ensuite ; dépenses sans catégorie affichées ; écarts vs budget rappelés dans le bilan de la semaine ; écriture par un adulte, lecture pour tous |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (92 tests, ≥ 95 %), API sur PostgreSQL réel (162 tests, dont l'isolation par ligne et les droits des rôles), front (62 tests) |
+| Tests | `finance-core` (111 tests, ≥ 95 %), API sur PostgreSQL réel (178 tests, dont l'isolation par ligne et les droits des rôles), front (70 tests) |
 
-À venir (voir `TODO.md`) : import de relevés et catégorisation automatique (s'appuiera sur les catégories), détection des abonnements, OCR des scans, historique et alertes sur les taux, passkeys.
+À venir (voir `TODO.md`) : détection des abonnements, OCR des scans, historique et alertes sur les taux, passkeys.
 
 ## Démarrage (développement)
-Prérequis : Node 22+, pnpm 10, Docker.
+Prérequis : Node 22+, pnpm 10, Docker. Mise en production : [`docs/deploiement.md`](docs/deploiement.md) et le guide pas à pas OVH [`docs/deploiement-ovh.md`](docs/deploiement-ovh.md).
 ```
 pnpm install
-docker compose -f infra/docker/compose.dev.yml up -d     # PostgreSQL + Redis
+docker compose -f infra/docker/compose.dev.yml up -d     # PostgreSQL + Redis + Mailpit (e-mails de test : http://localhost:8025)
 copy apps\api\.env.example apps\api\.env                  # (cp sous Linux/macOS)
 pnpm dev                                                  # API :3000 + front http://localhost:5173
 pnpm test

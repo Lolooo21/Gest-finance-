@@ -10,6 +10,8 @@ Vos appareils ──(Tailscale, HTTPS)──► [VPS] tailscale ► proxy (Caddy
                                           backup ──(chiffré avec age)──► stockage S3
 ```
 
+> **Guide pas à pas OVH** (achat du VPS, nom de domaine et DNS, SMTP, Tailscale, Portainer, budget) : [`deploiement-ovh.md`](deploiement-ovh.md).
+
 > **État de validation** : les fichiers de ce dossier ont été testés par des tests automatiques (syntaxe, cohérence, scripts de
 > sauvegarde/restauration sur un vrai PostgreSQL). La construction des images et le démarrage de la pile sont vérifiés par la CI
 > GitHub (workflow « Images Docker »). **Le premier déploiement réel sur un VPS n'a pas encore été fait** : suivez ce guide pas à pas
@@ -85,12 +87,27 @@ Au bout de quelques minutes tous les services sont « healthy » (la base de don
 `https://gest-finance.<nom-de-votre-réseau>.ts.net` depuis un appareil connecté à Tailscale (le nom exact est dans la console Tailscale),
 puis **créez votre foyer** (inscription) et activez la double authentification.
 
+### E-mails : lien « mot de passe oublié » (facultatif)
+Sans configuration, l'application fonctionne normalement mais n'envoie aucun e-mail : un mot de passe oublié ne peut alors pas être
+réinitialisé. Pour l'activer :
+1. Mettez l'URL de votre serveur SMTP (celui de votre domaine ou d'un fournisseur d'envoi) dans `secrets/smtp_url`, sur une seule ligne :
+   `smtp://utilisateur:motdepasse@smtp.exemple.fr:587` (`smtps://…:465` pour une connexion chiffrée dès le départ). Le script
+   `init-secrets.sh` vous le propose ; un fichier vide désactive l'envoi.
+2. Dans `infra/docker/.env`, renseignez `MAIL_FROM=Gest-finance <no-reply@exemple.fr>` et
+   `APP_URL=https://gest-finance.<nom-de-votre-réseau>.ts.net` (adresse des liens envoyés). L'API refuse de démarrer si `smtp_url` est
+   renseigné sans `APP_URL` en https.
+3. `docker compose -f infra/docker/compose.prod.yml --profile prod up -d`.
+
+Le lien est valable 30 minutes, une seule fois ; il ferme toutes les sessions ouvertes et déverrouille le compte. L'e-mail contient le lien
+mais aucune donnée financière. Le lien n'est utilisable que depuis un appareil connecté à votre réseau Tailscale.
+
 ## 6. Mise à jour et retour arrière
 ```
 cd Gest-finance- && git pull
 docker compose -f infra/docker/compose.prod.yml --profile prod up -d --build
 ```
-Les migrations s'appliquent automatiquement. **Retour arrière** : `git checkout <version précédente>` puis la même commande. Une migration
+Les migrations s'appliquent automatiquement. Après une mise à jour qui ajoute un secret (par exemple `smtp_url`), relancez d'abord
+`sh infra/scripts/init-secrets.sh` : il ne crée que les secrets manquants. **Retour arrière** : `git checkout <version précédente>` puis la même commande. Une migration
 de base n'est pas annulable automatiquement : en cas de problème de données, restaurez la dernière sauvegarde (§ 8).
 
 ## 7. Sauvegardes

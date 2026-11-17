@@ -4,6 +4,7 @@ import { api, type BudgetStatus, type BudgetsOverview, type CategoryView } from 
 import { centsToInput, parseEuros } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, useConfirm, useToast } from "../ui";
+import { CategoryRules } from "./CategoryRules";
 
 export const BUDGET_STATUS: Record<BudgetStatus, { label: string; className: string; bar: string }> = {
   OK: { label: "Dans le budget", className: "bg-emerald-100 text-emerald-900", bar: "bg-teal-600" },
@@ -131,6 +132,7 @@ export function BudgetsPanel() {
       ) : (
         <Button variant="secondary" icon="plus" className="mt-3" onClick={() => setAdding(true)}>Nouvelle catégorie</Button>
       )}
+      {q.data && <CategoryRules categories={q.data.categories} />}
     </section>
   );
 }

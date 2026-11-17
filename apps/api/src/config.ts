@@ -20,6 +20,8 @@ export function assertProductionConfig(env: NodeJS.ProcessEnv = process.env): vo
   // Le rôle propriétaire (migrations) contourne la RLS : l'API ne doit jamais le connaître.
   if (env.DATABASE_OWNER_URL) problems.push("DATABASE_OWNER_URL ne doit pas être défini pour l'API (réservé au service de migration)");
   if (env.COOKIE_SECURE === "0" && env.ALLOW_INSECURE_COOKIES !== "1") problems.push("COOKIE_SECURE=0 est interdit en production");
+  // Les liens de réinitialisation doivent pointer vers l'adresse réelle de l'application (jamais localhost).
+  if (env.SMTP_URL && !/^https:\/\//.test(env.APP_URL ?? "")) problems.push("APP_URL (adresse https de l'application) est obligatoire quand SMTP_URL est défini");
 
   if (problems.length) throw new Error(`Configuration de production invalide : ${problems.join(" ; ")}.`);
 }

@@ -30,6 +30,7 @@ model Household {
   savingsGoals SavingsGoal[]
   savingsContributions SavingsContribution[]
   categories Category[]
+  categoryRules CategoryRule[]
 }
 
 model User {
@@ -46,6 +47,7 @@ model User {
   lockedUntil   DateTime?
   createdAt     DateTime @default(now())
   refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   reminder      ReminderSetting?
   pushSubscriptions PushSubscription[]
 
@@ -59,6 +61,19 @@ model RefreshToken {
   tokenHash String   @unique
   expiresAt DateTime
   revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Lien de réinitialisation du mot de passe : seule l'empreinte SHA-256 est stockée ; usage unique, 30 minutes.
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -116,9 +131,12 @@ model Transaction {
   label       String
   categoryId  String?
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  /// Empreinte SHA-256 de la ligne de relevé importée ou rapprochée (null = saisie manuelle) : un relevé n'est jamais importé deux fois
+  importHash  String?
   createdAt   DateTime @default(now())
   payslipImport PayslipImport?
 
+  @@unique([accountId, importHash])
   @@index([householdId, date])
   @@index([accountId])
   @@index([categoryId])
@@ -267,8 +285,33 @@ model Category {
   createdAt          DateTime @default(now())
   transactions       Transaction[]
   recurringRules     RecurringRule[]
+  rules              CategoryRule[]
 
   @@unique([householdId, name])
+}
+
+enum RuleSource {
+  MANUAL
+  LEARNED
+}
+
+/// Règle de catégorisation automatique : un libellé contenant le mot-clé (mots entiers, normalisés) reçoit la catégorie.
+/// MANUAL = saisie par un adulte ; LEARNED = apprise quand un adulte classe une opération (une règle saisie n'est jamais écrasée).
+model CategoryRule {
+  id          String     @id @default(uuid())
+  householdId String
+  household   Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  /// Mot-clé normalisé (minuscules, sans accents), un ou plusieurs mots
+  pattern     String
+  categoryId  String
+  category    Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  source      RuleSource
+  /// Nombre de fois où la règle a été confirmée par un classement
+  hits        Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  @@unique([householdId, pattern])
+  @@index([categoryId])
 }
 
 /// Indicateur de marché public (BCE, Eurostat) : non rattaché à un foyer, aucune donnée personnelle.

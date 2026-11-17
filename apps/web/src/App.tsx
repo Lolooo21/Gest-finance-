@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "./api";
-import { AuthPage } from "./pages/AuthPage";
+import { AuthPage, resetTokenFromUrl } from "./pages/AuthPage";
 import { Dashboard } from "./pages/Dashboard";
 import { Header, type View } from "./pages/Header";
 import { News } from "./pages/News";
@@ -30,7 +30,8 @@ export function App() {
   // Session perdue en cours d'utilisation : retour à la connexion avec une explication.
   useEffect(() => {
     const onExpired = () => {
-      if (qc.getQueryData(["session"]) === false) return;
+      // Seule une session réellement ouverte peut « expirer » : un visiteur non connecté ne doit pas voir ce message.
+      if (qc.getQueryData(["session"]) !== true) return;
       qc.setQueryData(["session"], false);
       toast.error("Votre session a expiré. Reconnectez-vous.");
     };
@@ -46,7 +47,8 @@ export function App() {
       </main>
     );
   }
-  if (!session.data) return <AuthPage onDone={() => qc.invalidateQueries()} />;
+  // Un lien « mot de passe oublié » ouvre l'écran de nouveau mot de passe, même si une session est ouverte sur cet appareil.
+  if (!session.data || resetTokenFromUrl()) return <AuthPage onDone={() => qc.invalidateQueries()} />;
   const logout = async () => {
     try {
       await api("POST", "/auth/logout");

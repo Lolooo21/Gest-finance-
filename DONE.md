@@ -301,6 +301,54 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `pages/Dashboard.tsx` : choix de la catégorie à la saisie, catégorie affichée et modifiable (liste déroulante dans l'édition en ligne) pour les opérations et les récurrences ; `pages/Weekly.tsx` : section « Budgets du mois » du bilan.
 - Tests : 5 nouveaux (front : 62).
 
+## Jalon 11a — Import de relevés bancaires (CSV, OFX) et rapprochement
+### `packages/finance-core` (`statements.ts`)
+- `parseStatement(text)` : détecte OFX ou CSV sur le contenu ; CSV : séparateur deviné (`;`, tabulation, `,`), lignes de préambule de banque ignorées jusqu'à l'en-tête, colonnes repérées (date d'opération plutôt que de valeur, libellé, montant ou débit/crédit), guillemets, BOM ; OFX 1.x (SGML) et 2.x : `DTPOSTED`, `TRNAMT`, `NAME` + `MEMO` sans répétition, `FITID` ; lignes illisibles comptées et signalées.
+- `parseStatementAmount()` (« -1 234,56 », « 12.50 », « 1,234.56 », « 42 EUR », signe moins typographique), `parseStatementDate()` (JJ/MM/AAAA, JJ/MM/AA, AAAA-MM-JJ, AAAAMMJJ ; refuse une date impossible), `normalizeLabel()`, `labelSimilarity()`.
+- `importKeys(lines)` : clé d'idempotence (identifiant OFX, sinon date, montant, libellé normalisé et rang parmi les lignes identiques).
+- `reconcile(lines, existing, rules, toleranceDays)` : déjà importée (même clé, ou même date et montant qu'une opération importée d'un autre fichier), rapprochée d'une saisie manuelle (même montant, ± 2 jours, la plus proche puis le libellé le plus ressemblant), occurrence d'une récurrence, ou nouvelle ; chaque opération ou occurrence ne sert qu'une fois.
+- Tests : 11 nouveaux (finance-core : 103).
+### API
+- Colonne `Transaction.importHash` (unique par compte, migration `import_releves`).
+- `imports.controller.ts` : `POST /imports/preview?accountId=` (multipart, 2 Mo, UTF-8 sinon Windows-1252, PDF refusé en 415 avec un message clair, 5 000 lignes maximum, empreintes SHA-256, rien n'est enregistré) ; `POST /imports/confirm` (lignes `CREATE` créées avec `createMany … skipDuplicates`, lignes `LINK` rattachées à une opération saisie à la main du même compte et du même foyer, empreintes déjà présentes ignorées, le tout dans une transaction) ; écriture réservée aux adultes ; audit sans libellé ni montant.
+- `/imports` ajouté à `routes.ts` et au `Caddyfile`.
+- Tests (API : 166, +4) : droits, compte d'un autre foyer, PDF, taille, en-tête absent, aperçu rapproché, import, réimport sans doublon, double validation, Windows-1252, même relevé en OFX après CSV, rapprochement refusé vers un autre foyer, validations, solde.
+### Front
+- `pages/StatementImport.tsx` : action rapide « Importer un relevé » ; choix du compte et du fichier (contrôle de l'extension et de la taille avant envoi), aperçu avec résumé, avertissements, statut et rapprochement de chaque ligne, cases cochées par défaut pour les nouvelles et les déjà saisies, import puis notification. Tests : 2 nouveaux (front : 64).
+
+## Jalon 11b — Catégorisation automatique (règles apprises et classifieur local)
+### `packages/finance-core` (`categorize.ts`)
+- `significantTokens()` (sans bruit bancaire : CB, PRLV, SEPA, VIR…, ni chiffres, ni mois), `labelPattern()` (mot-clé appris : premier mot significatif), `normalizePattern()`, `patternMatches()` (mots entiers : « free » ne correspond pas à « freebox »).
+- `matchRule()` : règle saisie avant règle apprise, puis mot-clé le plus long, puis la plus utilisée.
+- `trainClassifier()` / `classify()` : bayésien naïf multinomial avec lissage de Laplace, abstention sous 5 exemples, sans mot connu ou sous 60 % de probabilité.
+- Compteurs du classifieur en `Map` (alerte CodeQL : un mot comme « constructor » tombait sur une propriété héritée d'objet).
+- `suggestCategory()` : règle, sinon classifieur, sinon rien. Tests : 8 nouveaux (finance-core : 111).
+### API
+- Table `CategoryRule` (mot-clé unique par foyer, source `MANUAL`/`LEARNED`, `hits`, suppression en cascade avec la catégorie ; migration `categorisation_auto` avec RLS et droits).
+- `categorizer.service.ts` : `load()` (règles + classifieur entraîné sur les 3 000 dernières opérations classées), `resolve()` (catégorie absente = automatique, `null` = sans, choisie = vérifiée et apprise), `learn()` (le dernier choix l'emporte, une règle saisie n'est jamais modifiée), `applyToUncategorized()`.
+- `POST /transactions` et `POST /recurring-rules` : catégorie automatique si absente ; `PATCH` : un reclassement est appris. `POST /imports/preview` : `suggestion` (catégorie et source) pour les lignes à créer ; `POST /imports/confirm` : `categoryId` par ligne (absent = proposition, vérifié contre le foyer), choix appris.
+- `GET/POST /categories/rules`, `DELETE /categories/rules/:id`, `POST /categories/auto` ; écriture réservée aux adultes ; audit sans mot-clé.
+- Tests (API : 171, +5) : apprentissage et correction, priorité des règles saisies, classement en masse (règle puis classifieur), proposition et choix à l'import, catégorie d'un autre foyer refusée, isolation, droits, audit.
+### Front
+- `pages/CategoryRules.tsx` (dans la carte des budgets) : « Classer les opérations sans catégorie », règles listées (saisie / apprise · n fois), ajout avec contrôle et suppression.
+- `pages/StatementImport.tsx` : catégorie proposée par ligne (« (auto) »), modifiable ; seules les modifications sont envoyées. `pages/Dashboard.tsx` : « Catégorie automatique » par défaut, « Sans catégorie » explicite.
+
+## Jalon 12 — Mot de passe : affichage à la saisie et réinitialisation par e-mail
+### API
+- `mail/mail.sender.ts` : `MailSender` (abstrait, remplaçable dans les tests) et `SmtpMailSender` (nodemailer 10.3.1, `SMTP_URL`, `MAIL_FROM`) ; sans `SMTP_URL`, rien n'est envoyé ; les erreurs d'envoi sont journalisées sans adresse ni lien.
+- `auth.service.ts` : `forgotPassword(email)` (jeton aléatoire de 32 octets, empreinte SHA-256 en base, 30 minutes, les liens précédents sont annulés, lien `APP_URL/?reinitialisation=…`, audit « demandé » ou « non envoyé ») ; `resetPassword()` (usage unique garanti même en double envoi, Argon2id, déverrouillage, révocation de toutes les sessions).
+- `POST /auth/password/forgot` : toujours 202, tout de suite (recherche et envoi en arrière-plan : ni la réponse ni son délai ne révèlent si l'adresse existe), 5 demandes par minute et par IP ; `POST /auth/password/reset`.
+- Table `PasswordResetToken` (migration `reinitialisation_mdp`, RLS sans droit pour `gest_app`, droits limités pour `gest_system`).
+- Configuration : `SMTP_URL` lisible depuis un fichier (`SMTP_URL_FILE`), secret **facultatif** (fichier vide ou commentaire = désactivé) ; en production, `APP_URL` en https obligatoire si `SMTP_URL` est défini.
+- Tests (API : 173, +7) : lien envoyé au titulaire seulement, empreinte en base, réinitialisation, déverrouillage, sessions fermées, usage unique, lien expiré ou remplacé, validations, audit sans jeton ni adresse, limite de débit, secret facultatif, contrôle de production.
+### Infra
+- `compose.dev.yml` : Mailpit (SMTP 1025, interface http://localhost:8025) ; `.env.example` : `SMTP_URL`, `MAIL_FROM`, `APP_URL`.
+- `docs/deploiement-ovh.md` : guide de mise en production sur OVH (budget, comptes, VPS, domaine et DNS SPF/DKIM/DMARC, sécurisation du serveur, Tailscale, Portainer limité au réseau privé, SMTP OVH ou Brevo, sauvegardes S3, mises à jour, checklist et dépannage).
+- `compose.prod.yml` : secret `smtp_url`, `MAIL_FROM` et `APP_URL` depuis `infra/docker/.env` ; `init-secrets.sh` propose la configuration SMTP (fichier vide sinon) ; `docs/deploiement.md` : section « E-mails ».
+### Front
+- `pages/AuthPage.tsx` : champ mot de passe avec bouton afficher / masquer (accessible, `aria-pressed`) ; « Mot de passe oublié ? » avec confirmation neutre ; écran « Nouveau mot de passe » ouvert par le lien (confirmation vérifiée avant envoi, adresse nettoyée après succès). `App.tsx` : le lien ouvre cet écran même avec une session ouverte ; un visiteur non connecté ne voit plus « Votre session a expiré » au premier chargement (défaut corrigé).
+- Tests : 3 nouveaux (front : 67).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

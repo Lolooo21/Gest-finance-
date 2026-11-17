@@ -46,6 +46,12 @@ export type LoginDto = z.infer<typeof LoginDto>;
 export const TotpCodeDto = z.object({ code: z.string().regex(/^\d{6}$/) });
 export type TotpCodeDto = z.infer<typeof TotpCodeDto>;
 
+/** Mot de passe oublié : la réponse est toujours la même, que le compte existe ou non. */
+export const ForgotPasswordDto = z.object({ email: z.string().email().max(254).transform((e) => e.toLowerCase()) });
+export type ForgotPasswordDto = z.infer<typeof ForgotPasswordDto>;
+export const ResetPasswordDto = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Lien invalide"), password });
+export type ResetPasswordDto = z.infer<typeof ResetPasswordDto>;
+
 export const AddMemberDto = z.object({
   email: z.string().email().max(254).transform((e) => e.toLowerCase()),
   password,
@@ -138,8 +144,37 @@ export const CategoryDto = z.object({
   rollover: z.boolean().default(false),
 });
 export type CategoryDto = z.infer<typeof CategoryDto>;
+/** Règle de catégorisation saisie : mot-clé (un ou plusieurs mots) → catégorie. */
+export const CategoryRuleDto = z.object({
+  pattern: z.string().trim().min(2, "Mot-clé trop court").max(60),
+  categoryId: z.string().uuid(),
+});
+export type CategoryRuleDto = z.infer<typeof CategoryRuleDto>;
 export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional() });
 export type BudgetQuery = z.infer<typeof BudgetQuery>;
+
+/** Import de relevés : lignes cochées dans l'aperçu (à créer, ou à rapprocher d'une opération déjà saisie). */
+export const MAX_IMPORT_LINES = 5000;
+export const ImportConfirmDto = z.object({
+  accountId: z.string().uuid(),
+  lines: z
+    .array(
+      z.object({
+        key: z.string().regex(/^[a-f0-9]{64}$/, "Empreinte invalide"),
+        date: isoDate,
+        amountCents,
+        label: z.string().trim().min(1).max(120),
+        action: z.enum(["CREATE", "LINK"]),
+        transactionId: z.string().uuid().optional(),
+        categoryId: z.string().uuid().nullable().optional(),
+      }).refine((l) => l.action === "CREATE" || l.transactionId !== undefined, { message: "Opération à rapprocher manquante", path: ["transactionId"] }),
+    )
+    .min(1, "Aucune ligne à importer")
+    .max(MAX_IMPORT_LINES, `${MAX_IMPORT_LINES} lignes maximum par import`),
+});
+export type ImportConfirmDto = z.infer<typeof ImportConfirmDto>;
+export const ImportPreviewQuery = z.object({ accountId: z.string().uuid() });
+export type ImportPreviewQuery = z.infer<typeof ImportPreviewQuery>;
 
 const atLeastOne = (o: object) => Object.keys(o).length > 0;
 
