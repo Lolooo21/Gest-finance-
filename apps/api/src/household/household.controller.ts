@@ -22,8 +22,17 @@ export class HouseholdController {
 
   /** L'utilisateur connecté : le front adapte l'écran à son rôle (administration du foyer pour le propriétaire). */
   @Get("me")
-  me(@CurrentUser() user: AuthUser) {
-    return this.prisma.user.findUniqueOrThrow({ where: { id: user.userId }, select: { id: true, email: true, displayName: true, role: true } });
+  async me(@CurrentUser() user: AuthUser) {
+    const u = await this.prisma.user.findUniqueOrThrow({ where: { id: user.userId }, select: { id: true, email: true, displayName: true, role: true, tutorialSeenAt: true } });
+    const { tutorialSeenAt, ...rest } = u;
+    return { ...rest, tutorialDone: tutorialSeenAt !== null };
+  }
+
+  /** Tutoriel de première connexion terminé ou passé : il ne s'affiche plus d'office (il reste disponible dans « Plus »). */
+  @Post("me/tutorial")
+  @HttpCode(204)
+  async tutorialSeen(@CurrentUser() user: AuthUser) {
+    await this.prisma.user.updateMany({ where: { id: user.userId, householdId: user.householdId }, data: { tutorialSeenAt: new Date() } });
   }
 
   /** Toutes les requêtes sont filtrées par le householdId du jeton, jamais par un paramètre client. */

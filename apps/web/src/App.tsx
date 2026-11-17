@@ -1,17 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { api, ApiError } from "./api";
 import { AuthPage, resetTokenFromUrl } from "./pages/AuthPage";
-import { Dashboard } from "./pages/Dashboard";
-import { Header, type View } from "./pages/Header";
-import { News } from "./pages/News";
+import { Shell } from "./pages/Shell";
 import { ErrorBanner, useToast } from "./ui";
 
 export function App() {
   const qc = useQueryClient();
   const toast = useToast();
-  const [view, setView] = useState<View>(() => (window.location.hash === "#actualites" ? "news" : "dashboard"));
-  const go = (v: View) => { setView(v); window.history.replaceState(null, "", v === "news" ? "#actualites" : window.location.pathname + window.location.search); };
   // /household/members sert de sonde de session : 200 = connecté, 401 = écran de connexion.
   const session = useQuery({
     queryKey: ["session"],
@@ -57,10 +53,5 @@ export function App() {
       await qc.invalidateQueries();
     }
   };
-  return (
-    <>
-      <Header view={view} onView={go} onLogout={logout} />
-      {view === "news" ? <News /> : <Dashboard />}
-    </>
-  );
+  return <Shell onLogout={logout} />;
 }

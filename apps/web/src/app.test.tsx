@@ -34,9 +34,14 @@ function mockApi(handler: Handler) {
 }
 
 const renderApp = () => render(<AppProviders retry={false}><App /></AppProviders>);
+/** Ouvre l'application sur un onglet ou un sous-écran (#operations, #budgets, #plus:2fa…). */
+const startAt = (hash: string) => window.history.replaceState(null, "", `/${hash}`);
+/** Change d'onglet par la barre de navigation du bas. */
+const openTab = async (user: ReturnType<typeof userEvent.setup>, name: string) =>
+  user.click(within(await screen.findByRole("navigation", { name: "Navigation principale" })).getByRole("button", { name }));
 
 beforeEach(() => localStorage.clear());
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
 
 describe("App", () => {
   it("affiche la connexion si la session est absente et envoie les identifiants", async () => {
@@ -74,6 +79,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /Masquer les montants/ }));
     expect(screen.getByTestId("remaining").textContent).toBe("•••• €");
 
+    await openTab(user, "Opérations");
     await waitFor(() => expect(screen.getByLabelText("Compte")).toHaveTextContent("Courant"));
     await user.selectOptions(screen.getByLabelText("Compte"), "a1");
     await user.type(screen.getByLabelText("Libellé"), "Courses");
@@ -90,6 +96,7 @@ describe("App", () => {
       if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
       return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
     });
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await waitFor(() => expect(screen.getByLabelText("Compte")).toHaveTextContent("Courant"));
@@ -115,6 +122,7 @@ describe("modification et 2FA", () => {
 
   it("modifie une opération en conservant le sens et en envoyant des centimes", async () => {
     const calls = mockApi(dashboardApi((m) => (m === "PATCH" ? { json: { ok: true } } : {})));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Modifier Courses" }));
@@ -133,9 +141,9 @@ describe("modification et 2FA", () => {
       if (u === "/auth/2fa/enable") return { json: { ok: true } };
       return {};
     }));
+    startAt("#plus:2fa");
     renderApp();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Double authentification" }));
     await user.click(await screen.findByRole("button", { name: /Activer la double authentification/ }));
     expect(await screen.findByTestId("totp-secret")).toHaveTextContent("JBSWY3DPEHPK3PXP");
     await user.type(screen.getByLabelText("Code à 6 chiffres"), "123456");
@@ -204,6 +212,7 @@ describe("rappel hebdomadaire", () => {
 
   it("enregistre les réglages du rappel avec le fuseau de l'appareil", async () => {
     const calls = mockApi(weeklyApi({ reminder: { ...baseReminder, due: false, enabled: false } }));
+    startAt("#plus:bilan");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByLabelText(/Me rappeler/));
@@ -237,6 +246,7 @@ describe("import d'une fiche de paie", () => {
 
   it("préremplit les valeurs lues, affiche les avertissements et n'enregistre qu'après validation", async () => {
     const calls = mockApi(payslipApi());
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     expect((await openAndUpload(user)).textContent).toBe("90 %");
@@ -266,6 +276,7 @@ describe("import d'une fiche de paie", () => {
       if (u === "/payslips/confirm") return ++attempts === 1 ? { status: 409, json: { message: "Cette fiche de paie semble déjà importée." } } : { status: 201, json: { recurringStart: null } };
       return payslipApi()(m, u, b);
     });
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await openAndUpload(user);
@@ -279,6 +290,7 @@ describe("import d'une fiche de paie", () => {
 
   it("affiche le message du serveur si le PDF est un scan", async () => {
     mockApi((m, u, b) => (u === "/payslips/parse" ? { status: 422, json: { message: "Aucun texte exploitable : OCR pas encore disponible." } } : payslipApi()(m, u, b)));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
@@ -303,6 +315,7 @@ describe("gestion des erreurs et ergonomie", () => {
 
   it("demande confirmation avant de supprimer et n'appelle l'API qu'après accord", async () => {
     const calls = mockApi(dash((m) => (m === "DELETE" ? { status: 204 } : {})));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Supprimer Courses" }));
@@ -320,6 +333,7 @@ describe("gestion des erreurs et ergonomie", () => {
 
   it("affiche une notification claire quand une action échoue (au lieu d'échouer en silence)", async () => {
     mockApi(dash((m) => (m === "DELETE" ? { status: 403, json: { message: "Forbidden" } } : {})));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Supprimer Courses" }));
@@ -337,6 +351,7 @@ describe("gestion des erreurs et ergonomie", () => {
 
   it("ne montre jamais une page HTML d'erreur : message clair pour un 404 de route", async () => {
     mockApi(dash((m, u) => (u === "/payslips/parse" ? { status: 404, html: true } : {})));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
@@ -348,6 +363,7 @@ describe("gestion des erreurs et ergonomie", () => {
 
   it("refuse un fichier qui n'est pas un PDF avant tout envoi", async () => {
     const calls = mockApi(dash());
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup({ applyAccept: false });
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
@@ -369,15 +385,20 @@ describe("gestion des erreurs et ergonomie", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Votre session a expiré");
   });
 
-  it("rend les actions visibles : boutons libellés pour modifier, supprimer et naviguer", async () => {
+  it("rend les actions visibles : 5 onglets, boutons libellés pour ajouter, importer, modifier, supprimer et se déconnecter", async () => {
     mockApi(dash());
+    startAt("#operations");
     renderApp();
-    expect(await screen.findByRole("button", { name: "Ajouter une opération" })).toBeVisible();
-    for (const name of ["Importer une fiche de paie", "Bilan de la semaine", "Double authentification", "Déconnexion"]) {
-      expect(screen.getByRole("button", { name })).toBeVisible();
-    }
+    const user = userEvent.setup();
+    const nav = await screen.findByRole("navigation", { name: "Navigation principale" });
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Accueil", "Opérations", "Budgets", "Objectifs", "Plus"]);
+    expect(within(nav).getByRole("button", { name: "Opérations" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Ajouter une opération" })).toBeVisible();
+    for (const name of ["Importer un relevé", "Importer une fiche de paie"]) expect(screen.getByRole("button", { name })).toBeVisible();
     expect(await screen.findByRole("button", { name: "Modifier Courses" })).toHaveTextContent("Modifier");
     expect(screen.getByRole("button", { name: "Supprimer Courses" })).toHaveTextContent("Supprimer");
+    await openTab(user, "Plus");
+    for (const name of [/Double authentification/, /Changer le mot de passe/, /Se déconnecter/]) expect(screen.getByRole("button", { name })).toBeVisible();
   });
 });
 
@@ -412,9 +433,11 @@ describe("actualités financières", () => {
     if (u === "/accounts") return { json: [{ id: "s1", name: "Livret A", type: "SAVINGS", balanceCents: 250_000, ibanMasked: null }] };
     return { json: [] };
   };
+  /** Les actualités sont dans l'onglet Plus. */
   const openNews = async () => {
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Actualités" }));
+    await openTab(user, "Plus");
+    await user.click(await screen.findByRole("button", { name: /Actualités et taux d'épargne/ }));
     return user;
   };
 
@@ -505,15 +528,18 @@ describe("actualités financières", () => {
     expect(within(sim).getByRole("checkbox")).not.toBeChecked();
   });
 
-  it("explique l'échec de chargement avec un bouton Réessayer, et revient au tableau de bord", async () => {
+  it("explique l'échec de chargement avec un bouton Réessayer, et revient à l'onglet Plus puis à l'accueil", async () => {
     mockApi(newsApi((m, u) => (u === "/market" ? { status: 503 } : {})));
     renderApp();
     const user = await openNews();
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Le serveur a rencontré une erreur");
     expect(within(alert).getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Actualités" })).toHaveAttribute("aria-current", "page");
-    await user.click(screen.getByRole("button", { name: "Tableau de bord" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Actualités financières" })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Navigation principale" })).getByRole("button", { name: "Plus" })).toHaveAttribute("aria-current", "page");
+    await user.click(screen.getByRole("button", { name: "Retour" }));
+    expect(await screen.findByRole("button", { name: /Revoir le tutoriel/ })).toBeInTheDocument();
+    await openTab(user, "Accueil");
     expect(await screen.findByRole("region", { name: "Reste à vivre" })).toBeInTheDocument();
   });
 });
@@ -543,6 +569,7 @@ describe("prévisionnel et objectifs", () => {
       if (u === "/forecast?days=60") return { json: forecast({ days: 60, firstNegativeDate: null, lowestCheckingCents: 0, lowestCheckingDate: null }) };
       return undefined as never;
     }));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Prévisionnel");
@@ -557,6 +584,7 @@ describe("prévisionnel et objectifs", () => {
 
   it("masque les montants du prévisionnel en mode confidentialité", async () => {
     mockApi(base((m, u) => (u === "/forecast?days=30" ? { json: forecast() } : (undefined as never))));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await screen.findByLabelText("Prévisionnel");
@@ -577,6 +605,7 @@ describe("prévisionnel et objectifs", () => {
       }
       return undefined as never;
     }));
+    startAt("#objectifs");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Objectifs du mois");
@@ -604,6 +633,7 @@ describe("prévisionnel et objectifs", () => {
 
   it("refuse un plafond invalide sans appeler l'API", async () => {
     const calls = mockApi(base(() => undefined as never));
+    startAt("#objectifs");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Objectifs du mois");
@@ -635,6 +665,7 @@ describe("objectifs d'épargne", () => {
 
   it("affiche l'avancement, le versement conseillé, la couverture du fonds de secours et l'alerte de dépassement", async () => {
     mockApi(base((m, u) => (u === "/goals/savings" && m === "GET" ? { json: overview() } : (undefined as never))));
+    startAt("#objectifs");
     renderApp();
     const panel = await screen.findByLabelText("Objectifs d'épargne");
     await within(panel).findByText("Vacances");
@@ -651,6 +682,7 @@ describe("objectifs d'épargne", () => {
       if (u === "/goals/savings" && m === "POST") return { status: 201, json: { id: "g2" } };
       return undefined as never;
     }));
+    startAt("#objectifs");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Objectifs d'épargne");
@@ -666,6 +698,7 @@ describe("objectifs d'épargne", () => {
 
   it("refuse un objectif sans échéance ou sans montant sans appeler l'API", async () => {
     const calls = mockApi(base((m, u) => (u === "/goals/savings" && m === "GET" ? { json: overview({ goals: [] }) } : (undefined as never))));
+    startAt("#objectifs");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Objectifs d'épargne");
@@ -688,6 +721,7 @@ describe("objectifs d'épargne", () => {
       if (u === "/goals/savings/g1" && m === "DELETE") return { status: 204, json: {} };
       return undefined as never;
     }));
+    startAt("#objectifs");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Objectifs d'épargne");
@@ -714,6 +748,7 @@ describe("objectifs d'épargne", () => {
       if (u === "/goals/savings/g1/contributions/c1" && m === "DELETE") return { status: 204, json: {} };
       return undefined as never;
     }));
+    startAt("#objectifs");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Objectifs d'épargne");
@@ -744,6 +779,7 @@ describe("budgets par catégorie", () => {
 
   it("affiche jauge, alerte à 80 %, reliquat reporté, catégorie sans budget et dépenses non classées", async () => {
     mockApi(base((m, u) => (u === "/categories" && m === "GET" ? { json: overview() } : (undefined as never))));
+    startAt("#budgets");
     renderApp();
     const panel = await screen.findByLabelText("Budgets du mois");
     await within(panel).findByText("Courses");
@@ -754,12 +790,14 @@ describe("budgets par catégorie", () => {
     expect(panel.textContent?.replace(/\s/g, " ")).toMatch(/Dépensé ce mois-ci : 20,00 € \(sans budget\)/);
     expect(panel.textContent?.replace(/\s/g, " ")).toMatch(/Dépenses sans catégorie ce mois-ci : 15,00 €/);
     // La catégorie apparaît aussi dans la liste des opérations.
+    await openTab(userEvent.setup(), "Opérations");
     expect(await screen.findByText(/2026-11-03 · Courant · Courses/)).toBeInTheDocument();
   });
 
   it("signale un dépassement et plafonne la jauge à 100 %", async () => {
     const over = overview({ categories: [{ id: "k1", name: "Courses", monthlyBudgetCents: 40_000, rollover: false, spentCents: 42_000, budget: budget({ carryOverCents: 0, availableCents: 40_000, spentCents: 42_000, remainingCents: -2_000, percent: 105, status: "EXCEEDED" }) }] });
     mockApi(base((m, u) => (u === "/categories" && m === "GET" ? { json: over } : (undefined as never))));
+    startAt("#budgets");
     renderApp();
     const panel = await screen.findByLabelText("Budgets du mois");
     expect(await within(panel).findByText("Plafond atteint")).toBeInTheDocument();
@@ -773,6 +811,7 @@ describe("budgets par catégorie", () => {
       if (u === "/categories" && m === "POST") return { status: 201, json: { id: "k3" } };
       return undefined as never;
     }));
+    startAt("#budgets");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Budgets du mois");
@@ -798,6 +837,7 @@ describe("budgets par catégorie", () => {
       if (u === "/transactions/t1" && m === "PATCH") return { json: { ok: true } };
       return undefined as never;
     }));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     const form = (await screen.findByRole("heading", { name: "Ajouter une entrée ou une sortie" })).closest("section")!;
@@ -869,6 +909,7 @@ describe("import de relevés", () => {
       if (u === "/imports/confirm") return { status: 201, json: { created: 1, linked: 1, skipped: 0 } };
       return undefined as never;
     }));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     const panel = await open(user);
@@ -898,6 +939,7 @@ describe("import de relevés", () => {
 
   it("refuse un PDF ou un fichier sans compte avant tout envoi, et affiche l'erreur du serveur", async () => {
     const calls = mockApi(base((m, u) => (u.startsWith("/imports/preview") ? { status: 400, json: { message: "Relevé trop long : 5000 opérations maximum par import" } } : (undefined as never))));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup({ applyAccept: false });
     const panel = await open(user);
@@ -945,6 +987,7 @@ describe("catégorisation automatique", () => {
       if (u === "/imports/confirm") return { status: 201, json: { created: 3, linked: 0, skipped: 0 } };
       return undefined as never;
     }));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Importer un relevé" }));
@@ -969,6 +1012,7 @@ describe("catégorisation automatique", () => {
 
   it("laisse la catégorie automatique par défaut à la saisie, ou force « sans catégorie »", async () => {
     const calls = mockApi(base((m, u) => (u === "/transactions" && m === "POST" ? { status: 201, json: {} } : (undefined as never))));
+    startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     const form = (await screen.findByRole("heading", { name: "Ajouter une entrée ou une sortie" })).closest("section")!;
@@ -1004,6 +1048,7 @@ describe("catégorisation automatique", () => {
       if (u === "/categories/rules/r1" && m === "DELETE") return { status: 204 };
       return undefined as never;
     }));
+    startAt("#budgets");
     renderApp();
     const user = userEvent.setup();
     const zone = await screen.findByLabelText("Catégorisation automatique");
@@ -1137,6 +1182,7 @@ describe("abonnements détectés", () => {
       if (u === "/subscriptions/dismissed") return { status: 204 };
       return undefined as never;
     }));
+    startAt("#budgets");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Abonnements détectés");
@@ -1168,6 +1214,7 @@ describe("abonnements détectés", () => {
 
   it("explique qu'il n'y a rien à signaler", async () => {
     mockApi(base(() => undefined as never));
+    startAt("#budgets");
     renderApp();
     const panel = await screen.findByLabelText("Abonnements détectés");
     expect(await within(panel).findByText(/Rien à signaler/)).toBeInTheDocument();
@@ -1220,10 +1267,10 @@ describe("sécurité du compte", () => {
       }
       return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
     });
+    startAt("#plus:password");
     renderApp();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Changer le mot de passe" }));
-    const panel = screen.getByLabelText("Changer le mot de passe");
+    const panel = await screen.findByLabelText("Changer le mot de passe");
     await user.type(within(panel).getByLabelText("Mot de passe actuel"), "ancien-mot-de-passe");
     await user.type(within(panel).getByLabelText(/^Nouveau mot de passe/), "une-phrase-toute-neuve");
     await user.type(within(panel).getByLabelText("Confirmez le nouveau mot de passe"), "une-autre-phrase");
@@ -1252,6 +1299,7 @@ describe("état des sauvegardes", () => {
 
   it("affiche la dernière sauvegarde, sans alerte quand tout va bien", async () => {
     mockApi(base(status({})));
+    startAt("#plus:backups");
     renderApp();
     const card = await screen.findByLabelText("Sauvegardes");
     expect(card.textContent).toMatch(/Dernière sauvegarde chiffrée : il y a 5 h .*18 novembre 2026.*copie distante envoyée/);
@@ -1265,6 +1313,10 @@ describe("état des sauvegardes", () => {
     const alert = (await screen.findByText("Sauvegardes en danger")).closest("[role=alert]")!;
     expect(alert).toHaveTextContent("il y a 3 jours");
     expect(alert).toHaveTextContent("n'existe que sur le serveur");
+    // Le détail est dans Plus › Sauvegardes.
+    const user = userEvent.setup();
+    await openTab(user, "Plus");
+    await user.click(await screen.findByRole("button", { name: /Sauvegardes à vérifier/ }));
     expect((await screen.findByLabelText("Sauvegardes")).textContent).toMatch(/il y a 3 jours.*copie distante en échec.*Dernière tentative en échec/);
   });
 
@@ -1315,6 +1367,7 @@ describe("administration du foyer", () => {
       if (u === "/household/members/u2/password") return { json: { ok: true } };
       return undefined as never;
     }));
+    startAt("#plus:foyer");
     renderApp();
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Administration du foyer");
@@ -1351,6 +1404,7 @@ describe("administration du foyer", () => {
 
   it("affiche le journal d'activité lisiblement, filtre la sécurité et charge les plus anciens", async () => {
     const calls = mockApi(base("OWNER"));
+    startAt("#plus:foyer");
     renderApp();
     const user = userEvent.setup();
     const journal = await screen.findByLabelText("Journal d'activité");
@@ -1367,5 +1421,118 @@ describe("administration du foyer", () => {
     await waitFor(() => expect(journal).toHaveTextContent("Échec de connexion · Léa"));
     expect(journal).not.toHaveTextContent("Création du foyer");
     expect(calls.some((c) => c.url === "/household/audit?security=1")).toBe(true);
+  });
+});
+
+describe("navigation et accueil", () => {
+  const base = (extra: Handler = () => undefined as never): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/household/me") return { json: { id: "u1", email: "ada@example.com", displayName: "Ada", role: "OWNER", tutorialDone: true } };
+    if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 250_000, fixedChargesCents: 80_000, oneOffExpensesCents: 20_000, remainingCents: 150_000 } };
+  };
+
+  it("résume le mois et regroupe ce qui demande une action, chaque ligne menant au bon onglet", async () => {
+    mockApi(base((m, u) => {
+      if (u === "/accounts") return { json: [] };
+      if (u === "/reminder") return { json: { enabled: true, weekday: 7, hour: 18, timezone: "Europe/Paris", lastDoneAt: null, due: true, pushConfigured: false, subscribed: false } };
+      if (u === "/subscriptions") return { json: { candidates: [{ key: "k" }], drifts: [{ key: "d" }], dismissed: 0 } };
+      if (u === "/categories") {
+        return { json: { month: "2026-11", uncategorizedSpentCents: 0, totals: { availableCents: 0, spentCents: 0 }, categories: [
+          { id: "k1", name: "Courses", monthlyBudgetCents: 40_000, rollover: false, spentCents: 34_400, budget: { month: "2026-11", limitCents: 40_000, carryOverCents: 0, availableCents: 40_000, spentCents: 34_400, remainingCents: 5_600, percent: 86, status: "WARNING" } },
+          { id: "k2", name: "Loisirs", monthlyBudgetCents: 15_000, rollover: false, spentCents: 6_000, budget: { month: "2026-11", limitCents: 15_000, carryOverCents: 0, availableCents: 15_000, spentCents: 6_000, remainingCents: 9_000, percent: 40, status: "OK" } },
+        ] } };
+      }
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    expect(await screen.findByRole("heading", { level: 1, name: "Bonjour Ada" })).toBeInTheDocument();
+    const remaining = await screen.findByLabelText("Reste à vivre");
+    await waitFor(() => expect(remaining.textContent?.replace(/\s/g, " ")).toMatch(/1 500,00 €.*Entrées 2 500,00 €.*Sorties 1 000,00 €/));
+
+    const todo = screen.getByLabelText("À faire");
+    await waitFor(() => expect(within(todo).getAllByRole("button")).toHaveLength(4));
+    expect(within(todo).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Ajoutez votre premier compte", "Faire le bilan de la semaine2 min", "Budget Courses à 86 %proche du plafond", "2 abonnements ou hausses à vérifier",
+    ]);
+    expect(within(screen.getByLabelText("Budgets en cours")).getByRole("progressbar", { name: "Budget Courses (accueil)" })).toHaveAttribute("aria-valuenow", "86");
+
+    await user.click(within(todo).getByRole("button", { name: /abonnements ou hausses/ }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Budgets" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#budgets");
+    await openTab(user, "Accueil");
+    await user.click(await screen.findByRole("button", { name: "Ajoutez votre premier compte" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Opérations" })).toBeInTheDocument();
+  });
+
+  it("indique quand il n'y a rien à faire, et le bouton + ouvre la saisie dans Opérations", async () => {
+    mockApi(base((m, u) => (u === "/accounts" ? { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup();
+    expect(await screen.findByText("Rien à faire : tout est à jour.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ajouter une opération" }));
+    expect(await screen.findByRole("heading", { name: "Ajouter une entrée ou une sortie" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Sens")).toHaveFocus());
+  });
+
+  it("réserve l'administration du foyer au propriétaire, dans l'onglet Plus", async () => {
+    mockApi((m, u) => {
+      if (u === "/household/me") return { json: { id: "u2", email: "lea@example.com", displayName: "Léa", role: "ADULT", tutorialDone: true } };
+      return base()(m, u, undefined);
+    });
+    startAt("#plus");
+    renderApp();
+    await screen.findByRole("button", { name: /Revoir le tutoriel/ });
+    expect(screen.queryByRole("button", { name: /Membres et journal/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("tutoriel de première connexion", () => {
+  const base = (tutorialDone: boolean): Handler => (m, u) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/household/me") return { json: { id: "u1", email: "ada@example.com", displayName: "Ada", role: "OWNER", tutorialDone } };
+    if (u === "/household/me/tutorial") return { status: 204 };
+    if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("s'affiche à la première connexion, se parcourt et s'enregistre une fois terminé", async () => {
+    const calls = mockApi(base(false));
+    renderApp();
+    const user = userEvent.setup();
+    const dialog = await screen.findByRole("dialog", { name: "Bienvenue dans Gest-finance" });
+    expect(dialog).toHaveTextContent("Étape 1 sur 5");
+    expect(within(dialog).queryByRole("button", { name: "Précédent" })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Commencer" }));
+    expect(within(dialog).getByRole("heading", { name: "Ajoutez vos comptes" })).toHaveFocus();
+    await user.click(within(dialog).getByRole("button", { name: "Précédent" }));
+    expect(within(dialog).getByRole("heading", { name: "Bienvenue dans Gest-finance" })).toBeInTheDocument();
+    for (let i = 0; i < 4; i++) await user.click(within(dialog).getByRole("button", { name: /Commencer|Suivant/ }));
+    expect(dialog).toHaveTextContent("Étape 5 sur 5");
+    await user.click(within(dialog).getByRole("button", { name: "Terminer" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(calls.filter((c) => c.url === "/household/me/tutorial" && c.method === "POST")).toHaveLength(1);
+  });
+
+  it("se passe à tout moment, et ce choix est enregistré", async () => {
+    const calls = mockApi(base(false));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Passer le tutoriel" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/household/me/tutorial")).toBe(true));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("ne s'affiche plus une fois vu, et « Revoir le tutoriel » le rouvre (Échap le ferme)", async () => {
+    const calls = mockApi(base(true));
+    startAt("#plus");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Revoir le tutoriel/ }));
+    expect(await screen.findByRole("dialog", { name: "Bienvenue dans Gest-finance" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/household/me/tutorial")).toBe(false);
   });
 });

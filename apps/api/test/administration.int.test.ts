@@ -17,7 +17,7 @@ const NEW_PASSWORD = "girafe-orange-velo-nuage";
 describe("administration du foyer", () => {
   it("indique à chacun qui il est et son rôle", async () => {
     const a = await register();
-    expect((await get(app, "/household/me", a)).json()).toEqual({ id: expect.any(String), email: owner().email, displayName: "Owner 1", role: "OWNER" });
+    expect((await get(app, "/household/me", a)).json()).toEqual({ id: expect.any(String), email: owner().email, displayName: "Owner 1", role: "OWNER", tutorialDone: false });
     await post(app, "/household/members", member, a);
     const lea = { access: sessionCookies(await login(member.email, member.password)).access! };
     expect((await get(app, "/household/me", lea)).json()).toMatchObject({ email: member.email, role: "ADULT" });
@@ -63,6 +63,18 @@ describe("administration du foyer", () => {
     expect((await post(app, url, { ownerPassword: member.password, password: NEW_PASSWORD }, lea)).statusCode).toBe(403);
     // Rien n'a changé pour Léa.
     expect((await login(member.email, member.password)).statusCode).toBe(200);
+  });
+});
+
+describe("tutoriel de première connexion", () => {
+  it("est à montrer jusqu'à ce que l'utilisateur le termine ou le passe, pour lui seul", async () => {
+    const a = await register();
+    await post(app, "/household/members", member, a);
+    const lea = { access: sessionCookies(await login(member.email, member.password)).access! };
+    expect((await post(app, "/household/me/tutorial", {})).statusCode).toBe(401);
+    expect((await post(app, "/household/me/tutorial", {}, a)).statusCode).toBe(204);
+    expect((await get(app, "/household/me", a)).json().tutorialDone).toBe(true);
+    expect((await get(app, "/household/me", lea)).json().tutorialDone).toBe(false);
   });
 });
 

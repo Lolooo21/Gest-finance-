@@ -29,7 +29,8 @@ function Lines({ title, lines, empty }: { title: string; lines: ReviewLine[]; em
 }
 
 /** Bannière « c'est l'heure » (quand le bilan est dû) et bilan de la semaine en un coup d'œil. */
-export function WeeklyReviewPanel({ reminder, open, onOpen, onClose }: { reminder?: Reminder; open: boolean; onOpen: () => void; onClose: () => void }) {
+/** `banner` = false : l'accueil propose déjà le bilan dans sa liste « À faire ». */
+export function WeeklyReviewPanel({ reminder, open, onOpen, onClose, banner = true }: { reminder?: Reminder; open: boolean; onOpen: () => void; onClose: () => void; banner?: boolean }) {
   const qc = useQueryClient();
   const toast = useToast();
   const review = useQuery({ queryKey: ["review"], queryFn: () => api<WeeklyReview>("GET", "/review/weekly"), enabled: open });
@@ -45,7 +46,7 @@ export function WeeklyReviewPanel({ reminder, open, onOpen, onClose }: { reminde
 
   return (
     <>
-      {reminder?.due && !open && (
+      {banner && reminder?.due && !open && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           <span className="flex items-center gap-2"><Icon name="calendar" />C'est l'heure de faire les comptes de la semaine.</span>
           <Button onClick={onOpen}>Faire le bilan</Button>

@@ -180,7 +180,7 @@ export function News() {
   };
 
   return (
-    <main className="mx-auto max-w-3xl space-y-4 px-4 py-4">
+    <div className="space-y-4">
       <h2 className="text-xl font-semibold">Actualités financières</h2>
       {failed && <ErrorBanner message={failed.error instanceof Error ? failed.error.message : "Impossible de charger les actualités."} onRetry={() => { void market.refetch(); void products.refetch(); }} />}
       {(m?.disclaimer ?? products.data?.disclaimer) && <Disclaimer text={(m?.disclaimer ?? products.data?.disclaimer)!} />}
@@ -229,6 +229,6 @@ export function News() {
 
       {m && <Simulator market={m} accounts={accounts.data ?? []} />}
       {accounts.isError && <Button variant="ghost" icon="refresh" onClick={() => void accounts.refetch()}>Recharger mes comptes</Button>}
-    </main>
+    </div>
   );
 }

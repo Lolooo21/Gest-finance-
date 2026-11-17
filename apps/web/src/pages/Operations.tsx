@@ -1,42 +1,41 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
-import { api, ApiError, type Account, type CategoryView, type Member, type Reminder, type Rule, type Summary, type Tx } from "../api";
-import { centsToInput, monthRange, parseEuros, todayIso } from "../money";
+import { useEffect, useState, type FormEvent } from "react";
+import { api, ApiError, type Account, type CategoryView, type Rule, type Tx } from "../api";
+import { centsToInput, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
-import { BackupAlert, BackupSummary } from "./BackupStatus";
-import { BudgetsPanel, useCategories } from "./Budgets";
-import { ChangePassword } from "./ChangePassword";
-import { HouseholdAdmin } from "./Household";
+import { useCategories } from "./Budgets";
 import { ForecastPanel } from "./Forecast";
-import { SubscriptionsPanel } from "./Subscriptions";
-import { GoalsPanel } from "./Goals";
-import { SavingsPanel } from "./Savings";
 import { PayslipImport } from "./Payslip";
 import { StatementImport } from "./StatementImport";
-import { ReminderSettings, WeeklyReviewPanel } from "./Weekly";
 
 const FREQ = { WEEKLY: "chaque semaine", MONTHLY: "chaque mois", YEARLY: "chaque année" } as const;
-type Panel = "statement" | "payslip" | "review" | "2fa" | "password" | null;
+type ImportPanel = "statement" | "payslip" | null;
 
-export function Dashboard() {
+/**
+ * Onglet « Opérations » : saisie, imports, comptes, prévisionnel, historique et récurrences.
+ * `focusEntry` change quand le bouton « + » est pressé : le formulaire de saisie reçoit alors le focus.
+ */
+export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
   const qc = useQueryClient();
   const toast = useToast();
   const confirm = useConfirm();
-  const range = monthRange();
-  const [panel, setPanel] = useState<Panel>(() => (new URLSearchParams(window.location.search).has("bilan") ? "review" : null));
+  const [panel, setPanel] = useState<ImportPanel>(null);
   const [editing, setEditing] = useState<string | null>(null);
 
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<Account[]>("GET", "/accounts") });
   const txs = useQuery({ queryKey: ["tx"], queryFn: () => api<Tx[]>("GET", "/transactions?limit=50") });
   const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("GET", "/recurring-rules") });
   const categories = useCategories();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api<Member>("GET", "/household/me") });
-  const reminder = useQuery({ queryKey: ["reminder"], queryFn: () => api<Reminder>("GET", "/reminder"), refetchInterval: 5 * 60_000 });
-  // Le reste à vivre est recalculé côté serveur : on le relit après chaque modification.
-  const summary = useQuery({ queryKey: ["summary", range.from], queryFn: () => api<Summary>("GET", `/summary?from=${range.from}&to=${range.to}`) });
   const refresh = () => qc.invalidateQueries();
-  const failed = [accounts, txs, rules, summary].find((q) => q.isError);
+  const failed = [accounts, txs, rules].find((q) => q.isError);
+
+  useEffect(() => {
+    if (!focusEntry) return;
+    const form = document.getElementById("ajout");
+    form?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    form?.querySelector<HTMLElement>("select, input")?.focus();
+  }, [focusEntry]);
 
   const patch = useMutation({
     mutationFn: ({ path, body }: { path: string; body: object }) => api("PATCH", path, body),
@@ -55,133 +54,98 @@ export function Dashboard() {
   async function askDelete(path: string, what: string, extra: string, done: string) {
     if (await confirm({ title: `Supprimer ${what} ?`, message: `${extra} Cette action est définitive.`, confirmLabel: "Supprimer" })) remove.mutate({ path, done });
   }
-  const goToForm = () => {
-    const form = document.getElementById("ajout");
-    form?.scrollIntoView({ behavior: "smooth", block: "start" });
-    form?.querySelector<HTMLElement>("select, input")?.focus();
-  };
 
   return (
-    <>
-      <main className="mx-auto max-w-3xl space-y-4 px-4 py-4">
-        {failed && <ErrorBanner message={failed.error instanceof Error ? failed.error.message : "Impossible de charger vos données."} onRetry={() => void refresh()} />}
+    <div className="space-y-4">
+      {failed && <ErrorBanner message={failed.error instanceof Error ? failed.error.message : "Impossible de charger vos données."} onRetry={() => void refresh()} />}
 
-        <BackupAlert />
+      <nav aria-label="Importer" className="grid grid-cols-2 gap-2">
+        <Button variant="secondary" icon="file" onClick={() => setPanel(panel === "statement" ? null : "statement")} aria-expanded={panel === "statement"}>Importer un relevé</Button>
+        <Button variant="secondary" icon="upload" onClick={() => setPanel(panel === "payslip" ? null : "payslip")} aria-expanded={panel === "payslip"}>Importer une fiche de paie</Button>
+      </nav>
+      {panel === "statement" && <StatementImport accounts={accounts.data ?? []} onClose={() => setPanel(null)} />}
+      {panel === "payslip" && <PayslipImport accounts={accounts.data ?? []} onClose={() => setPanel(null)} />}
 
-        <section className="rounded-xl bg-teal-700 p-4 text-white shadow" aria-label="Reste à vivre">
-          <p className="text-sm opacity-90">Reste à vivre ce mois-ci</p>
-          <p className="text-3xl font-bold" data-testid="remaining">{summary.data ? <Money cents={summary.data.remainingCents} /> : "…"}</p>
-          {summary.data && (
-            <p className="mt-1 text-sm opacity-90">
-              Entrées <Money cents={summary.data.incomeCents} /> · Charges fixes <Money cents={summary.data.fixedChargesCents} /> · Dépenses ponctuelles <Money cents={summary.data.oneOffExpensesCents} />
-            </p>
-          )}
-        </section>
+      <section id="ajout" className={cardClass}>
+        <h2 className="text-lg font-semibold">Ajouter une entrée ou une sortie</h2>
+        <p className="mb-3 text-sm text-slate-600">Ponctuelle (courses, remboursement…) ou récurrente (loyer, abonnement, salaire…).</p>
+        <EntryForm accounts={accounts.data ?? []} categories={categoryList} onDone={refresh} />
+      </section>
 
-        <nav aria-label="Actions rapides" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <Button variant="secondary" icon="plus" onClick={goToForm}>Ajouter une opération</Button>
-          <Button variant="secondary" icon="file" onClick={() => setPanel(panel === "statement" ? null : "statement")} aria-expanded={panel === "statement"}>Importer un relevé</Button>
-          <Button variant="secondary" icon="upload" onClick={() => setPanel(panel === "payslip" ? null : "payslip")} aria-expanded={panel === "payslip"}>Importer une fiche de paie</Button>
-          <Button variant="secondary" icon="calendar" onClick={() => setPanel(panel === "review" ? null : "review")} aria-expanded={panel === "review"}>Bilan de la semaine</Button>
-          <Button variant="secondary" icon="shield" onClick={() => setPanel(panel === "2fa" ? null : "2fa")} aria-expanded={panel === "2fa"}>Double authentification</Button>
-          <Button variant="secondary" icon="edit" onClick={() => setPanel(panel === "password" ? null : "password")} aria-expanded={panel === "password"}>Changer le mot de passe</Button>
-        </nav>
+      <section className={cardClass}>
+        <h2 className="text-lg font-semibold">Comptes</h2>
+        <ul className="divide-y divide-brand-sage">
+          {accounts.data?.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+              {editing === a.id ? (
+                <EditForm fields={[{ name: "name", label: "Nom du compte", value: a.name }]} onCancel={() => setEditing(null)}
+                  onSave={(v) => patch.mutate({ path: `/accounts/${a.id}`, body: { name: v.name } })} />
+              ) : (
+                <>
+                  <span>{a.name} <span className="text-xs text-slate-600">{a.type === "SAVINGS" ? "épargne" : "courant"}{a.ibanMasked ? ` · ${a.ibanMasked}` : ""}</span></span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <strong className="tabular-nums"><Money cents={a.balanceCents} /></strong>
+                    <RowActions label={a.name} onEdit={() => setEditing(a.id)} onDelete={() => askDelete(`/accounts/${a.id}`, `le compte « ${a.name} »`, "Toutes ses opérations et récurrences seront aussi supprimées.", "Compte supprimé.")} />
+                  </span>
+                </>
+              )}
+            </li>
+          ))}
+          {accounts.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucun compte pour l'instant : ajoutez-en un ci-dessous pour commencer.</li>}
+        </ul>
+        <AccountForm onDone={refresh} />
+      </section>
 
-        <WeeklyReviewPanel reminder={reminder.data} open={panel === "review"} onOpen={() => setPanel("review")} onClose={() => setPanel(null)} />
-        {panel === "statement" && <StatementImport accounts={accounts.data ?? []} onClose={() => setPanel(null)} />}
-        {panel === "payslip" && <PayslipImport accounts={accounts.data ?? []} onClose={() => setPanel(null)} />}
-        {panel === "2fa" && <TwoFactor onClose={() => setPanel(null)} />}
-        {panel === "password" && <ChangePassword onClose={() => setPanel(null)} />}
+      <ForecastPanel />
 
-        <ForecastPanel />
-        <GoalsPanel />
-        <BudgetsPanel />
-        <SubscriptionsPanel accounts={accounts.data ?? []} />
-        <SavingsPanel accounts={accounts.data ?? []} />
+      <section className={cardClass}>
+        <h2 className="text-lg font-semibold">Dernières opérations</h2>
+        <ul className="divide-y divide-brand-sage">
+          {txs.data?.map((t) => (
+            <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+              {editing === t.id ? (
+                <EditForm fields={[{ name: "label", label: "Libellé", value: t.label }, { name: "amount", label: "Montant (€)", value: centsToInput(t.amountCents) }, { name: "date", label: "Date", value: t.date, type: "date" }, categoryField(t.categoryId)]}
+                  sign={t.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
+                  onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/transactions/${t.id}`, body: { label: v.label, date: v.date, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null } }); }} />
+              ) : (
+                <>
+                  <span>{t.label} <span className="text-xs text-slate-600">{t.date} · {names.get(t.accountId)}{withCategory(t.categoryId)}</span></span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <strong className={`tabular-nums ${t.amountCents < 0 ? "text-red-700" : "text-emerald-700"}`}><Money cents={t.amountCents} /></strong>
+                    <RowActions label={t.label} onEdit={() => setEditing(t.id)} onDelete={() => askDelete(`/transactions/${t.id}`, `l'opération « ${t.label} »`, "Le solde du compte et le reste à vivre seront recalculés.", "Opération supprimée.")} />
+                  </span>
+                </>
+              )}
+            </li>
+          ))}
+          {txs.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucune opération pour l'instant.</li>}
+        </ul>
+      </section>
 
-        <section className={cardClass}>
-          <h2 className="text-lg font-semibold">Comptes</h2>
-          <ul className="divide-y">
-            {accounts.data?.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                {editing === a.id ? (
-                  <EditForm fields={[{ name: "name", label: "Nom du compte", value: a.name }]} onCancel={() => setEditing(null)}
-                    onSave={(v) => patch.mutate({ path: `/accounts/${a.id}`, body: { name: v.name } })} />
-                ) : (
-                  <>
-                    <span>{a.name} <span className="text-xs text-slate-600">{a.type === "SAVINGS" ? "épargne" : "courant"}{a.ibanMasked ? ` · ${a.ibanMasked}` : ""}</span></span>
-                    <span className="flex flex-wrap items-center gap-2">
-                      <strong><Money cents={a.balanceCents} /></strong>
-                      <RowActions label={a.name} onEdit={() => setEditing(a.id)} onDelete={() => askDelete(`/accounts/${a.id}`, `le compte « ${a.name} »`, "Toutes ses opérations et récurrences seront aussi supprimées.", "Compte supprimé.")} />
-                    </span>
-                  </>
-                )}
-              </li>
-            ))}
-            {accounts.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucun compte pour l'instant : ajoutez-en un ci-dessous pour commencer.</li>}
-          </ul>
-          <AccountForm onDone={refresh} />
-        </section>
-
-        <section id="ajout" className={cardClass}>
-          <h2 className="text-lg font-semibold">Ajouter une entrée ou une sortie</h2>
-          <p className="mb-3 text-sm text-slate-600">Ponctuelle (courses, remboursement…) ou récurrente (loyer, abonnement, salaire…).</p>
-          <EntryForm accounts={accounts.data ?? []} categories={categoryList} onDone={refresh} />
-        </section>
-
-        <section className={cardClass}>
-          <h2 className="text-lg font-semibold">Récurrences</h2>
-          <ul className="divide-y">
-            {rules.data?.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                {editing === r.id ? (
-                  <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }, categoryField(r.categoryId)]}
-                    sign={r.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
-                    onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/recurring-rules/${r.id}`, body: { label: v.label, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null } }); }} />
-                ) : (
-                  <>
-                    <span>{r.label} · {FREQ[r.frequency]} <span className="text-xs text-slate-600">({names.get(r.accountId)}{withCategory(r.categoryId)})</span></span>
-                    <span className="flex flex-wrap items-center gap-2">
-                      <strong className={r.amountCents < 0 ? "text-red-700" : "text-emerald-700"}><Money cents={r.amountCents} /></strong>
-                      <RowActions label={r.label} onEdit={() => setEditing(r.id)} onDelete={() => askDelete(`/recurring-rules/${r.id}`, `la récurrence « ${r.label} »`, "Elle ne sera plus comptée dans le reste à vivre.", "Récurrence supprimée.")} />
-                    </span>
-                  </>
-                )}
-              </li>
-            ))}
-            {rules.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucune récurrence (salaire, loyer…) : ajoutez-en depuis le formulaire ci-dessus avec « Récurrent ».</li>}
-          </ul>
-        </section>
-
-        <ReminderSettings reminder={reminder.data} />
-        <BackupSummary />
-        {me.data?.role === "OWNER" && <HouseholdAdmin />}
-
-        <section className={cardClass}>
-          <h2 className="text-lg font-semibold">Dernières opérations</h2>
-          <ul className="divide-y">
-            {txs.data?.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                {editing === t.id ? (
-                  <EditForm fields={[{ name: "label", label: "Libellé", value: t.label }, { name: "amount", label: "Montant (€)", value: centsToInput(t.amountCents) }, { name: "date", label: "Date", value: t.date, type: "date" }, categoryField(t.categoryId)]}
-                    sign={t.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
-                    onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/transactions/${t.id}`, body: { label: v.label, date: v.date, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null } }); }} />
-                ) : (
-                  <>
-                    <span>{t.label} <span className="text-xs text-slate-600">{t.date} · {names.get(t.accountId)}{withCategory(t.categoryId)}</span></span>
-                    <span className="flex flex-wrap items-center gap-2">
-                      <strong className={t.amountCents < 0 ? "text-red-700" : "text-emerald-700"}><Money cents={t.amountCents} /></strong>
-                      <RowActions label={t.label} onEdit={() => setEditing(t.id)} onDelete={() => askDelete(`/transactions/${t.id}`, `l'opération « ${t.label} »`, "Le solde du compte et le reste à vivre seront recalculés.", "Opération supprimée.")} />
-                    </span>
-                  </>
-                )}
-              </li>
-            ))}
-            {txs.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucune opération pour l'instant.</li>}
-          </ul>
-        </section>
-      </main>
-    </>
+      <section className={cardClass}>
+        <h2 className="text-lg font-semibold">Récurrences</h2>
+        <ul className="divide-y divide-brand-sage">
+          {rules.data?.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+              {editing === r.id ? (
+                <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }, categoryField(r.categoryId)]}
+                  sign={r.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
+                  onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/recurring-rules/${r.id}`, body: { label: v.label, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null } }); }} />
+              ) : (
+                <>
+                  <span>{r.label} · {FREQ[r.frequency]} <span className="text-xs text-slate-600">({names.get(r.accountId)}{withCategory(r.categoryId)})</span></span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <strong className={`tabular-nums ${r.amountCents < 0 ? "text-red-700" : "text-emerald-700"}`}><Money cents={r.amountCents} /></strong>
+                    <RowActions label={r.label} onEdit={() => setEditing(r.id)} onDelete={() => askDelete(`/recurring-rules/${r.id}`, `la récurrence « ${r.label} »`, "Elle ne sera plus comptée dans le reste à vivre.", "Récurrence supprimée.")} />
+                  </span>
+                </>
+              )}
+            </li>
+          ))}
+          {rules.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucune récurrence (salaire, loyer…) : ajoutez-en depuis le formulaire avec « Récurrent ».</li>}
+        </ul>
+      </section>
+    </div>
   );
 }
 
@@ -319,7 +283,7 @@ function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: 
 }
 
 /** Activation du 2FA TOTP : l'API renvoie le secret, l'utilisateur le saisit dans son application d'authentification. */
-function TwoFactor({ onClose }: { onClose: () => void }) {
+export function TwoFactor({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const [secret, setSecret] = useState<{ secret: string; otpauthUrl: string } | null>(null);
   const [error, setError] = useState("");
