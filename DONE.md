@@ -400,6 +400,16 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `pages/Household.tsx` : carte « Administration du foyer » (propriétaire seulement) : membres et rôles, ajout d'un membre (rôle adulte ou enfant, mot de passe confirmé), nouveau mot de passe pour un membre (confirmation et mot de passe du propriétaire), journal d'activité en français (alertes de sécurité en rouge, « Voir les plus anciens », « Sécurité uniquement »). Tests : 3 nouveaux (front : 81).
 - Constat corrigé : depuis la fermeture de l'inscription (jalon 14), aucun écran ne permettait d'ajouter les membres du foyer.
 
+## Jalon 17 — Refonte de l'interface (5 onglets, palette) et tutoriel de première connexion
+### Front
+- `pages/Shell.tsx` : application connectée en 5 onglets (Accueil, Opérations, Budgets, Objectifs, Plus) avec barre de navigation fixe en bas, en-tête par écran (titre, bouton « Masquer les montants »), bouton « + » qui ouvre la saisie, sous-écrans de Plus avec « Retour », adresses directes (`#operations`, `#budgets`, `#objectifs`, `#plus`, `#plus:<écran>`, `#actualites`, `?bilan=1`).
+- `pages/Home.tsx` : accueil réduit à l'essentiel (reste à vivre et avancée du mois, « À faire » : premier compte, bilan dû, budgets à 80 % ou dépassés, abonnements et hausses à vérifier, chaque ligne menant au bon onglet ; budgets les plus entamés ; solde prévu à 30 jours et découvert éventuel).
+- `pages/Operations.tsx` (ex-`Dashboard.tsx`) : saisie, imports, comptes, prévisionnel, historique, récurrences. `pages/More.tsx` : onglet Plus en listes courtes (suivi, sécurité, foyer réservé au propriétaire, déconnexion). `pages/Tutorial.tsx` : 5 étapes en plein écran, « Passer le tutoriel » toujours visible, Précédent / Suivant / Terminer, focus sur le titre de chaque étape, Échap ferme. `Header.tsx` supprimé.
+- Palette dans `index.css` (`@theme` : jetons `brand-*` et teintes existantes redéfinies), cartes à bordure fine, boutons arrondis, `theme-color` et manifeste PWA aux nouvelles couleurs ; aucune police externe (CSP stricte).
+- Tests : 87 (+6 : accueil et « À faire », bouton +, onglet Plus selon le rôle, tutoriel parcouru, passé, relancé) ; tests existants adaptés à la navigation par onglets.
+### API
+- `User.tutorialSeenAt` (migration `tutoriel`) ; `GET /household/me` renvoie `tutorialDone` ; `POST /household/me/tutorial`. Tests (API : 208, +1).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

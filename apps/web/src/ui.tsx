@@ -32,7 +32,7 @@ const VARIANTS: Record<Variant, string> = {
   primary: "bg-teal-700 text-white hover:bg-teal-800 border border-teal-700",
   secondary: "bg-white text-teal-800 border border-teal-700 hover:bg-teal-50",
   danger: "bg-red-700 text-white hover:bg-red-800 border border-red-700",
-  ghost: "bg-transparent text-slate-700 border border-slate-300 hover:bg-slate-100",
+  ghost: "bg-transparent text-brand-deep border border-brand-sage hover:bg-teal-50",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -48,7 +48,7 @@ export function Button({ variant = "primary", icon, loading, children, className
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${className}`}
       {...rest}
     >
       {loading ? <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : icon && <Icon name={icon} className="h-4 w-4" />}
@@ -140,4 +140,4 @@ export function ErrorBanner({ message, onRetry }: { message: string; onRetry: ()
 }
 
 export const fieldClass = "w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-600";
-export const cardClass = "rounded-xl bg-white p-4 shadow";
+export const cardClass = "rounded-2xl border border-brand-sage bg-white p-4";

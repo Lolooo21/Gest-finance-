@@ -47,7 +47,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Mode confidentialité (masquer les montants) | Terminé (jalon 3) |
 | Messages d'erreur clairs, notifications, confirmations, boutons et actions rapides lisibles | Terminé |
 | Accessibilité : audit complet (clavier, lecteur d'écran, contrastes) et tests Playwright | À faire |
-| Interface : thème sombre, navigation par pages (comptes, opérations, paramètres) si l'écran devient trop long | À faire |
+| Interface : thème sombre, navigation par pages (comptes, opérations, paramètres) si l'écran devient trop long | Navigation par onglets et palette : Terminé (jalon 17) ; reste : thème sombre, vérification visuelle sur téléphone |
 | Rappel hebdomadaire « faire les comptes » (planificateur interne + Web Push + bannière) | Terminé (jalon 5) |
 | Bilan hebdomadaire interactif (entrées/sorties, récurrences, à venir, « bilan fait ») | Terminé (jalon 5) |
 | Rappel : déplacer le planificateur dans un worker dédié (BullMQ) si plusieurs instances de l'API | À faire |

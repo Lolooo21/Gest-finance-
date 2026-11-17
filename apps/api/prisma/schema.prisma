@@ -48,6 +48,8 @@ model User {
   totpLastStep  Int?
   /// Incrémentée à chaque changement de mot de passe : invalide aussitôt tous les jetons d'accès déjà émis
   sessionVersion Int     @default(0)
+  /// Tutoriel de première connexion terminé ou passé (null = à montrer)
+  tutorialSeenAt DateTime?
   failedLogins  Int      @default(0)
   lockedUntil   DateTime?
   createdAt     DateTime @default(now())
