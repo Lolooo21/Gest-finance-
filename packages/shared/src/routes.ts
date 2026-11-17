@@ -4,5 +4,5 @@
  */
 export const API_ROUTE_PREFIXES = [
   "/auth", "/household", "/accounts", "/transactions", "/recurring-rules", "/summary",
-  "/reminder", "/push", "/review", "/payslips", "/market", "/savings", "/forecast", "/goals", "/health",
+  "/reminder", "/push", "/review", "/payslips", "/market", "/savings", "/forecast", "/goals", "/categories", "/health",
 ] as const;
