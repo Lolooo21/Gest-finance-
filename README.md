@@ -247,7 +247,7 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 À venir (voir `TODO.md`) : détection des abonnements, OCR des scans, historique et alertes sur les taux, passkeys.
 
 ## Démarrage (développement)
-Prérequis : Node 22+, pnpm 10, Docker.
+Prérequis : Node 22+, pnpm 10, Docker. Mise en production : [`docs/deploiement.md`](docs/deploiement.md) et le guide pas à pas OVH [`docs/deploiement-ovh.md`](docs/deploiement-ovh.md).
 ```
 pnpm install
 docker compose -f infra/docker/compose.dev.yml up -d     # PostgreSQL + Redis + Mailpit (e-mails de test : http://localhost:8025)

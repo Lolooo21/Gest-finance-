@@ -343,6 +343,7 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - Tests (API : 173, +7) : lien envoyé au titulaire seulement, empreinte en base, réinitialisation, déverrouillage, sessions fermées, usage unique, lien expiré ou remplacé, validations, audit sans jeton ni adresse, limite de débit, secret facultatif, contrôle de production.
 ### Infra
 - `compose.dev.yml` : Mailpit (SMTP 1025, interface http://localhost:8025) ; `.env.example` : `SMTP_URL`, `MAIL_FROM`, `APP_URL`.
+- `docs/deploiement-ovh.md` : guide de mise en production sur OVH (budget, comptes, VPS, domaine et DNS SPF/DKIM/DMARC, sécurisation du serveur, Tailscale, Portainer limité au réseau privé, SMTP OVH ou Brevo, sauvegardes S3, mises à jour, checklist et dépannage).
 - `compose.prod.yml` : secret `smtp_url`, `MAIL_FROM` et `APP_URL` depuis `infra/docker/.env` ; `init-secrets.sh` propose la configuration SMTP (fichier vide sinon) ; `docs/deploiement.md` : section « E-mails ».
 ### Front
 - `pages/AuthPage.tsx` : champ mot de passe avec bouton afficher / masquer (accessible, `aria-pressed`) ; « Mot de passe oublié ? » avec confirmation neutre ; écran « Nouveau mot de passe » ouvert par le lien (confirmation vérifiée avant envoi, adresse nettoyée après succès). `App.tsx` : le lien ouvre cet écran même avec une session ouverte ; un visiteur non connecté ne voit plus « Votre session a expiré » au premier chargement (défaut corrigé).
