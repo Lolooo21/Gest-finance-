@@ -90,9 +90,9 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### Intelligence et automatisation (100 % local, aucune donnée envoyée à un tiers)
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Import de relevés bancaires CSV/OFX (PDF en repli OCR) + rapprochement avec opérations déjà saisies | P1 | Parser par format, aperçu avant validation, empreinte (hash) par opération pour l'idempotence ; PDF plus tard car moins fiable |
-| Catégorisation automatique (règles + apprentissage des corrections) | P1 | Règles par libellé/montant d'abord, puis classifieur léger local (naïve Bayes/TF-IDF) ; chaque correction crée ou ajuste une règle |
-| Détection des doublons | P1 | Fait partie du rapprochement d'import (même date ± 2 j, montant, libellé proche) |
+| Import de relevés bancaires CSV/OFX (PDF en repli OCR) + rapprochement avec opérations déjà saisies | P1 · **Terminé (jalon 11a)** ; reste : PDF, catégorie à l'import | Parser par format, aperçu avant validation, empreinte (hash) par opération pour l'idempotence ; PDF plus tard car moins fiable |
+| Catégorisation automatique (règles + apprentissage des corrections) | P1 · À faire (jalon 11b, prochain) | Règles par libellé/montant d'abord, puis classifieur léger local (naïve Bayes/TF-IDF) ; chaque correction crée ou ajuste une règle |
+| Détection des doublons | P1 · **Terminé (jalon 11a)** : empreinte par ligne, rapprochement ± 2 jours | Fait partie du rapprochement d'import (même date ± 2 j, montant, libellé proche) |
 | Détection des abonnements et récurrences oubliées + alerte hausse de prix | P1 | Détecter les montants périodiques dans l'historique → proposer de créer une `RecurringRule` ; alerte si variation > seuil configurable |
 | Détection d'anomalies (dépense inhabituelle, prime absente de la fiche de paie, prélèvement en double) | P2 | Comparer à la médiane par catégorie ; comparer fiche de paie courante à la précédente |
 

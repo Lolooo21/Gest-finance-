@@ -141,6 +141,28 @@ export type CategoryDto = z.infer<typeof CategoryDto>;
 export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional() });
 export type BudgetQuery = z.infer<typeof BudgetQuery>;
 
+/** Import de relevés : lignes cochées dans l'aperçu (à créer, ou à rapprocher d'une opération déjà saisie). */
+export const MAX_IMPORT_LINES = 5000;
+export const ImportConfirmDto = z.object({
+  accountId: z.string().uuid(),
+  lines: z
+    .array(
+      z.object({
+        key: z.string().regex(/^[a-f0-9]{64}$/, "Empreinte invalide"),
+        date: isoDate,
+        amountCents,
+        label: z.string().trim().min(1).max(120),
+        action: z.enum(["CREATE", "LINK"]),
+        transactionId: z.string().uuid().optional(),
+      }).refine((l) => l.action === "CREATE" || l.transactionId !== undefined, { message: "Opération à rapprocher manquante", path: ["transactionId"] }),
+    )
+    .min(1, "Aucune ligne à importer")
+    .max(MAX_IMPORT_LINES, `${MAX_IMPORT_LINES} lignes maximum par import`),
+});
+export type ImportConfirmDto = z.infer<typeof ImportConfirmDto>;
+export const ImportPreviewQuery = z.object({ accountId: z.string().uuid() });
+export type ImportPreviewQuery = z.infer<typeof ImportPreviewQuery>;
+
 const atLeastOne = (o: object) => Object.keys(o).length > 0;
 
 export const AccountPatch = AccountDto.partial().refine(atLeastOne, "aucune modification");

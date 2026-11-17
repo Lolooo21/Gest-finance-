@@ -116,9 +116,12 @@ model Transaction {
   label       String
   categoryId  String?
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  /// Empreinte SHA-256 de la ligne de relevé importée ou rapprochée (null = saisie manuelle) : un relevé n'est jamais importé deux fois
+  importHash  String?
   createdAt   DateTime @default(now())
   payslipImport PayslipImport?
 
+  @@unique([accountId, importHash])
   @@index([householdId, date])
   @@index([accountId])
   @@index([categoryId])

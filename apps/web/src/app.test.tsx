@@ -835,3 +835,78 @@ describe("budgets par catégorie", () => {
     expect(text).toMatch(/Loisirs.*20 % · dans le budget.*reste 80,00 €/);
   });
 });
+
+describe("import de relevés", () => {
+  const k = (c: string) => c.repeat(64);
+  const preview = {
+    format: "CSV", warnings: ["1 ligne(s) ignorée(s) : date ou montant illisible."], skipped: 1,
+    summary: { NEW: 1, MATCHED: 1, RECURRING: 1, ALREADY_IMPORTED: 1 },
+    lines: [
+      { key: k("a"), date: "2026-11-03", amountCents: -4_530, label: "CB CARREFOUR", status: "MATCHED", match: { id: "t1", date: "2026-11-02", label: "Courses" } },
+      { key: k("b"), date: "2026-11-05", amountCents: -80_000, label: "PRLV LOYER", status: "RECURRING", match: { id: "r1", date: "2026-11-05", label: "Loyer" } },
+      { key: k("c"), date: "2026-11-06", amountCents: -320, label: "CB BOULANGERIE", status: "NEW" },
+      { key: k("d"), date: "2026-11-01", amountCents: -1_000, label: "DÉJÀ LÀ", status: "ALREADY_IMPORTED" },
+    ],
+  };
+  const base = (extra: Handler): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules" || (u.startsWith("/transactions") && m === "GET")) return { json: [] };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+  const open = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole("button", { name: "Importer un relevé" }));
+    const panel = screen.getByLabelText("Importer un relevé");
+    await waitFor(() => expect(within(panel).getByLabelText("Compte du relevé")).toHaveTextContent("Courant"));
+    return panel;
+  };
+
+  it("affiche l'aperçu rapproché, coche nouvelles et saisies par défaut, et envoie création et rapprochement", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/imports/preview?accountId=a1") return { json: preview };
+      if (u === "/imports/confirm") return { status: 201, json: { created: 1, linked: 1, skipped: 0 } };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await open(user);
+    await user.selectOptions(within(panel).getByLabelText("Compte du relevé"), "a1");
+    await user.upload(within(panel).getByLabelText("Fichier du relevé"), new File(["Date;Libellé;Montant"], "releve.csv", { type: "text/csv" }));
+
+    const apercu = await within(panel).findByLabelText("Aperçu du relevé");
+    expect(apercu).toHaveTextContent("1 nouvelle, 1 déjà saisie (rapprochée), 1 récurrence, 1 déjà importée");
+    expect(apercu).toHaveTextContent("1 ligne(s) ignorée(s)");
+    expect(apercu).toHaveTextContent("avec « Courses » du 2026-11-02");
+    expect(within(apercu).getByLabelText("Rapprocher CB CARREFOUR du 2026-11-03")).toBeChecked();
+    expect(within(apercu).getByLabelText("Importer PRLV LOYER du 2026-11-05")).not.toBeChecked();
+    expect(within(apercu).getByLabelText("Importer CB BOULANGERIE du 2026-11-06")).toBeChecked();
+    expect(within(apercu).getByLabelText("Importer DÉJÀ LÀ du 2026-11-01")).toBeDisabled();
+
+    await user.click(within(apercu).getByRole("button", { name: "Importer 2 lignes" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/imports/confirm")).toBe(true));
+    expect(calls.find((c) => c.url === "/imports/confirm")?.body).toEqual({
+      accountId: "a1",
+      lines: [
+        { key: k("a"), date: "2026-11-03", amountCents: -4_530, label: "CB CARREFOUR", action: "LINK", transactionId: "t1" },
+        { key: k("c"), date: "2026-11-06", amountCents: -320, label: "CB BOULANGERIE", action: "CREATE" },
+      ],
+    });
+    expect(await screen.findByText("1 opération importée, 1 rapprochée.")).toBeInTheDocument();
+  });
+
+  it("refuse un PDF ou un fichier sans compte avant tout envoi, et affiche l'erreur du serveur", async () => {
+    const calls = mockApi(base((m, u) => (u.startsWith("/imports/preview") ? { status: 400, json: { message: "Relevé trop long : 5000 opérations maximum par import" } } : (undefined as never))));
+    renderApp();
+    const user = userEvent.setup({ applyAccept: false });
+    const panel = await open(user);
+    const input = within(panel).getByLabelText("Fichier du relevé");
+    await user.upload(input, new File(["x"], "releve.csv"));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("Choisissez d'abord le compte");
+    await user.selectOptions(within(panel).getByLabelText("Compte du relevé"), "a1");
+    await user.upload(input, new File(["%PDF"], "releve.pdf", { type: "application/pdf" }));
+    expect(within(panel).getByRole("alert")).toHaveTextContent("exportez vos opérations en CSV ou en OFX");
+    expect(calls.some((c) => c.url.startsWith("/imports"))).toBe(false);
+    await user.upload(input, new File(["Date;Libellé;Montant"], "releve.ofx"));
+    expect(await within(panel).findByText(/5000 opérations maximum/)).toBeInTheDocument();
+  });
+});

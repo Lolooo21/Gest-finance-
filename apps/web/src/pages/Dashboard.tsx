@@ -9,10 +9,11 @@ import { ForecastPanel } from "./Forecast";
 import { GoalsPanel } from "./Goals";
 import { SavingsPanel } from "./Savings";
 import { PayslipImport } from "./Payslip";
+import { StatementImport } from "./StatementImport";
 import { ReminderSettings, WeeklyReviewPanel } from "./Weekly";
 
 const FREQ = { WEEKLY: "chaque semaine", MONTHLY: "chaque mois", YEARLY: "chaque année" } as const;
-type Panel = "payslip" | "review" | "2fa" | null;
+type Panel = "statement" | "payslip" | "review" | "2fa" | null;
 
 export function Dashboard() {
   const qc = useQueryClient();
@@ -70,14 +71,16 @@ export function Dashboard() {
           )}
         </section>
 
-        <nav aria-label="Actions rapides" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <nav aria-label="Actions rapides" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <Button variant="secondary" icon="plus" onClick={goToForm}>Ajouter une opération</Button>
+          <Button variant="secondary" icon="file" onClick={() => setPanel(panel === "statement" ? null : "statement")} aria-expanded={panel === "statement"}>Importer un relevé</Button>
           <Button variant="secondary" icon="upload" onClick={() => setPanel(panel === "payslip" ? null : "payslip")} aria-expanded={panel === "payslip"}>Importer une fiche de paie</Button>
           <Button variant="secondary" icon="calendar" onClick={() => setPanel(panel === "review" ? null : "review")} aria-expanded={panel === "review"}>Bilan de la semaine</Button>
           <Button variant="secondary" icon="shield" onClick={() => setPanel(panel === "2fa" ? null : "2fa")} aria-expanded={panel === "2fa"}>Double authentification</Button>
         </nav>
 
         <WeeklyReviewPanel reminder={reminder.data} open={panel === "review"} onOpen={() => setPanel("review")} onClose={() => setPanel(null)} />
+        {panel === "statement" && <StatementImport accounts={accounts.data ?? []} onClose={() => setPanel(null)} />}
         {panel === "payslip" && <PayslipImport accounts={accounts.data ?? []} onClose={() => setPanel(null)} />}
         {panel === "2fa" && <TwoFactor onClose={() => setPanel(null)} />}
 

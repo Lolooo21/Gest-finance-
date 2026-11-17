@@ -1,4 +1,5 @@
 import { Controller, Get, Module } from "@nestjs/common";
+import { ImportsController } from "./imports/imports.controller.js";
 import { CategoriesController } from "./categories/categories.controller.js";
 import { CategoriesService } from "./categories/categories.service.js";
 import { ForecastController } from "./forecast/forecast.controller.js";
@@ -32,7 +33,7 @@ class HealthController {
 
 @Module({
   imports: [PrismaModule, CryptoModule, AuditModule, AuthModule, HouseholdModule],
-  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController, ForecastController, GoalsController, SavingsGoalsController, CategoriesController],
+  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController, ForecastController, GoalsController, SavingsGoalsController, CategoriesController, ImportsController],
   providers: [ReminderService, MarketService, GoalsService, CategoriesService, { provide: PushSender, useClass: WebPushSender }],
 })
 export class AppModule {}

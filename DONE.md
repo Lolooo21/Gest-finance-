@@ -301,6 +301,21 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `pages/Dashboard.tsx` : choix de la catégorie à la saisie, catégorie affichée et modifiable (liste déroulante dans l'édition en ligne) pour les opérations et les récurrences ; `pages/Weekly.tsx` : section « Budgets du mois » du bilan.
 - Tests : 5 nouveaux (front : 62).
 
+## Jalon 11a — Import de relevés bancaires (CSV, OFX) et rapprochement
+### `packages/finance-core` (`statements.ts`)
+- `parseStatement(text)` : détecte OFX ou CSV sur le contenu ; CSV : séparateur deviné (`;`, tabulation, `,`), lignes de préambule de banque ignorées jusqu'à l'en-tête, colonnes repérées (date d'opération plutôt que de valeur, libellé, montant ou débit/crédit), guillemets, BOM ; OFX 1.x (SGML) et 2.x : `DTPOSTED`, `TRNAMT`, `NAME` + `MEMO` sans répétition, `FITID` ; lignes illisibles comptées et signalées.
+- `parseStatementAmount()` (« -1 234,56 », « 12.50 », « 1,234.56 », « 42 EUR », signe moins typographique), `parseStatementDate()` (JJ/MM/AAAA, JJ/MM/AA, AAAA-MM-JJ, AAAAMMJJ ; refuse une date impossible), `normalizeLabel()`, `labelSimilarity()`.
+- `importKeys(lines)` : clé d'idempotence (identifiant OFX, sinon date, montant, libellé normalisé et rang parmi les lignes identiques).
+- `reconcile(lines, existing, rules, toleranceDays)` : déjà importée (même clé, ou même date et montant qu'une opération importée d'un autre fichier), rapprochée d'une saisie manuelle (même montant, ± 2 jours, la plus proche puis le libellé le plus ressemblant), occurrence d'une récurrence, ou nouvelle ; chaque opération ou occurrence ne sert qu'une fois.
+- Tests : 11 nouveaux (finance-core : 103).
+### API
+- Colonne `Transaction.importHash` (unique par compte, migration `import_releves`).
+- `imports.controller.ts` : `POST /imports/preview?accountId=` (multipart, 2 Mo, UTF-8 sinon Windows-1252, PDF refusé en 415 avec un message clair, 5 000 lignes maximum, empreintes SHA-256, rien n'est enregistré) ; `POST /imports/confirm` (lignes `CREATE` créées avec `createMany … skipDuplicates`, lignes `LINK` rattachées à une opération saisie à la main du même compte et du même foyer, empreintes déjà présentes ignorées, le tout dans une transaction) ; écriture réservée aux adultes ; audit sans libellé ni montant.
+- `/imports` ajouté à `routes.ts` et au `Caddyfile`.
+- Tests (API : 166, +4) : droits, compte d'un autre foyer, PDF, taille, en-tête absent, aperçu rapproché, import, réimport sans doublon, double validation, Windows-1252, même relevé en OFX après CSV, rapprochement refusé vers un autre foyer, validations, solde.
+### Front
+- `pages/StatementImport.tsx` : action rapide « Importer un relevé » ; choix du compte et du fichier (contrôle de l'extension et de la taille avant envoi), aperçu avec résumé, avertissements, statut et rapprochement de chaque ligne, cases cochées par défaut pour les nouvelles et les déjà saisies, import puis notification. Tests : 2 nouveaux (front : 64).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
