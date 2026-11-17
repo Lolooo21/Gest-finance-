@@ -321,7 +321,8 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `significantTokens()` (sans bruit bancaire : CB, PRLV, SEPA, VIR…, ni chiffres, ni mois), `labelPattern()` (mot-clé appris : premier mot significatif), `normalizePattern()`, `patternMatches()` (mots entiers : « free » ne correspond pas à « freebox »).
 - `matchRule()` : règle saisie avant règle apprise, puis mot-clé le plus long, puis la plus utilisée.
 - `trainClassifier()` / `classify()` : bayésien naïf multinomial avec lissage de Laplace, abstention sous 5 exemples, sans mot connu ou sous 60 % de probabilité.
-- `suggestCategory()` : règle, sinon classifieur, sinon rien. Tests : 7 nouveaux (finance-core : 110).
+- Compteurs du classifieur en `Map` (alerte CodeQL : un mot comme « constructor » tombait sur une propriété héritée d'objet).
+- `suggestCategory()` : règle, sinon classifieur, sinon rien. Tests : 8 nouveaux (finance-core : 111).
 ### API
 - Table `CategoryRule` (mot-clé unique par foyer, source `MANUAL`/`LEARNED`, `hits`, suppression en cascade avec la catégorie ; migration `categorisation_auto` avec RLS et droits).
 - `categorizer.service.ts` : `load()` (règles + classifieur entraîné sur les 3 000 dernières opérations classées), `resolve()` (catégorie absente = automatique, `null` = sans, choisie = vérifiée et apprise), `learn()` (le dernier choix l'emporte, une règle saisie n'est jamais modifiée), `applyToUncategorized()`.

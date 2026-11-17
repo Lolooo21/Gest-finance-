@@ -232,7 +232,7 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | Catégories et budgets | Catégories du foyer (`/categories`) avec budget mensuel facultatif : jauge, alerte à 80 % puis « plafond atteint » à 100 %, montant restant ou dépassement, report optionnel du reliquat sur le mois suivant ; catégorie choisie à la saisie d'une opération ou d'une récurrence et modifiable ensuite ; dépenses sans catégorie affichées ; écarts vs budget rappelés dans le bilan de la semaine ; écriture par un adulte, lecture pour tous |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (110 tests, ≥ 95 %), API sur PostgreSQL réel (171 tests, dont l'isolation par ligne et les droits des rôles), front (67 tests) |
+| Tests | `finance-core` (111 tests, ≥ 95 %), API sur PostgreSQL réel (171 tests, dont l'isolation par ligne et les droits des rôles), front (67 tests) |
 
 À venir (voir `TODO.md`) : affichage du mot de passe à la saisie et réinitialisation par e-mail, détection des abonnements, OCR des scans, historique et alertes sur les taux, passkeys.
 

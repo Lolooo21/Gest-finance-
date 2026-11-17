@@ -53,30 +53,34 @@ export function matchRule(label: string, rules: CategoryRuleInput[]): CategoryRu
     .sort((a, b) => (a.source === b.source ? 0 : a.source === "MANUAL" ? -1 : 1) || b.pattern.length - a.pattern.length || b.hits - a.hits)[0] ?? null;
 }
 
+/** Les compteurs sont des Map : un mot comme « constructor » ne doit jamais tomber sur une propriété héritée d'objet. */
 export interface ClassifierModel {
   /** Nombre d'exemples par catégorie. */
-  docs: Record<string, number>;
+  docs: Map<string, number>;
   /** Occurrences de chaque mot par catégorie. */
-  words: Record<string, Record<string, number>>;
+  words: Map<string, Map<string, number>>;
   /** Nombre total de mots par catégorie. */
-  totals: Record<string, number>;
+  totals: Map<string, number>;
   vocabulary: number;
   examples: number;
 }
 
+const add = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+
 /** Entraîne le classifieur sur les opérations déjà classées (libellé → catégorie). */
 export function trainClassifier(examples: { label: string; categoryId: string }[]): ClassifierModel {
-  const model: ClassifierModel = { docs: {}, words: {}, totals: {}, vocabulary: 0, examples: 0 };
+  const model: ClassifierModel = { docs: new Map(), words: new Map(), totals: new Map(), vocabulary: 0, examples: 0 };
   const vocab = new Set<string>();
   for (const { label, categoryId } of examples) {
     const tokens = significantTokens(label);
     if (tokens.length === 0) continue;
     model.examples++;
-    model.docs[categoryId] = (model.docs[categoryId] ?? 0) + 1;
-    const counts = (model.words[categoryId] ??= {});
+    add(model.docs, categoryId);
+    const counts = model.words.get(categoryId) ?? new Map<string, number>();
+    model.words.set(categoryId, counts);
     for (const t of tokens) {
-      counts[t] = (counts[t] ?? 0) + 1;
-      model.totals[categoryId] = (model.totals[categoryId] ?? 0) + 1;
+      add(counts, t);
+      add(model.totals, categoryId);
       vocab.add(t);
     }
   }
@@ -91,12 +95,13 @@ export const MIN_PROBABILITY = 0.6;
 /** Catégorie la plus probable (bayésien naïf, lissage de Laplace), ou null si le classifieur n'est pas assez sûr. */
 export function classify(model: ClassifierModel, label: string): { categoryId: string; probability: number } | null {
   const tokens = significantTokens(label);
-  const categories = Object.keys(model.docs);
+  const categories = [...model.docs.keys()];
   if (model.examples < MIN_EXAMPLES || categories.length === 0 || tokens.length === 0) return null;
-  if (!tokens.some((t) => categories.some((c) => model.words[c]![t]))) return null;
+  if (!tokens.some((t) => categories.some((c) => model.words.get(c)!.has(t)))) return null;
   const scores = categories.map((c) => {
-    let logP = Math.log(model.docs[c]! / model.examples);
-    for (const t of tokens) logP += Math.log(((model.words[c]![t] ?? 0) + 1) / (model.totals[c]! + model.vocabulary));
+    const counts = model.words.get(c)!;
+    let logP = Math.log(model.docs.get(c)! / model.examples);
+    for (const t of tokens) logP += Math.log(((counts.get(t) ?? 0) + 1) / (model.totals.get(c)! + model.vocabulary));
     return { categoryId: c, logP };
   });
   const max = Math.max(...scores.map((s) => s.logP));

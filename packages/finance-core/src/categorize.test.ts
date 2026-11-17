@@ -54,8 +54,8 @@ describe("classifieur bayésien naïf", () => {
   it("s'entraîne sur l'historique en ignorant les libellés sans mot significatif", () => {
     const model = trainClassifier(history);
     expect(model.examples).toBe(6);
-    expect(model.docs).toEqual({ courses: 3, loisirs: 3 });
-    expect(model.words.courses!.leclerc).toBe(2);
+    expect(model.docs).toEqual(new Map([["courses", 3], ["loisirs", 3]]));
+    expect(model.words.get("courses")!.get("leclerc")).toBe(2);
   });
 
   it("classe un libellé proche, et s'abstient quand il ne sait pas", () => {
@@ -68,6 +68,16 @@ describe("classifieur bayésien naïf", () => {
     expect(classify(model, "CB 99")).toBeNull();
     const ambiguous = trainClassifier([...history, { label: "LECLERC BOWLING", categoryId: "loisirs" }, { label: "PATHE AUCHAN", categoryId: "courses" }]);
     expect(classify(ambiguous, "LECLERC PATHE")).toBeNull();
+  });
+
+  it("traite « constructor » ou « prototype » comme des mots ordinaires", () => {
+    const model = trainClassifier([
+      { label: "CONSTRUCTOR BTP", categoryId: "maison" }, { label: "CONSTRUCTOR SAS", categoryId: "maison" },
+      { label: "PROTOTYPE LAB", categoryId: "maison" }, { label: "CB PATHE", categoryId: "loisirs" }, { label: "CB BOWLING", categoryId: "loisirs" },
+    ]);
+    expect(model.words.get("maison")!.get("constructor")).toBe(2);
+    expect(classify(model, "CONSTRUCTOR DEPOT")?.categoryId).toBe("maison");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 
   it("attend assez d'exemples", () => {
