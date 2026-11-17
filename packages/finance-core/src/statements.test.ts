@@ -93,6 +93,8 @@ DATA:OFXSGML
   it("signale un OFX sans opération", () => {
     expect(parseStatement("<OFX></OFX>").warnings).toEqual(["Aucune opération trouvée dans ce fichier OFX."]);
     expect(parseStatement("<OFX><STMTTRN><DTPOSTED>20261101<TRNAMT>-3<MEMO>Seul mémo</STMTTRN></OFX>").lines[0]).toEqual({ date: "2026-11-01", amountCents: -300, label: "Seul mémo" });
+    // Décodage des entités en un seul passage (pas de double décodage).
+    expect(parseStatement("<OFX><STMTTRN><DTPOSTED>20261101<TRNAMT>-3<NAME>A &amp;lt;B&gt; &quot;C&quot; D&apos;E</STMTTRN></OFX>").lines[0]!.label).toBe(`A &lt;B> "C" D'E`);
   });
 });
 

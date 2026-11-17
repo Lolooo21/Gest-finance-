@@ -149,7 +149,9 @@ const count = (rows: string[], d: string) => rows.reduce((acc, r) => acc + r.spl
 /** OFX 1.x (SGML, balises de champ non fermées) ou 2.x (XML). */
 function parseOfx(text: string): ParsedStatement {
   const field = (block: string, tag: string) => new RegExp(`<${tag}>([^<\\r\\n]*)`, "i").exec(block)?.[1]?.trim() ?? "";
-  const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&apos;/g, "'").replace(/&quot;/g, '"');
+  // Un seul passage : « &amp;lt; » doit donner « &lt; », pas « < » (pas de double décodage).
+  const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", apos: "'", quot: '"' };
+  const decode = (s: string) => s.replace(/&(amp|lt|gt|apos|quot);/g, (_, e: string) => entities[e]!);
   const lines: StatementLine[] = [];
   let skipped = 0;
   for (const block of text.split(/<STMTTRN>/i).slice(1)) {
