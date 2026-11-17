@@ -31,6 +31,7 @@ model Household {
   savingsContributions SavingsContribution[]
   categories Category[]
   categoryRules CategoryRule[]
+  subscriptionDismissals SubscriptionDismissal[]
 }
 
 model User {
@@ -43,6 +44,10 @@ model User {
   role          Role
   totpSecret    String?
   totpEnabled   Boolean  @default(false)
+  /// Dernier pas TOTP (30 s) accepté : un même code ne sert qu'une fois
+  totpLastStep  Int?
+  /// Incrémentée à chaque changement de mot de passe : invalide aussitôt tous les jetons d'accès déjà émis
+  sessionVersion Int     @default(0)
   failedLogins  Int      @default(0)
   lockedUntil   DateTime?
   createdAt     DateTime @default(now())
@@ -312,6 +317,18 @@ model CategoryRule {
 
   @@unique([householdId, pattern])
   @@index([categoryId])
+}
+
+/// Abonnement détecté ou écart de prix qu'un adulte a choisi d'ignorer : il ne réapparaît plus dans les propositions.
+model SubscriptionDismissal {
+  id          String   @id @default(uuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  /// « compte|sens|mot-clé » pour un abonnement détecté, « drift|règle|opération » pour un écart de prix
+  key         String
+  createdAt   DateTime @default(now())
+
+  @@unique([householdId, key])
 }
 
 /// Indicateur de marché public (BCE, Eurostat) : non rattaché à un foyer, aucune donnée personnelle.

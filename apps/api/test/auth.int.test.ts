@@ -76,8 +76,13 @@ describe("2FA TOTP", () => {
 
     const noCode = await post(app, "/auth/login", { email: owner().email, password: owner().password });
     expect(noCode.statusCode).toBe(401);
-    const withCode = await post(app, "/auth/login", { ...{ email: owner().email, password: owner().password }, totp: authenticator.generate(secret) });
+    // Anti-rejeu : le code qui a servi à l'activation est refusé ; celui du pas suivant (dans la fenêtre de tolérance) passe, une fois.
+    const replay = await post(app, "/auth/login", { email: owner().email, password: owner().password, totp: authenticator.generate(secret) });
+    expect(replay.statusCode).toBe(401);
+    const next = authenticator.clone({ epoch: Date.now() + 30_000 }).generate(secret);
+    const withCode = await post(app, "/auth/login", { email: owner().email, password: owner().password, totp: next });
     expect(withCode.statusCode).toBe(200);
+    expect((await post(app, "/auth/login", { email: owner().email, password: owner().password, totp: next })).statusCode).toBe(401);
   });
 });
 

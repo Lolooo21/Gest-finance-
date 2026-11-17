@@ -140,6 +140,11 @@ faite avant le jalon 8b est convertie automatiquement (l'ancien `database_url` d
 La restauration d'une sauvegarde ramène les politiques et les droits ; elle crée les deux rôles s'ils n'existent pas.
 
 ## 9. Sécurité : à retenir
+- **Inscription** : seul le premier foyer peut s'inscrire ; ensuite l'inscription est fermée et les membres sont ajoutés par le
+  propriétaire. Pour la rouvrir exceptionnellement : `ALLOW_REGISTRATION=1` dans l'environnement de l'API, puis retirez-le.
+- **Connexion** : 10 tentatives par minute et par appareil, compte verrouillé 15 min après 5 échecs, codes 2FA à usage unique.
+  Changer son mot de passe (bouton « Changer le mot de passe ») déconnecte tous les autres appareils.
+- Détail des protections et risques résiduels : [`threat-model.md`](threat-model.md).
 - Aucun port n'est publié : le serveur n'est joignable que via Tailscale. Ne publiez jamais de port de la base ou de l'API.
 - Les secrets sont des fichiers (dossier `secrets/` en 700, fermé aux autres utilisateurs du serveur), jamais dans les images ni dans Git.
 - Gardez le serveur à jour (`apt upgrade`, redéploiement régulier) et activez la 2FA de chaque compte et celle de Tailscale.

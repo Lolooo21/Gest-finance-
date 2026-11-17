@@ -89,6 +89,17 @@ export interface ImportLine {
 export interface CategoryRuleView { id: string; pattern: string; categoryId: string; category: string; source: "MANUAL" | "LEARNED"; hits: number }
 export interface ImportPreview { format: "CSV" | "OFX"; warnings: string[]; skipped: number; summary: Record<ImportStatus, number>; lines: ImportLine[] }
 
+export interface PriceChange { fromCents: number; toCents: number; percent: number }
+export interface SubscriptionCandidate {
+  key: string; accountId: string; label: string; frequency: "WEEKLY" | "MONTHLY" | "YEARLY"; amountCents: number; count: number;
+  firstDate: string; lastDate: string; nextDate: string; categoryId: string | null; increase: PriceChange | null;
+}
+export interface RuleDrift {
+  key: string; ruleId: string; ruleLabel: string; ruleAmountCents: number; transactionId: string; date: string; observedAmountCents: number;
+  increase: PriceChange | null; occurrence: string;
+}
+export interface SubscriptionsOverview { candidates: SubscriptionCandidate[]; drifts: RuleDrift[]; dismissed: number }
+
 export interface Reminder { enabled: boolean; weekday: number; hour: number; timezone: string; lastDoneAt: string | null; due: boolean; pushConfigured: boolean; subscribed: boolean }
 export interface ReviewLine { date: string; label: string; account: string; amountCents: number }
 export interface WeeklyReview {
@@ -101,6 +112,7 @@ export interface WeeklyReview {
     emergencyBelowThreeMonths: boolean;
   };
   budgets?: { id: string; name: string; status: BudgetStatus; percent: number; remainingCents: number }[];
+  subscriptions?: { candidates: number; increases: (PriceChange & { label: string })[] };
 }
 
 export interface PayslipExtraction {

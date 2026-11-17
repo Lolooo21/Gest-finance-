@@ -349,6 +349,34 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `pages/AuthPage.tsx` : champ mot de passe avec bouton afficher / masquer (accessible, `aria-pressed`) ; « Mot de passe oublié ? » avec confirmation neutre ; écran « Nouveau mot de passe » ouvert par le lien (confirmation vérifiée avant envoi, adresse nettoyée après succès). `App.tsx` : le lien ouvre cet écran même avec une session ouverte ; un visiteur non connecté ne voit plus « Votre session a expiré » au premier chargement (défaut corrigé).
 - Tests : 3 nouveaux (front : 67).
 
+## Jalon 13 — Abonnements détectés et hausses de prix
+### `packages/finance-core` (`subscriptions.ts`)
+- `detectSubscriptions(transactions, rules, today)` : regroupe par marchand (mot-clé du libellé, compte, sens), reconnaît un rythme hebdomadaire, mensuel ou annuel (médiane des intervalles, au moins la moitié réguliers, 4 / 3 / 2 occurrences minimum), écarte ce qui est arrêté (plus d'une période et demie sans opération) ou déjà couvert par une récurrence (même mot-clé, ou même fréquence et montant à 5 % près) ; renvoie fréquence, montant, prochaine échéance, catégorie la plus fréquente et hausse éventuelle, les plus chers d'abord.
+- `detectRuleDrifts()` : dernier prélèvement réel (45 jours) d'une récurrence, à 7 jours d'une échéance, d'un autre montant.
+- `priceIncrease()` (≥ 5 % et ≥ 0,50 €), `nextOccurrence()`, `subscriptionKey()`. Tests : 10 nouveaux (finance-core : 121).
+### API
+- Table `SubscriptionDismissal` (migration `abonnements` avec RLS et droits).
+- `subscriptions.service.ts` : `overview()` partagé avec le bilan de la semaine (`subscriptions` : nombre d'abonnements détectés, hausses des récurrences).
+- `subscriptions.controller.ts` : `GET /subscriptions`, `POST /subscriptions/dismiss`, `DELETE /subscriptions/dismissed`, `POST /subscriptions/drifts/:ruleId/apply` (écart recalculé côté serveur ; l'ancienne règle s'arrête la veille de l'échéance remplacée, ou est remplacée si c'était sa première ; nouvelle règle au nouveau montant à l'échéance suivante, en une transaction) ; écriture réservée aux adultes ; audit sans libellé ni montant. `/subscriptions` ajouté à `routes.ts` et au `Caddyfile`.
+- Tests (API : 184, +6) : détection et hausse, ajout aux récurrences, ignorer et réafficher, application d'un nouveau prix sans double comptage, première échéance, isolation, droits, bilan, audit.
+### Front
+- `pages/Subscriptions.tsx` : carte « Abonnements détectés » (changements de prix, abonnements sans récurrence, ajout avec nom modifiable, ignorer, réafficher) ; `pages/Weekly.tsx` : section « Abonnements » du bilan. Tests : 3 nouveaux (front : 73).
+### Divers
+- `TODO.md` : lignes périmées mises à jour (CI, sauvegardes, nombre de tests, outils de sécurité).
+
+## Jalon 14 — Durcissement de la sécurité (force brute, CSRF, injection SQL, sessions)
+### API
+- `app.ts` : `csrfRejection()` refuse (403) toute requête qui modifie des données si `Sec-Fetch-Site: cross-site` ou si `Origin` n'est ni l'hôte appelé (`Host` / `X-Forwarded-Host`), ni `APP_URL`, ni `CSRF_TRUSTED_ORIGINS` ; plafonds de débit par famille de routes avec compteurs séparés (authentification 10/min, lien de réinitialisation 5/min, PDF 10/min) ; `Cache-Control: no-store` sur toutes les réponses.
+- `auth.service.ts` : inscription ouverte seulement sans foyer existant (`registrationOpen()`, `ALLOW_REGISTRATION=1`) ; `assertStrongPassword()` (`password-policy.ts` : mots courants, chiffres seuls, caractères répétés, nom / e-mail / foyer repris) à l'inscription, à l'ajout d'un membre, au changement et à la réinitialisation ; anti-rejeu TOTP (`totpLastStep`, fenêtre ± 1 pas) ; `changePassword()` (ancien mot de passe exigé, échec compté, sessions fermées, nouvelle session) ; `sessionVersion` dans le jeton, incrémentée au changement / à la réinitialisation / au vol de jeton détecté ; sessions fermées en révoquant ET expirant les jetons de rafraîchissement (pas de fausse alerte de vol depuis un autre appareil).
+- `auth.guard.ts` : version de session relue en base à chaque requête ; `auth.module.ts` : algorithme HS256 imposé à la signature et à la vérification.
+- `GET /auth/registration`, `POST /auth/password/change` ; migration `securite_sessions` (`User.totpLastStep`, `User.sessionVersion`).
+- Tests (API : 197, +13) : CSRF (origine, inter-sites, `null`, lecture libre, hôte relayé, APP_URL, origines déclarées), force brute (plafond par IP, verrouillage), sessions coupées (changement de mot de passe, vol de jeton), JWT sans version / autre algorithme / non signé, inscription fermée, politique de mot de passe, absence de SQL non paramétré, libellé piégé stocké tel quel, `no-store`, anti-rejeu TOTP.
+### Infra et documentation
+- `Caddyfile` : `trusted_proxies` (plages privées et Tailscale) et `X-Forwarded-For {client_ip}` : vraie IP du client pour les limites de débit.
+- `docs/threat-model.md` : section jalon 14 et risques résiduels ; `docs/deploiement.md` § 9 ; `.env.example` : `ALLOW_REGISTRATION`, `CSRF_TRUSTED_ORIGINS`.
+### Front
+- `pages/ChangePassword.tsx` (action rapide « Changer le mot de passe », confirmation vérifiée) ; `pages/AuthPage.tsx` : « Créer un foyer » masqué quand l'inscription est fermée. Tests : 2 nouveaux (front : 75).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

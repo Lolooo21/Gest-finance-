@@ -52,6 +52,10 @@ export type ForgotPasswordDto = z.infer<typeof ForgotPasswordDto>;
 export const ResetPasswordDto = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Lien invalide"), password });
 export type ResetPasswordDto = z.infer<typeof ResetPasswordDto>;
 
+/** Changement de mot de passe d'un utilisateur connecté : l'ancien est exigé. */
+export const ChangePasswordDto = z.object({ currentPassword: z.string().min(1).max(128), newPassword: password });
+export type ChangePasswordDto = z.infer<typeof ChangePasswordDto>;
+
 export const AddMemberDto = z.object({
   email: z.string().email().max(254).transform((e) => e.toLowerCase()),
   password,
@@ -150,6 +154,9 @@ export const CategoryRuleDto = z.object({
   categoryId: z.string().uuid(),
 });
 export type CategoryRuleDto = z.infer<typeof CategoryRuleDto>;
+/** Abonnement détecté ou écart de prix à ignorer (clé renvoyée par GET /subscriptions). */
+export const SubscriptionDismissDto = z.object({ key: z.string().min(3).max(300) });
+export type SubscriptionDismissDto = z.infer<typeof SubscriptionDismissDto>;
 export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional() });
 export type BudgetQuery = z.infer<typeof BudgetQuery>;
 

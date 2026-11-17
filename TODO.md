@@ -7,7 +7,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 |---|---|
 | Monorepo pnpm, tsconfig, ESLint | Terminé |
 | Compose dev (Postgres, Redis) | Terminé (non démarré/testé) |
-| CI de base (lint, typecheck, tests, audit, Gitleaks) | En test (jamais exécutée sur GitHub) |
+| CI de base (lint, typecheck, tests, audit, Gitleaks) | Terminé (exécutée sur chaque pull request) |
 | Push GitHub | Terminé |
 | Dockerfiles multi-stage non-root, compose prod + Caddy + Tailscale | Terminé (jalon 8a) ; construction, démarrage, test de fumée et Trivy vérifiés par la CI GitHub (pas de déploiement réel sur VPS) |
 | Premier déploiement réel sur un VPS suivant `docs/deploiement.md` | À faire (utilisateur) |
@@ -19,7 +19,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Circuit Git : branche `develop`, workflows déclenchés sur develop/main/PR | Terminé |
 | GitHub : définir `develop` par défaut et protéger `develop`/`main` (PR obligatoire, contrôles requis) | À faire (réglage utilisateur) |
 | CD : déploiement automatique via Tailscale, rollback | À faire |
-| Production : désactiver l'inscription publique une fois le foyer créé | À faire |
+| Production : désactiver l'inscription publique une fois le foyer créé | Terminé (jalon 14) |
 | Production : rotation des secrets, épinglage des images par empreinte, compilation de l'API (sans chargeur swc) | À faire |
 
 ## Features
@@ -33,6 +33,9 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Afficher / masquer le mot de passe à la connexion et à l'inscription | Terminé (jalon 12) |
 | Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | Terminé (jalon 12) ; envoi réel à vérifier avec votre SMTP en production |
 | Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | À faire |
+| Sécurité : vérifier au premier déploiement que chaque appareil Tailscale a sa propre IP côté API (limites de débit) | À faire (déploiement) |
+| Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | À étudier |
+| Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | À faire |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
 | Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) |
@@ -74,16 +77,16 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Chiffrement des documents | À faire (avec le coffre-fort) |
 | Rate limiting, Helmet/CSP, audit log | Terminé (jalon 2) |
 | Journalisation des erreurs 5xx sans fuite de données + diagnostic de base non migrée au démarrage | Terminé |
-| Sauvegardes chiffrées + runbook de restauration | À faire |
+| Sauvegardes chiffrées + runbook de restauration | Terminé (jalon 8a) |
 
 ## Tests
 | Tâche | Statut |
 |---|---|
 | Unitaires `finance-core` (100 %) | Terminé |
-| Intégration API (Postgres réel) | Terminé en local (25 tests API) ; CI GitHub à vérifier |
-| Tests du front (Vitest + Testing Library) | Terminé (16 tests) |
+| Intégration API (Postgres réel) | Terminé (184 tests, exécutés par la CI) |
+| Tests du front (Vitest + Testing Library) | Terminé (73 tests) |
 | E2E Playwright | À faire |
-| Sécurité (SAST, DAST, dépendances, images) | À faire |
+| Sécurité (SAST, DAST, dépendances, images) | Terminé hors DAST : Semgrep, CodeQL, audit des dépendances, Trivy, Gitleaks en CI ; tests CSRF, force brute, sessions, JWT, injection SQL (jalon 14) ; ZAP (DAST) à faire |
 
 ---
 
@@ -96,7 +99,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 | Import de relevés bancaires CSV/OFX (PDF en repli OCR) + rapprochement avec opérations déjà saisies | P1 · **Terminé (jalon 11a)** ; reste : PDF, catégorie à l'import | Parser par format, aperçu avant validation, empreinte (hash) par opération pour l'idempotence ; PDF plus tard car moins fiable |
 | Catégorisation automatique (règles + apprentissage des corrections) | P1 · **Terminé (jalon 11b)** ; reste : règles par montant, catégorie à la création d'une récurrence détectée | Règles par libellé/montant d'abord, puis classifieur léger local (naïve Bayes/TF-IDF) ; chaque correction crée ou ajuste une règle |
 | Détection des doublons | P1 · **Terminé (jalon 11a)** : empreinte par ligne, rapprochement ± 2 jours | Fait partie du rapprochement d'import (même date ± 2 j, montant, libellé proche) |
-| Détection des abonnements et récurrences oubliées + alerte hausse de prix | P1 | Détecter les montants périodiques dans l'historique → proposer de créer une `RecurringRule` ; alerte si variation > seuil configurable |
+| Détection des abonnements et récurrences oubliées + alerte hausse de prix | P1 · **Terminé (jalon 13)** ; reste : notification push d'une hausse, détection sur montants variables (énergie) | Détecter les montants périodiques dans l'historique → proposer de créer une `RecurringRule` ; alerte si variation > seuil configurable |
 | Détection d'anomalies (dépense inhabituelle, prime absente de la fiche de paie, prélèvement en double) | P2 | Comparer à la médiane par catégorie ; comparer fiche de paie courante à la précédente |
 
 ### Prévision et pilotage
