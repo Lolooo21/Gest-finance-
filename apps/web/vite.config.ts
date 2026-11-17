@@ -29,6 +29,8 @@ export default defineConfig({
       workbox: { importScripts: ["push-sw.js"], navigateFallbackDenylist: apiRoutes.map((r) => new RegExp(`^${r}`)) },
     }),
   ],
-  server: { proxy: Object.fromEntries(apiRoutes.map((r) => [r, API])) },
+  // changeOrigin: false : l'API doit recevoir l'hôte du navigateur (localhost:5173), sinon sa protection CSRF, qui compare
+  // l'origine de la requête à cet hôte, refuse toute modification (la forme courte "/route": url force changeOrigin: true).
+  server: { proxy: Object.fromEntries(apiRoutes.map((r) => [r, { target: API, changeOrigin: false }])) },
   test: { environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"] },
 });
