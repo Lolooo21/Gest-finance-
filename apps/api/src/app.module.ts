@@ -3,6 +3,8 @@ import { ImportsController } from "./imports/imports.controller.js";
 import { CategoriesController } from "./categories/categories.controller.js";
 import { CategoriesService } from "./categories/categories.service.js";
 import { CategorizerService } from "./categories/categorizer.service.js";
+import { SubscriptionsController } from "./subscriptions/subscriptions.controller.js";
+import { SubscriptionsService } from "./subscriptions/subscriptions.service.js";
 import { ForecastController } from "./forecast/forecast.controller.js";
 import { GoalsController } from "./goals/goals.controller.js";
 import { GoalsService } from "./goals/goals.service.js";
@@ -34,7 +36,7 @@ class HealthController {
 
 @Module({
   imports: [PrismaModule, CryptoModule, AuditModule, AuthModule, HouseholdModule],
-  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController, ForecastController, GoalsController, SavingsGoalsController, CategoriesController, ImportsController],
-  providers: [ReminderService, MarketService, GoalsService, CategoriesService, CategorizerService, { provide: PushSender, useClass: WebPushSender }],
+  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController, ForecastController, GoalsController, SavingsGoalsController, CategoriesController, ImportsController, SubscriptionsController],
+  providers: [ReminderService, MarketService, GoalsService, CategoriesService, CategorizerService, SubscriptionsService, { provide: PushSender, useClass: WebPushSender }],
 })
 export class AppModule {}

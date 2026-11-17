@@ -150,6 +150,9 @@ export const CategoryRuleDto = z.object({
   categoryId: z.string().uuid(),
 });
 export type CategoryRuleDto = z.infer<typeof CategoryRuleDto>;
+/** Abonnement détecté ou écart de prix à ignorer (clé renvoyée par GET /subscriptions). */
+export const SubscriptionDismissDto = z.object({ key: z.string().min(3).max(300) });
+export type SubscriptionDismissDto = z.infer<typeof SubscriptionDismissDto>;
 export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional() });
 export type BudgetQuery = z.infer<typeof BudgetQuery>;
 

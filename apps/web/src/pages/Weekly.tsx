@@ -92,6 +92,22 @@ export function WeeklyReviewPanel({ reminder, open, onOpen, onClose }: { reminde
                   </ul>
                 </div>
               )}
+              {review.data.subscriptions && (review.data.subscriptions.candidates > 0 || review.data.subscriptions.increases.length > 0) && (
+                <div aria-label="Abonnements">
+                  <h3 className="mt-4 text-sm font-semibold">Abonnements</h3>
+                  <ul className="divide-y text-sm">
+                    {review.data.subscriptions.candidates > 0 && (
+                      <li className="py-2">{review.data.subscriptions.candidates} prélèvement{review.data.subscriptions.candidates > 1 ? "s" : ""} régulier{review.data.subscriptions.candidates > 1 ? "s" : ""} sans récurrence : à vérifier dans « Abonnements détectés ».</li>
+                    )}
+                    {review.data.subscriptions.increases.map((i) => (
+                      <li key={i.label} className="flex justify-between gap-3 py-2">
+                        <span>{i.label} <span className="text-xs text-slate-600">hausse de {i.percent} %</span></span>
+                        <span><Money cents={i.fromCents} /> → <Money cents={i.toCents} /></span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {review.data.budgets && review.data.budgets.length > 0 && (
                 <div aria-label="Budgets">
                   <h3 className="mt-4 text-sm font-semibold">Budgets du mois</h3>

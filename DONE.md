@@ -349,6 +349,21 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `pages/AuthPage.tsx` : champ mot de passe avec bouton afficher / masquer (accessible, `aria-pressed`) ; « Mot de passe oublié ? » avec confirmation neutre ; écran « Nouveau mot de passe » ouvert par le lien (confirmation vérifiée avant envoi, adresse nettoyée après succès). `App.tsx` : le lien ouvre cet écran même avec une session ouverte ; un visiteur non connecté ne voit plus « Votre session a expiré » au premier chargement (défaut corrigé).
 - Tests : 3 nouveaux (front : 67).
 
+## Jalon 13 — Abonnements détectés et hausses de prix
+### `packages/finance-core` (`subscriptions.ts`)
+- `detectSubscriptions(transactions, rules, today)` : regroupe par marchand (mot-clé du libellé, compte, sens), reconnaît un rythme hebdomadaire, mensuel ou annuel (médiane des intervalles, au moins la moitié réguliers, 4 / 3 / 2 occurrences minimum), écarte ce qui est arrêté (plus d'une période et demie sans opération) ou déjà couvert par une récurrence (même mot-clé, ou même fréquence et montant à 5 % près) ; renvoie fréquence, montant, prochaine échéance, catégorie la plus fréquente et hausse éventuelle, les plus chers d'abord.
+- `detectRuleDrifts()` : dernier prélèvement réel (45 jours) d'une récurrence, à 7 jours d'une échéance, d'un autre montant.
+- `priceIncrease()` (≥ 5 % et ≥ 0,50 €), `nextOccurrence()`, `subscriptionKey()`. Tests : 10 nouveaux (finance-core : 121).
+### API
+- Table `SubscriptionDismissal` (migration `abonnements` avec RLS et droits).
+- `subscriptions.service.ts` : `overview()` partagé avec le bilan de la semaine (`subscriptions` : nombre d'abonnements détectés, hausses des récurrences).
+- `subscriptions.controller.ts` : `GET /subscriptions`, `POST /subscriptions/dismiss`, `DELETE /subscriptions/dismissed`, `POST /subscriptions/drifts/:ruleId/apply` (écart recalculé côté serveur ; l'ancienne règle s'arrête la veille de l'échéance remplacée, ou est remplacée si c'était sa première ; nouvelle règle au nouveau montant à l'échéance suivante, en une transaction) ; écriture réservée aux adultes ; audit sans libellé ni montant. `/subscriptions` ajouté à `routes.ts` et au `Caddyfile`.
+- Tests (API : 184, +6) : détection et hausse, ajout aux récurrences, ignorer et réafficher, application d'un nouveau prix sans double comptage, première échéance, isolation, droits, bilan, audit.
+### Front
+- `pages/Subscriptions.tsx` : carte « Abonnements détectés » (changements de prix, abonnements sans récurrence, ajout avec nom modifiable, ignorer, réafficher) ; `pages/Weekly.tsx` : section « Abonnements » du bilan. Tests : 3 nouveaux (front : 73).
+### Divers
+- `TODO.md` : lignes périmées mises à jour (CI, sauvegardes, nombre de tests, outils de sécurité).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

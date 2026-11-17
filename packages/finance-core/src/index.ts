@@ -9,3 +9,4 @@ export * from "./savingsGoals.js";
 export * from "./budgets.js";
 export * from "./statements.js";
 export * from "./categorize.js";
+export * from "./subscriptions.js";

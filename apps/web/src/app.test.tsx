@@ -23,6 +23,7 @@ function mockApi(handler: Handler) {
     if (url.startsWith("/forecast") && !(r.json as { points?: unknown } | undefined)?.points) r = { json: EMPTY_FORECAST };
     if (url.startsWith("/goals/behavior") && !Array.isArray(r.json)) r = { json: [] };
     if (url === "/goals/savings" && method === "GET" && !(r.json as { goals?: unknown } | undefined)?.goals) r = { json: EMPTY_SAVINGS };
+    if (url === "/subscriptions" && method === "GET" && !(r.json as { candidates?: unknown } | undefined)?.candidates) r = { json: { candidates: [], drifts: [], dismissed: 0 } };
     if (/^\/categories(\?|$)/.test(url) && method === "GET" && !(r.json as { categories?: unknown } | undefined)?.categories) r = { json: EMPTY_BUDGETS };
     if (r.network) throw new TypeError("Failed to fetch");
     const status = r.status ?? 200;
@@ -1103,5 +1104,92 @@ describe("mot de passe", () => {
     expect(calls.filter((c) => c.url === "/auth/password/reset").at(-1)?.body).toEqual({ token, password: "nouveau-mot-de-passe" });
     expect(screen.getByRole("heading", { name: "Connexion" })).toBeInTheDocument();
     expect(window.location.search).toBe("");
+  });
+});
+
+describe("abonnements détectés", () => {
+  const overview = {
+    dismissed: 2,
+    candidates: [{
+      key: "a1|out|netflix", accountId: "a1", label: "PRLV SEPA NETFLIX.COM", frequency: "MONTHLY", amountCents: -1799, count: 4,
+      firstDate: "2026-07-05", lastDate: "2026-10-06", nextDate: "2026-11-06", categoryId: "k1", increase: { fromCents: -1599, toCents: -1799, percent: 13 },
+    }],
+    drifts: [{
+      key: "drift|r1|t9", ruleId: "r1", ruleLabel: "Canal", ruleAmountCents: -2499, transactionId: "t9", date: "2026-11-04",
+      observedAmountCents: -2799, increase: { fromCents: -2499, toCents: -2799, percent: 12 }, occurrence: "2026-11-04",
+    }],
+  };
+  const base = (extra: Handler): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules" && m === "GET") return { json: [] };
+    if (u.startsWith("/transactions") && m === "GET") return { json: [] };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("propose d'ajouter un abonnement oublié, d'ignorer, d'appliquer une hausse et de réafficher", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/subscriptions" && m === "GET") return { json: overview };
+      if (u === "/recurring-rules" && m === "POST") return { status: 201, json: {} };
+      if (u === "/subscriptions/dismiss") return { status: 204 };
+      if (u === "/subscriptions/drifts/r1/apply") return { status: 201, json: { ruleId: "r2", start: "2026-12-04" } };
+      if (u === "/subscriptions/dismissed") return { status: 204 };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Abonnements détectés");
+    await within(panel).findByText("PRLV SEPA NETFLIX.COM");
+    const text = panel.textContent?.replace(/\s/g, " ");
+    expect(text).toMatch(/chaque mois · 4 fois depuis le 5 juillet 2026 · Courant/);
+    expect(text).toMatch(/Hausse de 13 % : -15,99 € → -17,99 €/);
+    expect(text).toMatch(/Prochaine échéance attendue : 6 novembre 2026/);
+    expect(text).toMatch(/Canal : la récurrence prévoit -24,99 €, le prélèvement du 4 novembre 2026 est de -27,99 € \(\+12 %\)/);
+
+    await user.click(within(panel).getByRole("button", { name: "Ajouter PRLV SEPA NETFLIX.COM aux récurrences" }));
+    const name = within(panel).getByLabelText("Nom de la récurrence");
+    await user.clear(name);
+    await user.type(name, "Netflix");
+    await user.click(within(panel).getByRole("button", { name: "Ajouter" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/recurring-rules" && c.method === "POST")?.body).toEqual({
+      accountId: "a1", label: "Netflix", amountCents: -1799, frequency: "MONTHLY", start: "2026-11-06", categoryId: "k1",
+    }));
+
+    await user.click(within(panel).getByRole("button", { name: "Ignorer PRLV SEPA NETFLIX.COM" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/subscriptions/dismiss")?.body).toEqual({ key: "a1|out|netflix" }));
+    await user.click(within(panel).getByRole("button", { name: "Appliquer le nouveau prix de Canal" }));
+    expect(await screen.findByText("Nouveau prix appliqué à partir du 4 décembre 2026.")).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Ignorer l'écart de Canal" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/subscriptions/dismiss" && (c.body as { key: string }).key === "drift|r1|t9")).toBe(true));
+    await user.click(within(panel).getByRole("button", { name: "Réafficher 2 éléments ignorés" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/subscriptions/dismissed" && c.method === "DELETE")).toBe(true));
+  });
+
+  it("explique qu'il n'y a rien à signaler", async () => {
+    mockApi(base(() => undefined as never));
+    renderApp();
+    const panel = await screen.findByLabelText("Abonnements détectés");
+    expect(await within(panel).findByText(/Rien à signaler/)).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: /Réafficher/ })).not.toBeInTheDocument();
+  });
+
+  it("rappelle les abonnements à vérifier et les hausses dans le bilan de la semaine", async () => {
+    mockApi(base((m, u) => {
+      if (u === "/reminder") return { json: { enabled: true, weekday: 7, hour: 18, timezone: "Europe/Paris", lastDoneAt: null, due: true, pushConfigured: false, subscribed: false } };
+      if (u === "/review/weekly") {
+        return { json: {
+          from: "2026-11-01", to: "2026-11-07", incomeCents: 0, expensesCents: 0, transactions: [], recurringInPeriod: [], upcoming: [],
+          month: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 },
+          subscriptions: { candidates: 2, increases: [{ label: "Canal", fromCents: -2499, toCents: -2799, percent: 12 }] },
+        } };
+      }
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Faire le bilan" }));
+    const text = (await screen.findByLabelText("Abonnements")).textContent?.replace(/\s/g, " ");
+    expect(text).toMatch(/2 prélèvements réguliers sans récurrence/);
+    expect(text).toMatch(/Canal hausse de 12 %.*-24,99 € → -27,99 €/);
   });
 });
