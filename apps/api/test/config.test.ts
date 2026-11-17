@@ -24,6 +24,16 @@ describe("loadSecretsFromFiles", () => {
     expect(loadSecretsFromFiles({}, read)).toEqual([]);
   });
 
+  it("ignore un secret facultatif vide ou commenté (SMTP non configuré)", () => {
+    const env: NodeJS.ProcessEnv = { SMTP_URL_FILE: "/run/secrets/empty" };
+    expect(loadSecretsFromFiles(env, read)).toEqual([]);
+    expect(env.SMTP_URL).toBeUndefined();
+    files["/run/secrets/smtp"] = "# non configuré\n";
+    expect(loadSecretsFromFiles({ SMTP_URL_FILE: "/run/secrets/smtp" }, read)).toEqual([]);
+    files["/run/secrets/smtp"] = "smtp://u:p@smtp.example.com:587\n";
+    expect(loadSecretsFromFiles({ SMTP_URL_FILE: "/run/secrets/smtp" }, read)).toEqual(["SMTP_URL"]);
+  });
+
   it("échoue clairement si le fichier est illisible ou vide, sans afficher de valeur", () => {
     expect(() => loadSecretsFromFiles({ DATABASE_URL_FILE: "/absent" }, read)).toThrow("Secret illisible : DATABASE_URL_FILE");
     expect(() => loadSecretsFromFiles({ FIELD_ENCRYPTION_KEY_FILE: "/run/secrets/empty" }, read)).toThrow("Secret vide");
@@ -46,6 +56,12 @@ describe("assertProductionConfig", () => {
     expect(() => assertProductionConfig({ ...good, JWT_SECRET: EXAMPLE_SECRETS[0]! })).toThrow(/valeur d'exemple/);
     expect(() => assertProductionConfig({ ...good, FIELD_ENCRYPTION_KEY: EXAMPLE_SECRETS[1]! })).toThrow(/FIELD_ENCRYPTION_KEY est la valeur d'exemple/);
     expect(() => assertProductionConfig({ ...good, FIELD_ENCRYPTION_KEY: "trop-court" })).toThrow(/32 octets/);
+  });
+
+  it("exige une APP_URL en https quand l'envoi d'e-mails est configuré", () => {
+    expect(() => assertProductionConfig({ ...good, SMTP_URL: "smtp://u:p@smtp.example.com" })).toThrow(/APP_URL/);
+    expect(() => assertProductionConfig({ ...good, SMTP_URL: "smtp://u:p@smtp.example.com", APP_URL: "http://localhost:5173" })).toThrow(/APP_URL/);
+    expect(() => assertProductionConfig({ ...good, SMTP_URL: "smtp://u:p@smtp.example.com", APP_URL: "https://gest.example.ts.net" })).not.toThrow();
   });
 
   it("interdit les cookies non sécurisés en production", () => {

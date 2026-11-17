@@ -71,7 +71,11 @@ services:
       FIELD_ENCRYPTION_KEY_FILE: /run/secrets/field_encryption_key
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SYSTEM_URL_FILE: /run/secrets/database_system_url
-    secrets: [jwt_secret, field_encryption_key, database_url, database_system_url]
+      # E-mails (réinitialisation du mot de passe) : facultatif, un fichier smtp_url vide désactive l'envoi. Voir docs/deploiement.md.
+      SMTP_URL_FILE: /run/secrets/smtp_url
+      MAIL_FROM: ${MAIL_FROM:-}
+      APP_URL: ${APP_URL:-}
+    secrets: [jwt_secret, field_encryption_key, database_url, database_system_url, smtp_url]
     # Docker monte les tmpfs en « noexec » : SWC (compilateur TypeScript chargé au démarrage) extrait son module natif dans /tmp
     # et doit pouvoir l'exécuter. Exception limitée à ce conteneur, avec nosuid/nodev et une taille bornée.
     tmpfs: ["/tmp:rw,exec,nosuid,nodev,size=128m"]
@@ -144,6 +148,7 @@ secrets:
   ts_authkey: { file: ../../secrets/ts_authkey }
   age_recipient: { file: ../../secrets/age_recipient }
   rclone_conf: { file: ../../secrets/rclone_conf }
+  smtp_url: { file: ../../secrets/smtp_url }
 
 volumes:
   pgdata:

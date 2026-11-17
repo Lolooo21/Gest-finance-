@@ -1,6 +1,6 @@
 import "@fastify/cookie";
-import { Body, Controller, HttpCode, Post, Req, Res, UseGuards, UnauthorizedException } from "@nestjs/common";
-import { LoginDto, RegisterDto, TotpCodeDto } from "@gest-finance/shared";
+import { Body, Controller, HttpCode, Logger, Post, Req, Res, UseGuards, UnauthorizedException } from "@nestjs/common";
+import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, TotpCodeDto } from "@gest-finance/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { AuthGuard, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
@@ -16,6 +16,8 @@ function setSession(res: FastifyReply, s: Session) {
 
 @Controller("auth")
 export class AuthController {
+  private readonly logger = new Logger("Auth");
+
   constructor(private readonly auth: AuthService) {}
 
   @Post("register")
@@ -46,6 +48,24 @@ export class AuthController {
     await this.auth.logout(req.cookies.refresh);
     res.clearCookie("access", cookieBase);
     res.clearCookie("refresh", { ...cookieBase, path: "/auth" });
+    return { ok: true };
+  }
+
+  /**
+   * Toujours 202, tout de suite : ni la réponse ni son délai ne révèlent si l'adresse correspond à un compte
+   * (la recherche du compte et l'envoi de l'e-mail continuent en arrière-plan).
+   */
+  @Post("password/forgot")
+  @HttpCode(202)
+  forgot(@Body(new ZodPipe(ForgotPasswordDto)) dto: ForgotPasswordDto) {
+    this.auth.forgotPassword(dto.email).catch((e: unknown) => this.logger.error(`Demande de réinitialisation en échec : ${e instanceof Error ? e.message : "erreur inconnue"}`));
+    return { ok: true };
+  }
+
+  @Post("password/reset")
+  @HttpCode(200)
+  async reset(@Body(new ZodPipe(ResetPasswordDto)) dto: ResetPasswordDto) {
+    await this.auth.resetPassword(dto);
     return { ok: true };
   }
 

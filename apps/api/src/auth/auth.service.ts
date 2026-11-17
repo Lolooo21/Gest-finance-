@@ -1,15 +1,17 @@
-import { ForbiddenException, Injectable, UnauthorizedException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException, ConflictException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
 import { createHash, randomBytes } from "node:crypto";
 import { authenticator } from "otplib";
-import type { LoginDto, RegisterDto } from "@gest-finance/shared";
+import type { LoginDto, RegisterDto, ResetPasswordDto } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
+import { MailSender } from "../mail/mail.sender.js";
 import { PrismaService, SystemPrismaService } from "../prisma/prisma.service.js";
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
 const REFRESH_DAYS = 14;
+const RESET_MINUTES = 30;
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 
 /**
@@ -28,6 +30,7 @@ export class AuthService {
     private readonly system: SystemPrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly mail: MailSender,
   ) {}
 
   hashPassword(password: string) {
@@ -70,6 +73,50 @@ export class AuthService {
     await this.system.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
     await this.audit.record(user.householdId, user.id, "auth.login");
     return this.issueSession(user);
+  }
+
+  /**
+   * Mot de passe oublié : envoie un lien à usage unique (30 min) si le compte existe. Rien ne permet de savoir si l'adresse
+   * est inscrite (même réponse, même délai côté client) ; un nouveau lien annule les précédents.
+   */
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.system.user.findUnique({ where: { email } });
+    if (!user) return;
+    const token = randomBytes(32).toString("base64url");
+    const now = new Date();
+    await this.system.passwordResetToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: now } });
+    await this.system.passwordResetToken.create({
+      data: { userId: user.id, tokenHash: sha256(token), expiresAt: new Date(now.getTime() + RESET_MINUTES * 60_000) },
+    });
+    const link = `${(process.env.APP_URL || "http://localhost:5173").replace(/\/+$/, "")}/?reinitialisation=${token}`;
+    const sent = await this.mail.send({
+      to: user.email,
+      subject: "Gest-finance : réinitialisation de votre mot de passe",
+      text: [
+        `Bonjour ${user.displayName},`,
+        "",
+        "Pour choisir un nouveau mot de passe, ouvrez ce lien (valable 30 minutes, une seule fois) :",
+        link,
+        "",
+        "Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail : votre mot de passe actuel reste valable.",
+      ].join("\n"),
+    });
+    await this.audit.record(user.householdId, user.id, sent ? "auth.password_reset_requested" : "auth.password_reset_not_sent");
+  }
+
+  /** Nouveau mot de passe depuis un lien valide : déverrouille le compte et ferme toutes les sessions ouvertes. */
+  async resetPassword(dto: ResetPasswordDto): Promise<void> {
+    const record = await this.system.passwordResetToken.findUnique({ where: { tokenHash: sha256(dto.token) }, include: { user: true } });
+    if (!record || record.usedAt || record.expiresAt < new Date()) throw new BadRequestException("Lien invalide ou expiré : demandez-en un nouveau.");
+    // Usage unique, même en cas de double envoi simultané : seul le premier marquage réussit.
+    const { count } = await this.system.passwordResetToken.updateMany({ where: { id: record.id, usedAt: null }, data: { usedAt: new Date() } });
+    if (!count) throw new BadRequestException("Lien invalide ou expiré : demandez-en un nouveau.");
+    await this.system.user.update({
+      where: { id: record.userId },
+      data: { passwordHash: await this.hashPassword(dto.password), failedLogins: 0, lockedUntil: null },
+    });
+    await this.system.refreshToken.updateMany({ where: { userId: record.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.audit.record(record.user.householdId, record.userId, "auth.password_reset");
   }
 
   /** Rotation : l'ancien refresh token est révoqué ; sa réutilisation révoque toute la famille de l'utilisateur. */

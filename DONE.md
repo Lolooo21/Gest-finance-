@@ -332,6 +332,20 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Front
 - `pages/CategoryRules.tsx` (dans la carte des budgets) : « Classer les opérations sans catégorie », règles listées (saisie / apprise · n fois), ajout avec contrôle et suppression.
 - `pages/StatementImport.tsx` : catégorie proposée par ligne (« (auto) »), modifiable ; seules les modifications sont envoyées. `pages/Dashboard.tsx` : « Catégorie automatique » par défaut, « Sans catégorie » explicite.
+
+## Jalon 12 — Mot de passe : affichage à la saisie et réinitialisation par e-mail
+### API
+- `mail/mail.sender.ts` : `MailSender` (abstrait, remplaçable dans les tests) et `SmtpMailSender` (nodemailer 10.3.1, `SMTP_URL`, `MAIL_FROM`) ; sans `SMTP_URL`, rien n'est envoyé ; les erreurs d'envoi sont journalisées sans adresse ni lien.
+- `auth.service.ts` : `forgotPassword(email)` (jeton aléatoire de 32 octets, empreinte SHA-256 en base, 30 minutes, les liens précédents sont annulés, lien `APP_URL/?reinitialisation=…`, audit « demandé » ou « non envoyé ») ; `resetPassword()` (usage unique garanti même en double envoi, Argon2id, déverrouillage, révocation de toutes les sessions).
+- `POST /auth/password/forgot` : toujours 202, tout de suite (recherche et envoi en arrière-plan : ni la réponse ni son délai ne révèlent si l'adresse existe), 5 demandes par minute et par IP ; `POST /auth/password/reset`.
+- Table `PasswordResetToken` (migration `reinitialisation_mdp`, RLS sans droit pour `gest_app`, droits limités pour `gest_system`).
+- Configuration : `SMTP_URL` lisible depuis un fichier (`SMTP_URL_FILE`), secret **facultatif** (fichier vide ou commentaire = désactivé) ; en production, `APP_URL` en https obligatoire si `SMTP_URL` est défini.
+- Tests (API : 173, +7) : lien envoyé au titulaire seulement, empreinte en base, réinitialisation, déverrouillage, sessions fermées, usage unique, lien expiré ou remplacé, validations, audit sans jeton ni adresse, limite de débit, secret facultatif, contrôle de production.
+### Infra
+- `compose.dev.yml` : Mailpit (SMTP 1025, interface http://localhost:8025) ; `.env.example` : `SMTP_URL`, `MAIL_FROM`, `APP_URL`.
+- `compose.prod.yml` : secret `smtp_url`, `MAIL_FROM` et `APP_URL` depuis `infra/docker/.env` ; `init-secrets.sh` propose la configuration SMTP (fichier vide sinon) ; `docs/deploiement.md` : section « E-mails ».
+### Front
+- `pages/AuthPage.tsx` : champ mot de passe avec bouton afficher / masquer (accessible, `aria-pressed`) ; « Mot de passe oublié ? » avec confirmation neutre ; écran « Nouveau mot de passe » ouvert par le lien (confirmation vérifiée avant envoi, adresse nettoyée après succès). `App.tsx` : le lien ouvre cet écran même avec une session ouverte ; un visiteur non connecté ne voit plus « Votre session a expiré » au premier chargement (défaut corrigé).
 - Tests : 3 nouveaux (front : 67).
 
 ## Correctifs de sécurité des dépendances (novembre 2026)

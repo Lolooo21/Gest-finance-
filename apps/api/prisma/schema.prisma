@@ -47,6 +47,7 @@ model User {
   lockedUntil   DateTime?
   createdAt     DateTime @default(now())
   refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   reminder      ReminderSetting?
   pushSubscriptions PushSubscription[]
 
@@ -60,6 +61,19 @@ model RefreshToken {
   tokenHash String   @unique
   expiresAt DateTime
   revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Lien de réinitialisation du mot de passe : seule l'empreinte SHA-256 est stockée ; usage unique, 30 minutes.
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
   createdAt DateTime @default(now())
 
   @@index([userId])

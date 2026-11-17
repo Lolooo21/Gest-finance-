@@ -4,13 +4,16 @@ import type { LightMyRequestResponse } from "fastify";
 import { createApp } from "../src/app.js";
 import { PrismaClient } from "@prisma/client";
 
-export async function startApp(rateLimitMax = 1000) {
+export async function startApp(rateLimitMax = 1000, resetLimitMax = 1000) {
   // Hermétique : des clés VAPID dans l'environnement ou le .env de la machine activeraient les notifications push.
   // Valeurs vides plutôt que `delete` : le client Prisma recharge apps/api/.env à sa création et ne remplace que les variables ABSENTES.
   process.env.VAPID_PUBLIC_KEY = "";
   process.env.VAPID_PRIVATE_KEY = "";
   process.env.VAPID_SUBJECT = "";
-  const app = await createApp({ rateLimitMax });
+  // Idem pour l'e-mail : aucun envoi réel depuis les tests (les tests remplacent l'envoi par un espion).
+  process.env.SMTP_URL = "";
+  process.env.APP_URL = "";
+  const app = await createApp({ rateLimitMax, resetLimitMax });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return app;
