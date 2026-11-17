@@ -113,7 +113,10 @@ de base n'est pas annulable automatiquement : en cas de problème de données, r
 ## 7. Sauvegardes
 - Chaque jour à **03:30 UTC** : copie de la base, chiffrement avec votre clé publique, conservation de 7 copies sur le serveur, envoi vers le S3
   (35 jours de sauvegardes quotidiennes, 12 mensuelles).
-- Vérifier la dernière sauvegarde :
+- **Dans l'application** : la carte « Sauvegardes » affiche la date de la dernière sauvegarde réussie et la copie distante ; une alerte
+  apparaît en haut du tableau de bord si la sauvegarde de la nuit manque, si la copie distante est absente ou en échec, ou si la
+  dernière tentative a échoué. L'API ne lit qu'un petit fichier d'état (volume `backupstatus`, en lecture seule), jamais les sauvegardes.
+- Vérifier la dernière sauvegarde en ligne de commande :
   ```
   docker compose -f infra/docker/compose.prod.yml exec backup cat /backups/last-success.txt
   ```

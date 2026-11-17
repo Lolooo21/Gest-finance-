@@ -23,6 +23,7 @@ function mockApi(handler: Handler) {
     if (url.startsWith("/forecast") && !(r.json as { points?: unknown } | undefined)?.points) r = { json: EMPTY_FORECAST };
     if (url.startsWith("/goals/behavior") && !Array.isArray(r.json)) r = { json: [] };
     if (url === "/goals/savings" && method === "GET" && !(r.json as { goals?: unknown } | undefined)?.goals) r = { json: EMPTY_SAVINGS };
+    if (url === "/backups/status" && !(r.json as { configured?: unknown } | undefined)?.configured) r = { json: { configured: false, level: "unknown", problems: [], lastSuccessAt: null, ageHours: null, sizeBytes: null, remote: null, lastFailureAt: null } };
     if (url === "/subscriptions" && method === "GET" && !(r.json as { candidates?: unknown } | undefined)?.candidates) r = { json: { candidates: [], drifts: [], dismissed: 0 } };
     if (/^\/categories(\?|$)/.test(url) && method === "GET" && !(r.json as { categories?: unknown } | undefined)?.categories) r = { json: EMPTY_BUDGETS };
     if (r.network) throw new TypeError("Failed to fetch");
@@ -1237,5 +1238,40 @@ describe("sécurité du compte", () => {
     await user.click(within(panel).getByRole("button", { name: "Changer le mot de passe" }));
     expect(await screen.findByText(/vos autres appareils devront se reconnecter/)).toBeInTheDocument();
     expect(calls.filter((c) => c.url === "/auth/password/change").at(-1)?.body).toEqual({ currentPassword: "ancien-mot-de-passe", newPassword: "une-phrase-toute-neuve" });
+  });
+});
+
+describe("état des sauvegardes", () => {
+  const status = (over: object) => ({ configured: true, level: "ok", problems: [], lastSuccessAt: "2026-11-18T03:30:12Z", ageHours: 5, sizeBytes: 48_213, remote: "ok", lastFailureAt: null, ...over });
+  const base = (backup: object): Handler => (m, u) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    if (u === "/backups/status") return { json: backup };
+    return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("affiche la dernière sauvegarde, sans alerte quand tout va bien", async () => {
+    mockApi(base(status({})));
+    renderApp();
+    const card = await screen.findByLabelText("Sauvegardes");
+    expect(card.textContent).toMatch(/Dernière sauvegarde chiffrée : il y a 5 h .*18 novembre 2026.*copie distante envoyée/);
+    expect(screen.queryByText(/Sauvegardes en danger|Sauvegardes à vérifier/)).not.toBeInTheDocument();
+  });
+
+  it("alerte en haut du tableau de bord quand une sauvegarde manque ou échoue", async () => {
+    mockApi(base(status({ level: "critical", ageHours: 75, remote: "failed", lastFailureAt: "2026-11-18T03:30:40Z",
+      problems: ["Dernière sauvegarde réussie il y a 3 jours.", "L'envoi vers le stockage distant a échoué : la sauvegarde n'existe que sur le serveur."] })));
+    renderApp();
+    const alert = (await screen.findByText("Sauvegardes en danger")).closest("[role=alert]")!;
+    expect(alert).toHaveTextContent("il y a 3 jours");
+    expect(alert).toHaveTextContent("n'existe que sur le serveur");
+    expect((await screen.findByLabelText("Sauvegardes")).textContent).toMatch(/il y a 3 jours.*copie distante en échec.*Dernière tentative en échec/);
+  });
+
+  it("n'affiche rien hors production (sauvegardes non configurées)", async () => {
+    mockApi(base({ configured: false, level: "unknown", problems: [], lastSuccessAt: null, ageHours: null, sizeBytes: null, remote: null, lastFailureAt: null }));
+    renderApp();
+    await screen.findByLabelText("Reste à vivre");
+    expect(screen.queryByLabelText("Sauvegardes")).not.toBeInTheDocument();
   });
 });

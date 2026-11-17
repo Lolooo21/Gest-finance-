@@ -377,6 +377,19 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Front
 - `pages/ChangePassword.tsx` (action rapide « Changer le mot de passe », confirmation vérifiée) ; `pages/AuthPage.tsx` : « Créer un foyer » masqué quand l'inscription est fermée. Tests : 2 nouveaux (front : 75).
 
+## Jalon 15 — État des sauvegardes dans l'application
+### Infra
+- `infra/backup/backup.sh` : écrit `last-success.json` (date, taille, copie distante `ok` / `none` / `failed`) et, à chaque tentative même en échec, `last-attempt.json` (date, code de sortie), par écriture atomique, dans `BACKUP_STATUS_DIR`. `test-backup.sh` vérifie ces fichiers, l'enregistrement d'un échec et la conservation de la dernière réussite.
+- `compose.prod.yml` : volume dédié `backupstatus`, en écriture pour `backup`, en **lecture seule** pour `api` (l'API ne voit jamais les sauvegardes) ; dossier `/backup-status` créé avec le même propriétaire dans les deux images (volume toujours inscriptible par la sauvegarde).
+### API
+- `backups/backup-status.ts` : `evaluateBackupStatus()` (fonction pure : alerte après 26 h, alerte grave après 50 h ou sans aucune réussite, copie distante absente ou en échec, tentative ratée après la dernière réussite ; problèmes classés du plus grave au moins grave) ; `readBackupStatus()` (fichiers absents ou corrompus tolérés ; non configuré sans `BACKUP_STATUS_DIR`).
+- `GET /backups/status` (tout membre connecté, aucune donnée du foyer) ; `/backups` ajouté à `routes.ts` et au `Caddyfile`.
+- Tests (API : 202, +5).
+### Front
+- `pages/BackupStatus.tsx` : alerte en haut du tableau de bord (à vérifier / en danger) et carte « Sauvegardes » (dernière sauvegarde, copie distante, dernière tentative en échec), relues toutes les 30 minutes, rien hors production. Tests : 3 nouveaux (front : 78).
+### Divers
+- `TODO.md` : lignes du backlog déjà réalisées cochées (rappel hebdomadaire interactif, mode confidentialité, objectifs d'épargne).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
