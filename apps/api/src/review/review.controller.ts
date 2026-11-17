@@ -8,6 +8,7 @@ import { toDate, toIso } from "../common/dates.js";
 import { ZodPipe } from "../common/zod.pipe.js";
 import { GoalsService } from "../goals/goals.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { SubscriptionsService } from "../subscriptions/subscriptions.service.js";
 
 const addDays = (iso: string, n: number) => toIso(new Date(toDate(iso).getTime() + n * 86_400_000));
 
@@ -18,6 +19,7 @@ export class ReviewController {
     private readonly prisma: PrismaService,
     private readonly goals: GoalsService,
     private readonly categories: CategoriesService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   /** Bilan de la semaine : 7 jours se terminant à `to` (aujourd'hui par défaut), plus les 7 jours à venir. */
@@ -48,8 +50,9 @@ export class ReviewController {
     const upcoming = expand(addDays(to, 1), addDays(to, 7));
     const all = [...transactions, ...recurringInPeriod];
     // État des objectifs : rappelé dans le bilan pour décider de la semaine suivante (vide si aucun objectif).
-    const [behavior, savings, budgets] = await Promise.all([
+    const [behavior, savings, budgets, subs] = await Promise.all([
       this.goals.behavior(user.householdId), this.goals.savings(user.householdId), this.categories.budgets(user.householdId, to.slice(0, 7)),
+      this.subscriptions.overview(user.householdId),
     ]);
     return {
       from, to,
@@ -62,6 +65,11 @@ export class ReviewController {
         emergencyBelowThreeMonths: savings.emergency.belowThreeMonths && savings.emergency.averageMonthlyExpensesCents > 0,
       },
       // Écarts vs budget du mois de `to` : seules les catégories budgétées.
+      // Abonnements à vérifier : nouveaux abonnements détectés et hausses de prix des récurrences.
+      subscriptions: {
+        candidates: subs.candidates.length,
+        increases: subs.drifts.flatMap((d) => (d.increase ? [{ label: d.ruleLabel, ...d.increase }] : [])),
+      },
       budgets: budgets.categories.flatMap((c) => (c.budget ? [{ id: c.id, name: c.name, status: c.budget.status, percent: c.budget.percent, remainingCents: c.budget.remainingCents }] : [])),
       month: { from: monthFrom, to: monthTo, ...resteAVivre(monthFrom, monthTo, rules, monthTx.map((t) => ({ date: toIso(t.date), amountCents: t.amountCents }))) },
     };

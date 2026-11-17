@@ -7,7 +7,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 |---|---|
 | Monorepo pnpm, tsconfig, ESLint | Terminé |
 | Compose dev (Postgres, Redis) | Terminé (non démarré/testé) |
-| CI de base (lint, typecheck, tests, audit, Gitleaks) | En test (jamais exécutée sur GitHub) |
+| CI de base (lint, typecheck, tests, audit, Gitleaks) | Terminé (exécutée sur chaque pull request) |
 | Push GitHub | Terminé |
 | Dockerfiles multi-stage non-root, compose prod + Caddy + Tailscale | Terminé (jalon 8a) ; construction, démarrage, test de fumée et Trivy vérifiés par la CI GitHub (pas de déploiement réel sur VPS) |
 | Premier déploiement réel sur un VPS suivant `docs/deploiement.md` | À faire (utilisateur) |
@@ -74,16 +74,16 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Chiffrement des documents | À faire (avec le coffre-fort) |
 | Rate limiting, Helmet/CSP, audit log | Terminé (jalon 2) |
 | Journalisation des erreurs 5xx sans fuite de données + diagnostic de base non migrée au démarrage | Terminé |
-| Sauvegardes chiffrées + runbook de restauration | À faire |
+| Sauvegardes chiffrées + runbook de restauration | Terminé (jalon 8a) |
 
 ## Tests
 | Tâche | Statut |
 |---|---|
 | Unitaires `finance-core` (100 %) | Terminé |
-| Intégration API (Postgres réel) | Terminé en local (25 tests API) ; CI GitHub à vérifier |
-| Tests du front (Vitest + Testing Library) | Terminé (16 tests) |
+| Intégration API (Postgres réel) | Terminé (184 tests, exécutés par la CI) |
+| Tests du front (Vitest + Testing Library) | Terminé (73 tests) |
 | E2E Playwright | À faire |
-| Sécurité (SAST, DAST, dépendances, images) | À faire |
+| Sécurité (SAST, DAST, dépendances, images) | Terminé hors DAST : Semgrep, CodeQL, audit des dépendances, Trivy, Gitleaks en CI ; ZAP (DAST) à faire |
 
 ---
 
@@ -96,7 +96,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 | Import de relevés bancaires CSV/OFX (PDF en repli OCR) + rapprochement avec opérations déjà saisies | P1 · **Terminé (jalon 11a)** ; reste : PDF, catégorie à l'import | Parser par format, aperçu avant validation, empreinte (hash) par opération pour l'idempotence ; PDF plus tard car moins fiable |
 | Catégorisation automatique (règles + apprentissage des corrections) | P1 · **Terminé (jalon 11b)** ; reste : règles par montant, catégorie à la création d'une récurrence détectée | Règles par libellé/montant d'abord, puis classifieur léger local (naïve Bayes/TF-IDF) ; chaque correction crée ou ajuste une règle |
 | Détection des doublons | P1 · **Terminé (jalon 11a)** : empreinte par ligne, rapprochement ± 2 jours | Fait partie du rapprochement d'import (même date ± 2 j, montant, libellé proche) |
-| Détection des abonnements et récurrences oubliées + alerte hausse de prix | P1 | Détecter les montants périodiques dans l'historique → proposer de créer une `RecurringRule` ; alerte si variation > seuil configurable |
+| Détection des abonnements et récurrences oubliées + alerte hausse de prix | P1 · **Terminé (jalon 13)** ; reste : notification push d'une hausse, détection sur montants variables (énergie) | Détecter les montants périodiques dans l'historique → proposer de créer une `RecurringRule` ; alerte si variation > seuil configurable |
 | Détection d'anomalies (dépense inhabituelle, prime absente de la fiche de paie, prélèvement en double) | P2 | Comparer à la médiane par catégorie ; comparer fiche de paie courante à la précédente |
 
 ### Prévision et pilotage
