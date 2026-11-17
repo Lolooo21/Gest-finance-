@@ -11,7 +11,7 @@ Monorepo pnpm, TypeScript partout.
 |---|---|
 | `apps/api` | API NestJS + Fastify, Prisma, PostgreSQL |
 | `apps/web` | Front React + Vite + TanStack Query + Tailwind, PWA installable |
-| `packages/finance-core` | Domaine pur, sans E/S : `occurrences()` (récurrences), `resteAVivre()`, prévisionnel, objectifs, budgets (`evaluateBudget()`) |
+| `packages/finance-core` | Domaine pur, sans E/S : `occurrences()` (récurrences), `resteAVivre()`, prévisionnel, objectifs, budgets (`evaluateBudget()`), lecture et rapprochement des relevés (`parseStatement()`, `reconcile()`) |
 | `packages/shared` | Schémas Zod partagés entre l'API et le front |
 | `infra/docker` | PostgreSQL et Redis de développement |
 
@@ -104,6 +104,7 @@ erDiagram
         date date
         string label
         uuid categoryId FK "facultative"
+        string importHash "empreinte de la ligne de relevé, unique par compte"
     }
     Category {
         uuid id PK
@@ -174,7 +175,7 @@ erDiagram
 **Lecture du schéma.**
 - Un **foyer** (`Household`) regroupe des **utilisateurs** (`User`, rôles `OWNER`, `ADULT`, `CHILD`) et toutes les données financières. Chaque table de données porte un `householdId` : toutes les requêtes de l'API sont filtrées par le foyer du jeton, jamais par un paramètre envoyé par le client.
 - Un **compte bancaire** (`BankAccount`) porte un solde initial et un IBAN chiffré. Son **solde courant** n'est pas stocké : il est calculé = solde initial + opérations + occurrences de règles récurrentes déjà échues.
-- Une **opération** (`Transaction`) est ponctuelle, en centimes signés (entrée positive, sortie négative).
+- Une **opération** (`Transaction`) est ponctuelle, en centimes signés (entrée positive, sortie négative). Si elle vient d'un relevé importé, ou a été rapprochée d'une ligne de relevé, elle garde l'**empreinte** SHA-256 de cette ligne (`importHash`, unique par compte) : un même relevé n'est jamais importé deux fois. L'empreinte part de l'identifiant bancaire (OFX) ou, à défaut, de la date, du montant, du libellé normalisé et du rang parmi les lignes identiques du fichier.
 - Une **règle récurrente** (`RecurringRule`) décrit un salaire, un loyer, un abonnement… (hebdomadaire, mensuel, annuel, avec fin optionnelle). Les occurrences ne sont pas stockées : `finance-core` les génère à la demande.
 - `ReminderSetting` (une ligne par utilisateur) décrit son rappel hebdomadaire : jour, heure, fuseau. Le **créneau** du rappel est le dernier instant où tombent ce jour et cette heure ; le bilan est « dû » si ce créneau est postérieur à l'activation (`since`) et au dernier bilan fait (`lastDoneAt`). `lastReminderAt` garantit une seule notification par créneau.
 - `PushSubscription` : un appareil abonné aux notifications. L'API n'envoie qu'aux services push connus des navigateurs (liste blanche anti-SSRF) ; la notification ne contient aucune donnée financière.
@@ -216,12 +217,13 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | Prévisionnel de trésorerie | Solde projeté à 30, 60 ou 90 jours (`GET /forecast`) : point de départ = solde d'aujourd'hui, puis règles récurrentes à venir et opérations déjà saisies avec une date future ; courbe jour par jour, solde le plus bas, **alerte au premier découvert prévu** (comptes courants seulement), prochaines échéances. Fonction pure `projectBalance()` de `finance-core` |
 | Objectifs de comportement | « Pas de découvert », « reste à vivre positif », « dépenses sous un plafond » (`/goals/behavior`) : statut du mois en cours, mesure, historique et série de mois réussis ; activation et retrait par un adulte, lecture pour tous |
 | Objectifs d'épargne | Enveloppes virtuelles par objectif (`/goals/savings`) : avancement, versements et retraits saisis, versement mensuel conseillé comparé au reste à vivre du mois, **épargne de secours** (couverture en mois de dépenses, alerte sous 3 mois), modèles prédéfinis (fonds d'urgence, vacances, rentrée scolaire, apport immobilier), rappel de l'ordre conseillé (secours → court terme → long terme) ; l'état de tous les objectifs figure aussi dans le bilan de la semaine |
+| Import de relevés | CSV (point-virgule, virgule ou tabulation, en-têtes de banque, colonnes Montant ou Débit/Crédit, UTF-8 ou Windows-1252) et OFX, 2 Mo maximum, fichier jamais conservé ; **aperçu avant validation** : chaque ligne est classée *nouvelle*, *déjà saisie* (rapprochée d'une opération saisie à la main, même montant à 2 jours près), *récurrence* (déjà comptée par une règle récurrente : non importée par défaut, pour ne pas compter deux fois le loyer) ou *déjà importée* ; lignes à cocher, puis import et rapprochement en une transaction ; réimporter le même relevé (ou le même relevé dans l'autre format) ne crée aucun doublon ; relevés PDF refusés avec un message clair |
 | Catégories et budgets | Catégories du foyer (`/categories`) avec budget mensuel facultatif : jauge, alerte à 80 % puis « plafond atteint » à 100 %, montant restant ou dépassement, report optionnel du reliquat sur le mois suivant ; catégorie choisie à la saisie d'une opération ou d'une récurrence et modifiable ensuite ; dépenses sans catégorie affichées ; écarts vs budget rappelés dans le bilan de la semaine ; écriture par un adulte, lecture pour tous |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (92 tests, ≥ 95 %), API sur PostgreSQL réel (162 tests, dont l'isolation par ligne et les droits des rôles), front (62 tests) |
+| Tests | `finance-core` (103 tests, ≥ 95 %), API sur PostgreSQL réel (166 tests, dont l'isolation par ligne et les droits des rôles), front (64 tests) |
 
-À venir (voir `TODO.md`) : import de relevés et catégorisation automatique (s'appuiera sur les catégories), détection des abonnements, OCR des scans, historique et alertes sur les taux, passkeys.
+À venir (voir `TODO.md`) : catégorisation automatique des opérations importées (règles apprises de vos corrections), détection des abonnements, OCR des scans, historique et alertes sur les taux, passkeys.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker.
