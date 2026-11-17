@@ -1,9 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException, ConflictException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
 import { createHash, randomBytes } from "node:crypto";
 import { authenticator } from "otplib";
-import type { ChangePasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from "@gest-finance/shared";
+import type { ChangePasswordDto, LoginDto, MemberPasswordDto, RegisterDto, ResetPasswordDto } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
 import { MailSender } from "../mail/mail.sender.js";
 import { passwordProblem } from "./password-policy.js";
@@ -205,6 +205,28 @@ export class AuthService {
     if (step === null) throw new UnauthorizedException("Code invalide");
     await this.prisma.user.update({ where: { id: userId }, data: { totpEnabled: true, totpLastStep: step } });
     await this.audit.record(user.householdId, userId, "auth.totp_enabled");
+  }
+
+  /**
+   * Le propriétaire redonne l'accès à un membre qui a oublié son mot de passe, sans e-mail : son propre mot de passe est
+   * exigé (une erreur compte comme un échec de connexion). Le membre est déverrouillé et toutes ses sessions sont fermées.
+   */
+  async resetMemberPassword(ownerId: string, memberId: string, dto: MemberPasswordDto): Promise<void> {
+    const owner = await this.system.user.findUniqueOrThrow({ where: { id: ownerId } });
+    const member = await this.system.user.findFirst({ where: { id: memberId, householdId: owner.householdId } });
+    if (!member) throw new NotFoundException("Membre introuvable");
+    if (member.id === owner.id) throw new BadRequestException("Pour votre propre compte, utilisez « Changer le mot de passe »");
+    if (!(await argon2.verify(owner.passwordHash, dto.ownerPassword))) {
+      await this.registerFailure(owner.id, owner.householdId, owner.failedLogins + 1);
+      throw new BadRequestException("Votre mot de passe est incorrect");
+    }
+    this.assertStrongPassword(dto.password, [member.email, member.displayName]);
+    await this.system.user.update({
+      where: { id: member.id },
+      data: { passwordHash: await this.hashPassword(dto.password), failedLogins: 0, lockedUntil: null, sessionVersion: { increment: 1 } },
+    });
+    await this.closeAllSessions(member.id);
+    await this.audit.record(owner.householdId, owner.id, `household.member_password_reset:${member.role}`);
   }
 
   /**

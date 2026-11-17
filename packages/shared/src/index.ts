@@ -56,6 +56,16 @@ export type ResetPasswordDto = z.infer<typeof ResetPasswordDto>;
 export const ChangePasswordDto = z.object({ currentPassword: z.string().min(1).max(128), newPassword: password });
 export type ChangePasswordDto = z.infer<typeof ChangePasswordDto>;
 
+/** Le propriétaire choisit un nouveau mot de passe pour un membre (oubli sans e-mail) ; son propre mot de passe est exigé. */
+export const MemberPasswordDto = z.object({ ownerPassword: z.string().min(1).max(128), password });
+export type MemberPasswordDto = z.infer<typeof MemberPasswordDto>;
+/** Journal d'activité : 50 entrées par page, avant une date ; `security=1` ne garde que l'authentification. */
+export const AuditQuery = z.object({
+  before: z.string().datetime({ offset: true }).optional(),
+  security: z.enum(["1"]).optional(),
+});
+export type AuditQuery = z.infer<typeof AuditQuery>;
+
 export const AddMemberDto = z.object({
   email: z.string().email().max(254).transform((e) => e.toLowerCase()),
   password,

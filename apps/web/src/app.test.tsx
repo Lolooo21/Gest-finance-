@@ -1275,3 +1275,97 @@ describe("état des sauvegardes", () => {
     expect(screen.queryByLabelText("Sauvegardes")).not.toBeInTheDocument();
   });
 });
+
+describe("administration du foyer", () => {
+  const members = [
+    { id: "u1", email: "ada@example.com", displayName: "Ada", role: "OWNER" },
+    { id: "u2", email: "lea@example.com", displayName: "Léa", role: "CHILD" },
+  ];
+  const audit = (before: string | null, security: boolean) => {
+    if (security) return { entries: [{ id: "s1", action: "auth.login_failed", createdAt: "2026-11-17T20:00:00Z", user: "Léa" }], next: null };
+    return before
+      ? { entries: [{ id: "e3", action: "auth.register", createdAt: "2026-11-01T08:00:00Z", user: "Ada" }], next: null }
+      : { entries: [
+          { id: "e1", action: "household.member_added:CHILD", createdAt: "2026-11-17T21:00:00Z", user: "Ada" },
+          { id: "e2", action: "auth.refresh_reuse_detected", createdAt: "2026-11-17T20:30:00Z", user: "Léa" },
+          { id: "e4", action: "action.inconnue", createdAt: "2026-11-17T20:10:00Z", user: null },
+        ], next: "2026-11-17T20:10:00Z" };
+  };
+  const base = (role: string, extra: Handler = () => undefined as never): Handler => (m, u, b) => {
+    if (u === "/household/members" && m === "GET") return { json: members };
+    if (u === "/household/me") return { json: { ...members[0], role } };
+    if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    if (u.startsWith("/household/audit")) {
+      const q = new URLSearchParams(u.split("?")[1]);
+      return { json: audit(q.get("before"), q.get("security") === "1") };
+    }
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("n'apparaît que pour le propriétaire", async () => {
+    mockApi(base("ADULT"));
+    renderApp();
+    await screen.findByLabelText("Reste à vivre");
+    await waitFor(() => expect(screen.queryByLabelText("Administration du foyer")).not.toBeInTheDocument());
+  });
+
+  it("liste les membres, en ajoute un et réinitialise le mot de passe d'un membre", async () => {
+    const calls = mockApi(base("OWNER", (m, u) => {
+      if (u === "/household/members" && m === "POST") return { status: 201, json: { id: "u3" } };
+      if (u === "/household/members/u2/password") return { json: { ok: true } };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Administration du foyer");
+    const list = await within(panel).findByLabelText("Membres du foyer");
+    await waitFor(() => expect(list).toHaveTextContent("Léa"));
+    expect(list.textContent).toMatch(/Ada.*Propriétaire.*Léa.*Enfant \(lecture seule\)/);
+    expect(within(panel).queryByRole("button", { name: "Réinitialiser le mot de passe de Ada" })).not.toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "Ajouter un membre" }));
+    const form = within(panel).getByRole("form", { name: "Ajouter un membre" });
+    await user.type(within(form).getByLabelText("Prénom du membre"), "Tom");
+    await user.type(within(form).getByLabelText("E-mail du membre"), "tom@example.com");
+    await user.selectOptions(within(form).getByLabelText("Rôle du membre"), "CHILD");
+    await user.type(within(form).getByLabelText(/^Mot de passe du membre/), "girafe-orange-velo");
+    await user.type(within(form).getByLabelText("Confirmez le mot de passe du membre"), "girafe-orange-velo");
+    await user.click(within(form).getByRole("button", { name: "Ajouter le membre" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/household/members" && c.method === "POST")?.body).toEqual({
+      displayName: "Tom", email: "tom@example.com", role: "CHILD", password: "girafe-orange-velo",
+    }));
+
+    await user.click(within(panel).getByRole("button", { name: "Réinitialiser le mot de passe de Léa" }));
+    const reset = within(panel).getByRole("form", { name: "Nouveau mot de passe pour Léa" });
+    await user.type(within(reset).getByLabelText(/^Nouveau mot de passe de Léa/), "nuage-velo-girafe");
+    await user.type(within(reset).getByLabelText("Confirmez ce mot de passe"), "autre-chose-encore");
+    await user.type(within(reset).getByLabelText("Votre mot de passe (confirmation)"), "mot-de-passe-ada");
+    await user.click(within(reset).getByRole("button", { name: "Enregistrer le nouveau mot de passe" }));
+    expect(within(reset).getByRole("alert")).toHaveTextContent("ne sont pas identiques");
+    await user.clear(within(reset).getByLabelText("Confirmez ce mot de passe"));
+    await user.type(within(reset).getByLabelText("Confirmez ce mot de passe"), "nuage-velo-girafe");
+    await user.click(within(reset).getByRole("button", { name: "Enregistrer le nouveau mot de passe" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/household/members/u2/password")?.body).toEqual({ ownerPassword: "mot-de-passe-ada", password: "nuage-velo-girafe" }));
+    expect(await screen.findByText(/Nouveau mot de passe enregistré pour Léa/)).toBeInTheDocument();
+  });
+
+  it("affiche le journal d'activité lisiblement, filtre la sécurité et charge les plus anciens", async () => {
+    const calls = mockApi(base("OWNER"));
+    renderApp();
+    const user = userEvent.setup();
+    const journal = await screen.findByLabelText("Journal d'activité");
+    await waitFor(() => expect(journal).toHaveTextContent("Membre ajouté (Enfant (lecture seule)) · Ada"));
+    expect(within(journal).getByText(/Jeton de session volé détecté/).closest("li")).toHaveClass("text-red-800");
+    expect(journal).toHaveTextContent("action.inconnue");
+
+    await user.click(within(journal).getByRole("button", { name: "Voir les plus anciens" }));
+    await waitFor(() => expect(journal).toHaveTextContent("Création du foyer · Ada"));
+    expect(calls.some((c) => c.url === "/household/audit?before=2026-11-17T20%3A10%3A00Z")).toBe(true);
+    expect(within(journal).queryByRole("button", { name: "Voir les plus anciens" })).not.toBeInTheDocument();
+
+    await user.click(within(journal).getByLabelText("Sécurité uniquement"));
+    await waitFor(() => expect(journal).toHaveTextContent("Échec de connexion · Léa"));
+    expect(journal).not.toHaveTextContent("Création du foyer");
+    expect(calls.some((c) => c.url === "/household/audit?security=1")).toBe(true);
+  });
+});
