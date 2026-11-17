@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from "@nestjs/common";
 import { occurrences, resteAVivre, type RecurringRule } from "@gest-finance/finance-core";
 import { WeeklyReviewQuery } from "@gest-finance/shared";
+import { CategoriesService } from "../categories/categories.service.js";
 import { AuthGuard, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
 import { toDate, toIso } from "../common/dates.js";
@@ -16,6 +17,7 @@ export class ReviewController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly goals: GoalsService,
+    private readonly categories: CategoriesService,
   ) {}
 
   /** Bilan de la semaine : 7 jours se terminant à `to` (aujourd'hui par défaut), plus les 7 jours à venir. */
@@ -46,7 +48,9 @@ export class ReviewController {
     const upcoming = expand(addDays(to, 1), addDays(to, 7));
     const all = [...transactions, ...recurringInPeriod];
     // État des objectifs : rappelé dans le bilan pour décider de la semaine suivante (vide si aucun objectif).
-    const [behavior, savings] = await Promise.all([this.goals.behavior(user.householdId), this.goals.savings(user.householdId)]);
+    const [behavior, savings, budgets] = await Promise.all([
+      this.goals.behavior(user.householdId), this.goals.savings(user.householdId), this.categories.budgets(user.householdId, to.slice(0, 7)),
+    ]);
     return {
       from, to,
       incomeCents: all.filter((x) => x.amountCents > 0).reduce((s, x) => s + x.amountCents, 0),
@@ -57,6 +61,8 @@ export class ReviewController {
         savings: savings.goals.map((g) => ({ id: g.id, name: g.name, status: g.status, percent: g.percent, advisedMonthlyCents: g.advisedMonthlyCents })),
         emergencyBelowThreeMonths: savings.emergency.belowThreeMonths && savings.emergency.averageMonthlyExpensesCents > 0,
       },
+      // Écarts vs budget du mois de `to` : seules les catégories budgétées.
+      budgets: budgets.categories.flatMap((c) => (c.budget ? [{ id: c.id, name: c.name, status: c.budget.status, percent: c.budget.percent, remainingCents: c.budget.remainingCents }] : [])),
       month: { from: monthFrom, to: monthTo, ...resteAVivre(monthFrom, monthTo, rules, monthTx.map((t) => ({ date: toIso(t.date), amountCents: t.amountCents }))) },
     };
   }

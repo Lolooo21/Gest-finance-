@@ -46,7 +46,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Bilan hebdomadaire interactif (entrées/sorties, récurrences, à venir, « bilan fait ») | Terminé (jalon 5) |
 | Rappel : déplacer le planificateur dans un worker dédié (BullMQ) si plusieurs instances de l'API | À faire |
 | Rappel : test réel des notifications sur appareil (clés VAPID, navigateur) | À faire — non vérifié ici |
-| Rappel : écarts vs budget dans le bilan (dépend des enveloppes) | À faire |
+| Rappel : écarts vs budget dans le bilan (dépend des enveloppes) | Terminé (jalon 10) |
 | Documents : upload, antivirus, chiffrement | À faire |
 | Lecture des fiches de paie (PDF numérique, parseur générique, validation humaine, anti-doublon, sans conservation) | Terminé (jalon 6) ; à confronter à de vraies fiches |
 | Fiches de paie : OCR des scans et photos (Tesseract) | À faire |
@@ -100,7 +100,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
 | Reste à vivre prévisionnel à 30/60/90 jours | P1 · **Terminé (jalon 9a)** | Réutilise `occurrences()` et `resteAVivre()` de `finance-core` ; ajouter une fonction `projectBalance()` pure + alerte si solde projeté < 0 |
-| Enveloppes et budgets par catégorie, alerte à 80 % du plafond | P1 | Alerte à 80 % et 100 %, report optionnel du reliquat au mois suivant |
+| Enveloppes et budgets par catégorie, alerte à 80 % du plafond | P1 · **Terminé (jalon 10)** ; reste : notification push quand un budget passe 80 %/100 %, budgets par membre | Alerte à 80 % et 100 %, report optionnel du reliquat au mois suivant |
 | Provisions lissées des dépenses annuelles (impôts, assurances, vacances, rentrée) | P2 | Mensualité = montant annuel / 12 déduite du reste à vivre ; lien avec les enveloppes |
 | Simulateur « et si ? » (crédit, changement de salaire, dépense ponctuelle) | P2 | Scénarios non persistés dans les vraies données, comparés au prévisionnel ; s'appuie sur `projectBalance()` |
 

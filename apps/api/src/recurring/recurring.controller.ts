@@ -1,14 +1,16 @@
 import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from "@nestjs/common";
 import { RecurringRuleDto, RecurringRulePatch } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
+import { CategoriesService } from "../categories/categories.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
 import { toDate, toIso } from "../common/dates.js";
 import { ZodPipe } from "../common/zod.pipe.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
-const view = (r: { id: string; accountId: string; label: string; amountCents: number; frequency: string; start: Date; end: Date | null }) => ({
+const view = (r: { id: string; accountId: string; label: string; amountCents: number; frequency: string; start: Date; end: Date | null; categoryId: string | null }) => ({
   id: r.id, accountId: r.accountId, label: r.label, amountCents: r.amountCents, frequency: r.frequency, start: toIso(r.start), end: r.end ? toIso(r.end) : null,
+  categoryId: r.categoryId,
 });
 
 @Controller("recurring-rules")
@@ -17,6 +19,7 @@ export class RecurringController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly categories: CategoriesService,
   ) {}
 
   @Get()
@@ -31,10 +34,11 @@ export class RecurringController {
     if (dto.end && dto.end < dto.start) throw new BadRequestException("La fin précède le début");
     const account = await this.prisma.bankAccount.findFirst({ where: { id: dto.accountId, householdId: user.householdId }, select: { id: true } });
     if (!account) throw new NotFoundException("Compte introuvable");
+    await this.categories.assertCategory(user.householdId, dto.categoryId);
     const r = await this.prisma.recurringRule.create({
       data: {
         householdId: user.householdId, accountId: dto.accountId, label: dto.label, amountCents: dto.amountCents,
-        frequency: dto.frequency, start: toDate(dto.start), end: dto.end ? toDate(dto.end) : null,
+        frequency: dto.frequency, start: toDate(dto.start), end: dto.end ? toDate(dto.end) : null, categoryId: dto.categoryId ?? null,
       },
     });
     await this.audit.record(user.householdId, user.userId, "recurring_rule.created");
@@ -46,6 +50,7 @@ export class RecurringController {
   async update(@CurrentUser() user: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(RecurringRulePatch)) dto: RecurringRulePatch) {
     const current = await this.prisma.recurringRule.findFirst({ where: { id, householdId: user.householdId } });
     if (!current) throw new NotFoundException();
+    await this.categories.assertCategory(user.householdId, dto.categoryId);
     const start = dto.start ?? toIso(current.start);
     const end = dto.end === undefined ? (current.end ? toIso(current.end) : null) : dto.end;
     if (end && end < start) throw new BadRequestException("La fin précède le début");
@@ -55,6 +60,7 @@ export class RecurringController {
         ...(dto.label !== undefined ? { label: dto.label } : {}),
         ...(dto.amountCents !== undefined ? { amountCents: dto.amountCents } : {}),
         ...(dto.frequency !== undefined ? { frequency: dto.frequency } : {}),
+        ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
         start: toDate(start),
         end: end ? toDate(end) : null,
       },

@@ -42,8 +42,8 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 }
 
 export interface Account { id: string; name: string; type: "CHECKING" | "SAVINGS"; balanceCents: number; ibanMasked: string | null }
-export interface Tx { id: string; accountId: string; amountCents: number; date: string; label: string }
-export interface Rule { id: string; accountId: string; label: string; amountCents: number; frequency: "WEEKLY" | "MONTHLY" | "YEARLY"; start: string; end: string | null }
+export interface Tx { id: string; accountId: string; amountCents: number; date: string; label: string; categoryId: string | null }
+export interface Rule { id: string; accountId: string; label: string; amountCents: number; frequency: "WEEKLY" | "MONTHLY" | "YEARLY"; start: string; end: string | null; categoryId: string | null }
 export interface Summary { from: string; to: string; incomeCents: number; fixedChargesCents: number; oneOffExpensesCents: number; remainingCents: number }
 
 export interface ForecastAccountView { id: string; name: string; type: "CHECKING" | "SAVINGS"; endCents: number; minCents: number; minDate: string; firstNegativeDate: string | null }
@@ -74,6 +74,13 @@ export interface SavingsOverview {
   capacityCents: number; totalAdvisedCents: number;
 }
 
+export type BudgetStatus = "OK" | "WARNING" | "EXCEEDED";
+export interface BudgetEvaluation {
+  month: string; limitCents: number; carryOverCents: number; availableCents: number; spentCents: number; remainingCents: number; percent: number; status: BudgetStatus;
+}
+export interface CategoryView { id: string; name: string; monthlyBudgetCents: number | null; rollover: boolean; spentCents: number; budget: BudgetEvaluation | null }
+export interface BudgetsOverview { month: string; categories: CategoryView[]; uncategorizedSpentCents: number; totals: { availableCents: number; spentCents: number } }
+
 export interface Reminder { enabled: boolean; weekday: number; hour: number; timezone: string; lastDoneAt: string | null; due: boolean; pushConfigured: boolean; subscribed: boolean }
 export interface ReviewLine { date: string; label: string; account: string; amountCents: number }
 export interface WeeklyReview {
@@ -85,6 +92,7 @@ export interface WeeklyReview {
     savings: { id: string; name: string; status: SavingsStatus; percent: number; advisedMonthlyCents: number | null }[];
     emergencyBelowThreeMonths: boolean;
   };
+  budgets?: { id: string; name: string; status: BudgetStatus; percent: number; remainingCents: number }[];
 }
 
 export interface PayslipExtraction {

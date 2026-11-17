@@ -10,6 +10,8 @@ const EMPTY_FORECAST = { from: "2026-10-21", to: "2026-11-20", days: 30, startCe
 
 const EMPTY_SAVINGS = { goals: [], emergency: { averageMonthlyExpensesCents: 0, threeMonthsCents: 0, sixMonthsCents: 0, savedCents: 0, coverageTenths: null, belowThreeMonths: false }, capacityCents: 0, totalAdvisedCents: 0 };
 
+const EMPTY_BUDGETS = { month: "2026-11", categories: [], uncategorizedSpentCents: 0, totals: { availableCents: 0, spentCents: 0 } };
+
 function mockApi(handler: Handler) {
   const calls: { method: string; url: string; body: unknown }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
@@ -21,6 +23,7 @@ function mockApi(handler: Handler) {
     if (url.startsWith("/forecast") && !(r.json as { points?: unknown } | undefined)?.points) r = { json: EMPTY_FORECAST };
     if (url.startsWith("/goals/behavior") && !Array.isArray(r.json)) r = { json: [] };
     if (url === "/goals/savings" && method === "GET" && !(r.json as { goals?: unknown } | undefined)?.goals) r = { json: EMPTY_SAVINGS };
+    if (url.startsWith("/categories") && method === "GET" && !(r.json as { categories?: unknown } | undefined)?.categories) r = { json: EMPTY_BUDGETS };
     if (r.network) throw new TypeError("Failed to fetch");
     const status = r.status ?? 200;
     return { ok: status < 400, status, json: async () => { if (r.html) throw new SyntaxError("Unexpected token <"); return r.json ?? {}; } } as Response;
@@ -716,5 +719,119 @@ describe("objectifs d'épargne", () => {
     expect(within(panel).getByLabelText("Versements de Vacances")).toHaveTextContent("2026-10-01");
     await user.click(within(panel).getByRole("button", { name: "Supprimer le versement du 2026-10-01" }));
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.url === "/goals/savings/g1/contributions/c1")).toBe(true));
+  });
+});
+
+describe("budgets par catégorie", () => {
+  const budget = (over: object = {}) => ({ month: "2026-11", limitCents: 40_000, carryOverCents: 5_000, availableCents: 45_000, spentCents: 37_000, remainingCents: 8_000, percent: 82, status: "WARNING", ...over });
+  const overview = (over: object = {}) => ({
+    month: "2026-11",
+    categories: [
+      { id: "k1", name: "Courses", monthlyBudgetCents: 40_000, rollover: true, spentCents: 37_000, budget: budget() },
+      { id: "k2", name: "Loisirs", monthlyBudgetCents: null, rollover: false, spentCents: 2_000, budget: null },
+    ],
+    uncategorizedSpentCents: 1_500, totals: { availableCents: 45_000, spentCents: 37_000 }, ...over,
+  });
+  const base = (extra: Handler): Handler => (m, u, b) => {
+    if (u === "/household/members") return { json: [] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/recurring-rules") return { json: [] };
+    if (u.startsWith("/transactions") && m === "GET") return { json: [{ id: "t1", accountId: "a1", amountCents: -2_500, date: "2026-11-03", label: "Marché", categoryId: "k1" }] };
+    return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("affiche jauge, alerte à 80 %, reliquat reporté, catégorie sans budget et dépenses non classées", async () => {
+    mockApi(base((m, u) => (u === "/categories" && m === "GET" ? { json: overview() } : (undefined as never))));
+    renderApp();
+    const panel = await screen.findByLabelText("Budgets du mois");
+    await within(panel).findByText("Courses");
+    expect(within(panel).getByRole("progressbar", { name: "Budget Courses" })).toHaveAttribute("aria-valuenow", "82");
+    expect(within(panel).getByText("80 % atteints")).toBeInTheDocument();
+    expect(panel.textContent?.replace(/\s/g, " ")).toMatch(/dont 50,00 € reportés/);
+    expect(panel.textContent?.replace(/\s/g, " ")).toMatch(/Reste 80,00 € ce mois-ci/);
+    expect(panel.textContent?.replace(/\s/g, " ")).toMatch(/Dépensé ce mois-ci : 20,00 € \(sans budget\)/);
+    expect(panel.textContent?.replace(/\s/g, " ")).toMatch(/Dépenses sans catégorie ce mois-ci : 15,00 €/);
+    // La catégorie apparaît aussi dans la liste des opérations.
+    expect(await screen.findByText(/2026-11-03 · Courant · Courses/)).toBeInTheDocument();
+  });
+
+  it("signale un dépassement et plafonne la jauge à 100 %", async () => {
+    const over = overview({ categories: [{ id: "k1", name: "Courses", monthlyBudgetCents: 40_000, rollover: false, spentCents: 42_000, budget: budget({ carryOverCents: 0, availableCents: 40_000, spentCents: 42_000, remainingCents: -2_000, percent: 105, status: "EXCEEDED" }) }] });
+    mockApi(base((m, u) => (u === "/categories" && m === "GET" ? { json: over } : (undefined as never))));
+    renderApp();
+    const panel = await screen.findByLabelText("Budgets du mois");
+    expect(await within(panel).findByText("Plafond atteint")).toBeInTheDocument();
+    expect(within(panel).getByRole("progressbar", { name: "Budget Courses" })).toHaveAttribute("aria-valuenow", "100");
+    expect(panel.textContent?.replace(/\s/g, " ")).toMatch(/Dépassé de 20,00 €/);
+  });
+
+  it("crée une catégorie avec budget en centimes et refuse un budget invalide sans appeler l'API", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/categories" && m === "GET") return { json: overview({ categories: [], uncategorizedSpentCents: 0, totals: { availableCents: 0, spentCents: 0 } }) };
+      if (u === "/categories" && m === "POST") return { status: 201, json: { id: "k3" } };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Budgets du mois");
+    await within(panel).findByText(/Aucune catégorie/);
+    await user.click(within(panel).getByRole("button", { name: "Nouvelle catégorie" }));
+    await user.type(within(panel).getByLabelText("Nom de la catégorie"), "Courses");
+    await user.type(within(panel).getByLabelText("Budget mensuel"), "abc");
+    await user.click(within(panel).getByRole("button", { name: "Ajouter la catégorie" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("Le budget mensuel doit être un montant");
+    expect(calls.some((c) => c.method === "POST" && c.url === "/categories")).toBe(false);
+    await user.clear(within(panel).getByLabelText("Budget mensuel"));
+    await user.type(within(panel).getByLabelText("Budget mensuel"), "400");
+    await user.click(within(panel).getByLabelText(/Reporter ce qui reste/));
+    await user.click(within(panel).getByRole("button", { name: "Ajouter la catégorie" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/categories")).toBe(true));
+    expect(calls.find((c) => c.method === "POST" && c.url === "/categories")?.body).toEqual({ name: "Courses", monthlyBudgetCents: 40_000, rollover: true });
+  });
+
+  it("classe une nouvelle dépense et reclasse une opération existante", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/categories" && m === "GET") return { json: overview() };
+      if (u === "/transactions" && m === "POST") return { status: 201, json: {} };
+      if (u === "/transactions/t1" && m === "PATCH") return { json: { ok: true } };
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    const form = (await screen.findByRole("heading", { name: "Ajouter une entrée ou une sortie" })).closest("section")!;
+    await waitFor(() => expect(within(form).getByLabelText("Catégorie")).toHaveTextContent("Courses"));
+    await user.selectOptions(within(form).getByLabelText("Compte"), "a1");
+    await user.type(within(form).getByLabelText("Libellé"), "Cinéma");
+    await user.type(within(form).getByLabelText("Montant"), "12");
+    await user.selectOptions(within(form).getByLabelText("Catégorie"), "k2");
+    await user.click(within(form).getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/transactions" && c.method === "POST")?.body).toMatchObject({ amountCents: -1_200, categoryId: "k2" }));
+
+    const ops = (await screen.findByRole("heading", { name: "Dernières opérations" })).closest("section")!;
+    await user.click(within(ops).getByRole("button", { name: "Modifier Marché" }));
+    expect(within(ops).getByLabelText("Catégorie")).toHaveValue("k1");
+    await user.selectOptions(within(ops).getByLabelText("Catégorie"), "");
+    await user.click(within(ops).getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/transactions/t1")?.body).toMatchObject({ categoryId: null, amountCents: -2_500 }));
+  });
+
+  it("rappelle les écarts vs budget dans le bilan de la semaine", async () => {
+    mockApi(base((m, u) => {
+      if (u === "/reminder") return { json: { enabled: true, weekday: 7, hour: 18, timezone: "Europe/Paris", lastDoneAt: null, due: true, pushConfigured: false, subscribed: false } };
+      if (u === "/review/weekly") {
+        return { json: {
+          from: "2026-11-01", to: "2026-11-07", incomeCents: 0, expensesCents: 0, transactions: [], recurringInPeriod: [], upcoming: [],
+          month: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 },
+          budgets: [{ id: "k1", name: "Courses", status: "EXCEEDED", percent: 105, remainingCents: -2_000 }, { id: "k2", name: "Loisirs", status: "OK", percent: 20, remainingCents: 8_000 }],
+        } };
+      }
+      return undefined as never;
+    }));
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Faire le bilan" }));
+    const text = (await screen.findByLabelText("Budgets")).textContent?.replace(/\s/g, " ");
+    expect(text).toMatch(/Courses.*105 % · plafond atteint.*dépassé de 20,00 €/);
+    expect(text).toMatch(/Loisirs.*20 % · dans le budget.*reste 80,00 €/);
   });
 });

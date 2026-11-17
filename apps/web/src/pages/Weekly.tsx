@@ -3,6 +3,7 @@ import { api, type BehaviorKind, type GoalStatus, type Reminder, type ReviewLine
 import { Money } from "../privacy";
 import { enablePush, pushSupported } from "../push";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useToast } from "../ui";
+import { BUDGET_STATUS } from "./Budgets";
 
 const BEHAVIOR_LABEL: Record<BehaviorKind, string> = { NO_OVERDRAFT: "Pas de découvert", POSITIVE_REMAINING: "Reste à vivre positif", SPENDING_CAP: "Dépenses sous le plafond" };
 const BEHAVIOR_STATUS: Record<GoalStatus, string> = { ON_TRACK: "en bonne voie", AT_RISK: "à surveiller", FAILED: "raté ce mois-ci", ACHIEVED: "réussi" };
@@ -86,6 +87,21 @@ export function WeeklyReviewPanel({ reminder, open, onOpen, onClose }: { reminde
                       <li key={g.id} className="flex justify-between gap-3 py-2">
                         <span>{g.name} <span className="text-xs text-slate-600">{g.percent} % · {SAVINGS_STATUS[g.status]}</span></span>
                         <span>{g.advisedMonthlyCents ? <>à verser <Money cents={g.advisedMonthlyCents} /> / mois</> : ""}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {review.data.budgets && review.data.budgets.length > 0 && (
+                <div aria-label="Budgets">
+                  <h3 className="mt-4 text-sm font-semibold">Budgets du mois</h3>
+                  <ul className="divide-y text-sm">
+                    {review.data.budgets.map((b) => (
+                      <li key={b.id} className="flex justify-between gap-3 py-2">
+                        <span>{b.name} <span className="text-xs text-slate-600">{b.percent} % · {BUDGET_STATUS[b.status].label.toLowerCase()}</span></span>
+                        <span className={b.remainingCents < 0 ? "font-medium text-red-700" : ""}>
+                          {b.remainingCents >= 0 ? <>reste <Money cents={b.remainingCents} /></> : <>dépassé de <Money cents={-b.remainingCents} /></>}
+                        </span>
                       </li>
                     ))}
                   </ul>

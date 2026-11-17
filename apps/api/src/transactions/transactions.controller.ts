@@ -1,14 +1,15 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { TransactionDto, TransactionPatch } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
+import { CategoriesService } from "../categories/categories.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
 import { toDate, toIso } from "../common/dates.js";
 import { ZodPipe } from "../common/zod.pipe.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
-const view = (t: { id: string; accountId: string; amountCents: number; date: Date; label: string }) => ({
-  id: t.id, accountId: t.accountId, amountCents: t.amountCents, date: toIso(t.date), label: t.label,
+const view = (t: { id: string; accountId: string; amountCents: number; date: Date; label: string; categoryId: string | null }) => ({
+  id: t.id, accountId: t.accountId, amountCents: t.amountCents, date: toIso(t.date), label: t.label, categoryId: t.categoryId,
 });
 
 @Controller("transactions")
@@ -17,6 +18,7 @@ export class TransactionsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly categories: CategoriesService,
   ) {}
 
   @Get()
@@ -32,8 +34,9 @@ export class TransactionsController {
     // Le compte référencé doit appartenir au foyer du jeton (sinon IDOR via accountId).
     const account = await this.prisma.bankAccount.findFirst({ where: { id: dto.accountId, householdId: user.householdId }, select: { id: true } });
     if (!account) throw new NotFoundException("Compte introuvable");
+    await this.categories.assertCategory(user.householdId, dto.categoryId);
     const t = await this.prisma.transaction.create({
-      data: { householdId: user.householdId, accountId: dto.accountId, amountCents: dto.amountCents, date: toDate(dto.date), label: dto.label },
+      data: { householdId: user.householdId, accountId: dto.accountId, amountCents: dto.amountCents, date: toDate(dto.date), label: dto.label, categoryId: dto.categoryId ?? null },
     });
     await this.audit.record(user.householdId, user.userId, "transaction.created");
     return view(t);
@@ -43,6 +46,7 @@ export class TransactionsController {
   @Roles("OWNER", "ADULT")
   async update(@CurrentUser() user: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(TransactionPatch)) dto: TransactionPatch) {
     const { date, ...fields } = dto;
+    await this.categories.assertCategory(user.householdId, dto.categoryId);
     const { count } = await this.prisma.transaction.updateMany({
       where: { id, householdId: user.householdId },
       data: { ...fields, ...(date ? { date: toDate(date) } : {}) },
