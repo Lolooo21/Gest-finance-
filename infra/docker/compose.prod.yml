@@ -45,15 +45,16 @@ services:
     restart: "no"
     working_dir: /app/apps/api
     # Seul ce service connaît le rôle propriétaire. Les URL sont lues dans les secrets, jamais écrites dans l'image.
-    # 1) migrations (créent aussi les rôles gest_app et gest_system sans mot de passe) ; 2) mots de passe des rôles, tirés des URL.
+    # 1) migrations (créent aussi les rôles gest_app et gest_system sans mot de passe) ; 2) mots de passe des rôles, tirés des URL ;
+    # 3) chiffrement des champs sensibles encore en clair (données d'avant le jalon 21 ; sans effet ensuite).
     entrypoint:
       - /bin/sh
       - -c
       - |
-        export DATABASE_OWNER_URL="$$(cat /run/secrets/database_owner_url)" DATABASE_URL="$$(cat /run/secrets/database_url)" DATABASE_SYSTEM_URL="$$(cat /run/secrets/database_system_url)"
-        node_modules/.bin/prisma migrate deploy && exec node scripts/setup-roles.mjs
+        export DATABASE_OWNER_URL="$$(cat /run/secrets/database_owner_url)" DATABASE_URL="$$(cat /run/secrets/database_url)" DATABASE_SYSTEM_URL="$$(cat /run/secrets/database_system_url)" FIELD_ENCRYPTION_KEY="$$(cat /run/secrets/field_encryption_key)"
+        node_modules/.bin/prisma migrate deploy && node scripts/setup-roles.mjs && exec node --import @swc-node/register/esm-register scripts/encrypt-fields.ts
     command: []
-    secrets: [database_owner_url, database_url, database_system_url]
+    secrets: [database_owner_url, database_url, database_system_url, field_encryption_key]
     tmpfs: ["/tmp"]
     networks: [backend]
     depends_on:

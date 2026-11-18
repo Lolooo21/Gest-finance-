@@ -1,6 +1,6 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { admin, get, owner, post, resetDb, sessionCookies, startApp } from "./helpers.js";
+import { admin, get, owner, post, resetDb, sessionCookies, startApp, fieldCipher } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -83,7 +83,7 @@ describe("import de relevés", () => {
     expect(confirm.statusCode).toBe(201);
     expect(confirm.json()).toEqual({ created: 3, linked: 1, skipped: 0 });
     const rows = await admin.transaction.findMany({ orderBy: [{ date: "asc" }, { createdAt: "asc" }] });
-    expect(rows.map((r) => [r.label, r.amountCents])).toEqual([["Courses", -4_530], ["CB BOULANGERIE", -320], ["CB BOULANGERIE", -320], ["VIR SALAIRE", 250_000]]);
+    expect(rows.map((r) => [fieldCipher.decryptField(r.label), r.amountCents])).toEqual([["Courses", -4_530], ["CB BOULANGERIE", -320], ["CB BOULANGERIE", -320], ["VIR SALAIRE", 250_000]]);
     expect(rows.every((r) => r.importHash)).toBe(true);
     // Le libellé saisi à la main est conservé ; seul le rapprochement est mémorisé.
     expect(rows[0]!.id).toBe(manual.id);

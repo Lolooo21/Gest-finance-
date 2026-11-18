@@ -1,6 +1,6 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { admin, get, owner, post, resetDb, sessionCookies, startApp } from "./helpers.js";
+import { get, owner, plainLabels, post, resetDb, sessionCookies, startApp } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -60,7 +60,7 @@ describe("comptes personnels et joints", () => {
     expect((await patch(`/transactions/${tx.id}`, { label: "piraté" }, o)).statusCode).toBe(404);
     expect((await del(`/transactions/${tx.id}`, o)).statusCode).toBe(404);
     expect((await del(`/accounts/${perso.id}`, o)).statusCode).toBe(404);
-    expect(await admin.transaction.count({ where: { id: tx.id, label: "Cadeau secret" } })).toBe(1);
+    expect(await plainLabels({ id: tx.id })).toEqual(["Cadeau secret"]);
   });
 
   it("le reste à vivre se filtre par vue : tout, joint ou mes comptes personnels", async () => {
