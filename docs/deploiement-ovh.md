@@ -30,9 +30,28 @@ Vos appareils ──HTTPS──► gest-finance (Tailscale) ──► Proxy Cadd
 ```
 
 Les deux seules entrées sont des machines Tailscale (l'application et l'administration) ; les seules sorties sont les e-mails et les
-sauvegardes chiffrées.
+sauvegardes chiffrées. Pour se mettre à jour, le serveur **va chercher** les nouvelles versions sur GitHub (images signées) : GitHub n'a
+aucun accès au serveur.
 
-**Prérequis** : une version de `main` qui contient le jalon 12 (envoi d'e-mails, secret `smtp_url`).
+### Chaîne de mise à jour automatique
+
+```
+GitHub (dépôt)                                                         VPS OVH
+──────────────                                                         ───────
+Lundi : veille de sécurité (Trivy) ──► issue « Veille de sécurité » si une faille reste à corriger
+Dependabot ──► PR vers develop ──► CI complète verte ──► fusion automatique (correctifs et mineures)
+                                                     └─► majeure : attend votre validation
+Faille corrigée ? ──► PR develop → main ──► tag vX.Y.Z ──► images signées (GHCR)
+                                                               │
+                                       chaque nuit, 04:30 ◄────┘ le VPS vient chercher
+                                       signature vérifiée ─► sauvegarde ─► bascule ─► contrôle de santé
+                                       succès : notification   échec : retour arrière (base comprise) + notification
+```
+
+Une nouvelle version n'est publiée automatiquement **que si elle corrige des failles** de la version en production. Les autres
+évolutions attendent une version faite à la main. Le détail est dans [`deploiement.md`](deploiement.md) § 6.
+
+**Prérequis** : une version de `main` qui contient le jalon 25 (envoi d'e-mails, chiffrement des champs, mises à jour automatiques).
 
 ## Budget et comptes à créer
 
@@ -210,9 +229,26 @@ APP_URL=https://gest-finance.<votre-réseau>.ts.net
 l'écran de connexion, « Mot de passe oublié ? » avec votre adresse ; l'e-mail arrive en moins d'une minute. Sinon, lisez les journaux de
 `api` dans Portainer (ligne « Envoi d'e-mail impossible » avec la raison).
 
+## Préparer GitHub (une fois, avant l'installation)
+
+1. **Double authentification** sur votre compte GitHub, idéalement avec une clé de sécurité ou une passkey. Ce compte peut publier une
+   version que le serveur installera seul : protégez-le comme le serveur lui-même.
+2. *Settings → Actions → General → Workflow permissions* : cochez **« Allow GitHub Actions to create and approve pull requests »**.
+   La publication automatique ouvre la PR `develop` → `main`.
+3. *Settings → Notifications* (ou *Watch → Custom → Issues* sur le dépôt) : recevez par e-mail les issues « Veille de sécurité ».
+4. **Première version, à la main** (rien n'est publié automatiquement avant), depuis votre PC, une fois `develop` fusionné dans `main` :
+    ```
+    git checkout main && git pull
+    git tag v0.1.0 && git push origin v0.1.0
+    ```
+    Le workflow « Publication des images » construit, signe et publie les trois images sur GHCR (≈ 10 minutes, onglet *Actions*).
+5. *Profil → Packages* : pour chacun des paquets `gest-finance-api`, `-proxy`, `-backup` → *Package settings* → **Change visibility →
+   Public**. Ils ne contiennent aucun secret, et le serveur peut les télécharger sans identifiant. Sinon, faites sur le serveur
+   `docker login ghcr.io` avec un jeton GitHub limité à `read:packages`.
+
 ## Installer Gest-finance
 
-L'installation tient en trois commandes une fois les comptes prêts ; prévoyez 20 minutes, construction des images comprise.
+L'installation tient en quelques commandes une fois les comptes prêts ; prévoyez 20 minutes.
 
 1. **Sur votre PC** (jamais sur le serveur), créez la clé de chiffrement des sauvegardes : `age-keygen -o cle-sauvegarde.txt`. Rangez ce
    fichier dans votre gestionnaire de mots de passe **et** hors ligne ; notez la clé publique `age1…` affichée.
@@ -223,16 +259,27 @@ L'installation tient en trois commandes une fois les comptes prêts ; prévoyez 
     ```
     Le script demande la clé publique age, la clé Tailscale, le stockage S3 (section « Sauvegardes ») et le SMTP (section « SMTP »). Il ne
     régénère jamais un secret existant.
-3. Complétez `infra/docker/.env` (`MAIL_FROM`, `APP_URL`).
-4. Démarrez :
+3. Complétez `infra/docker/.env` : `MAIL_FROM`, `APP_URL`, et **`GEST_VERSION=0.1.0`** (la version publiée, sans le `v`). Le serveur
+   installe alors les images signées au lieu de les construire.
+4. Placez le dépôt sur la même version, puis démarrez :
     ```
-    docker compose -f infra/docker/compose.prod.yml --profile prod up -d --build
+    git checkout v0.1.0
+    docker compose -f infra/docker/compose.prod.yml --profile prod pull
+    docker compose -f infra/docker/compose.prod.yml --profile prod up -d
     docker compose -f infra/docker/compose.prod.yml ps
     ```
     Tous les services doivent passer « healthy » (aussi visible dans Portainer).
 5. Depuis un appareil du réseau Tailscale, ouvrez `https://gest-finance.<votre-réseau>.ts.net`, **créez votre foyer** puis activez la
    **double authentification**. Ajoutez ensuite les membres du foyer depuis l'application.
-6. **Sauvegardez le dossier `secrets/`** dans votre gestionnaire de mots de passe, surtout `field_encryption_key` (chiffre les IBAN, les libellés des opérations, les employeurs et les notes) et
+6. **Installez la mise à jour automatique** (service et minuteur systemd, sous votre utilisateur, jamais root) :
+    ```
+    sudo sh infra/deploy/install-auto-update.sh
+    ```
+    Comptes rendus sur votre téléphone (facultatif, recommandé) : installez l'application **ntfy**, abonnez-vous à un sujet au nom long
+    et imprévisible (ex. `gest-finance-7f3k9q2m…`), puis créez `infra/deploy/auto-update.env` contenant
+    `NOTIFY_URL=https://ntfy.sh/<ce-sujet>`. Essai : `sudo systemctl start gest-finance-maj.service`, puis
+    `journalctl -u gest-finance-maj.service` doit afficher « Déjà à jour (0.1.0) ».
+7. **Sauvegardez le dossier `secrets/`** dans votre gestionnaire de mots de passe, surtout `field_encryption_key` (chiffre les IBAN, les libellés des opérations, les employeurs et les notes) et
    `jwt_secret` : sans eux, une sauvegarde restaurée sur un nouveau serveur serait en partie illisible.
 
 ## Sauvegardes
@@ -256,32 +303,58 @@ stockage S3. **Une sauvegarde jamais restaurée n'est pas une sauvegarde** : tes
 
 ## Mises à jour et surveillance
 
-Une mise à jour = une nouvelle version fusionnée dans `main`, puis trois commandes sur le serveur ; les migrations de base s'appliquent seules.
+**Automatique (cas normal).** Chaque nuit à 04:30, après la sauvegarde de 03:30 UTC, le serveur :
+1. regarde s'il existe une version plus récente **du même numéro majeur** ;
+2. vérifie la **signature** de ses images ;
+3. fait une sauvegarde chiffrée et une copie locale de la base ;
+4. installe la version et vérifie que l'application répond ;
+5. en cas d'échec, **revient seul à la version précédente**, base comprise si une migration avait été appliquée.
 
+Vous recevez un compte rendu (ntfy) dans tous les cas où quelque chose a changé.
+
+| Notification | Que faire |
+|---|---|
+| « version X installée » | Rien. Ouvrez l'application à l'occasion pour vérifier. |
+| « mise à jour X annulée » | L'application tourne sur l'ancienne version. Lisez `.auto-update/echec-X.log` à la racine du dépôt et signalez-le. |
+| « mise à jour refusée » (signature, modifications locales) | Rien n'a changé. Signature : ne forcez pas, vérifiez GitHub. Modifications locales : `git status` sur le serveur. |
+| « nouvelle version majeure » | Lisez les notes de version, puis faites la mise à jour à la main (ci-dessous). |
+| « URGENT : application arrêtée » | Version ET retour arrière en échec. Suivez « Restaurer » dans [`deploiement.md`](deploiement.md) ; une copie de la base d'avant est dans `.auto-update/`. |
+
+**À la main** (version majeure, ou si vous préférez garder la main : `sudo sh infra/deploy/install-auto-update.sh --retirer`) :
 ```
-cd ~/Gest-finance- && git pull
+cd ~/Gest-finance- && git fetch --tags && git checkout vX.Y.Z
 sh infra/scripts/init-secrets.sh                      # crée seulement les secrets ajoutés par la version
-docker compose -f infra/docker/compose.prod.yml --profile prod up -d --build
+sed -i 's/^GEST_VERSION=.*/GEST_VERSION=X.Y.Z/' infra/docker/.env
+docker compose -f infra/docker/compose.prod.yml --profile prod pull
+docker compose -f infra/docker/compose.prod.yml --profile prod up -d
 ```
+Ou simplement `AUTO_MAJOR=1 sh infra/deploy/auto-update.sh` : sauvegarde, contrôle et retour arrière compris.
 
-- **Avant** : lancez une sauvegarde (`exec backup backup.sh`) et, si vous avez l'option, un snapshot OVH du VPS.
-- **Retour arrière** : `git checkout <version précédente>` puis la même commande `up`. Une migration de base ne s'annule pas : en cas de
-  problème de données, restaurez la sauvegarde faite juste avant.
-- **Système** : les correctifs de sécurité s'installent seuls (`unattended-upgrades`) ; redémarrez le VPS une fois par mois si un noyau a
+- **Avant une mise à jour manuelle** : si vous avez l'option, faites un snapshot OVH du VPS.
+- **Système** : les correctifs de sécurité s'installent seuls (`unattended-upgrades`). Redémarrez le VPS une fois par mois si un noyau a
   été mis à jour (`/var/run/reboot-required`).
-- **Chaque semaine (2 minutes, dans Portainer)** : tous les conteneurs *healthy*, pas d'erreur répétée dans les journaux de `api`, dernière
-  ligne de `last-success.txt` datée de la nuit.
-- Les alertes automatiques (sauvegarde trop ancienne, conteneur arrêté) ne sont pas encore en place : elles sont dans `TODO.md`.
+- **Chaque lundi (e-mail GitHub)** : une issue « Veille de sécurité » ouverte signale une faille qui n'a pas pu être corrigée
+  automatiquement (correctif amont absent, ou mise à jour majeure à valider). Elle se ferme seule quand c'est réglé.
+- **Chaque semaine (2 minutes, dans Portainer)** :
+  - tous les conteneurs sont *healthy* ;
+  - pas d'erreur répétée dans les journaux de `api` ;
+  - la dernière ligne de `last-success.txt` est datée de la nuit.
+
+  L'application affiche aussi une alerte si la sauvegarde manque.
+- **Chaque trimestre** : test de restauration d'une sauvegarde (section « Sauvegardes »).
 
 ## Checklist finale et dépannage
 
-- [ ] Version de `main` contenant le jalon 12 (envoi d'e-mails)
-- [ ] Double authentification active sur OVHcloud, Tailscale (ou son fournisseur d'identité), Brevo, GitHub
+- [ ] Version de `main` contenant le jalon 25 (mises à jour automatiques)
+- [ ] Double authentification active sur OVHcloud, Tailscale (ou son fournisseur d'identité), Brevo, GitHub (clé de sécurité de préférence)
+- [ ] GitHub : « Allow GitHub Actions to create and approve pull requests » coché, notifications des issues activées
+- [ ] Première version `v0.1.0` publiée (images signées visibles dans *Packages*), paquets publics ou `docker login ghcr.io` sur le serveur
 - [ ] VPS commandé en France, SSH par clé uniquement, `ufw` actif, mises à jour automatiques
 - [ ] Tailscale sur le VPS et vos appareils ; SSH fermé côté Internet
 - [ ] Domaine avec SPF, DKIM et DMARC ; aucun enregistrement A vers le VPS
 - [ ] Portainer accessible seulement via `https://vps-ovh.<réseau>.ts.net`, administrateur créé
-- [ ] Pile démarrée, tous les conteneurs *healthy*
+- [ ] `GEST_VERSION=0.1.0` dans `infra/docker/.env`, dépôt sur `v0.1.0`, pile démarrée, tous les conteneurs *healthy*
+- [ ] Mise à jour automatique installée (`systemctl list-timers gest-finance-maj.timer`), premier passage « Déjà à jour », notification ntfy reçue
 - [ ] Foyer créé, double authentification activée dans l'application, membres ajoutés
 - [ ] E-mail « mot de passe oublié » reçu (et pas dans les indésirables)
 - [ ] Première sauvegarde « copie distante OK » et restauration testée
@@ -297,3 +370,7 @@ docker compose -f infra/docker/compose.prod.yml --profile prod up -d --build
 | Portainer demande de redémarrer | Délai de 5 minutes pour créer l'administrateur dépassé | `docker restart portainer` |
 | « aucune copie distante » dans `last-success.txt` | Stockage S3 non configuré ou clés invalides | Renseigner `secrets/rclone_conf` et `BACKUP_REMOTE` dans `infra/docker/.env` |
 | Plus d'accès SSH | Pare-feu ou configuration SSH | Console KVM du manager OVH |
+| Le journal de `gest-finance-maj` dit « images construites sur place » | `GEST_VERSION=local` dans `infra/docker/.env` | Passer aux images publiées (section « Installer », étapes 3 et 4) |
+| « Signature invalide ou absente » | Image pas encore publiée (workflow en cours), paquet privé sans `docker login`, ou image non publiée par ce dépôt | Attendre la fin du workflow ; rendre les paquets publics ; sinon ne rien forcer et vérifier GitHub |
+| Aucune notification | `NOTIFY_URL` absent ou faux, ou rien n'a changé (« Déjà à jour » ne notifie pas) | `journalctl -u gest-finance-maj.service` ; test : `curl -d test "$NOTIFY_URL"` |
+| Pas de nouvelle version alors qu'une PR Dependabot est fusionnée | Normal si elle ne corrige aucune faille de la version publiée | Publier à la main (`git tag`) ou lancer « Publication automatique » avec « forcer » dans *Actions* |

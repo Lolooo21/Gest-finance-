@@ -51,6 +51,27 @@ jobs:
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image \
               --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
           done
+      - name: Mise à jour automatique du VPS (succès, puis échec avec retour arrière et restauration)
+        run: |
+          set -eu
+          C="docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml"
+          R=ghcr.io/lolooo21/gest-finance
+          for n in api proxy backup; do docker tag "$R-$n:local" "$R-$n:0.0.1"; docker tag "$R-$n:local" "$R-$n:0.0.2"; docker tag "$R-$n:local" "$R-$n:0.0.3"; done
+          # 0.0.3 : API qui ne démarre pas (les migrations, elles, passent) → le contrôle de santé doit échouer.
+          printf 'FROM %s\nCMD ["node", "-e", "process.exit(1)"]\n' "$R-api:local" | docker build -q -t "$R-api:0.0.3" - > /dev/null
+          sed -i 's/^GEST_VERSION=.*/GEST_VERSION=0.0.1/' infra/docker/.env
+          $C up -d --wait
+          export COMPOSE="$C" AUTO_UPDATE_SKIP_GIT=1 AUTO_UPDATE_SKIP_VERIFY=1 AUTO_UPDATE_SKIP_PULL=1 HEALTH_TIMEOUT=180
+          AUTO_UPDATE_TARGET=0.0.2 sh infra/deploy/auto-update.sh
+          grep -qx 'GEST_VERSION=0.0.2' infra/docker/.env || { echo "ÉCHEC : version 0.0.2 non enregistrée"; exit 1; }
+          foyers="$($C exec -T postgres psql -U gest -d gest_finance -tAc 'SELECT count(*) FROM "Household"')"
+          code=0; AUTO_UPDATE_TARGET=0.0.3 AUTO_UPDATE_FORCE_RESTORE=1 sh infra/deploy/auto-update.sh || code=$?
+          [ "$code" = "1" ] || { echo "ÉCHEC : code $code attendu 1 (retour arrière réussi)"; exit 1; }
+          grep -qx 'GEST_VERSION=0.0.2' infra/docker/.env || { echo "ÉCHEC : pas revenu à 0.0.2"; exit 1; }
+          curl -fsS -m 5 http://127.0.0.1:8080/health > /dev/null || { echo "ÉCHEC : application injoignable après le retour arrière"; exit 1; }
+          apres="$($C exec -T postgres psql -U gest -d gest_finance -tAc 'SELECT count(*) FROM "Household"')"
+          [ "$foyers" = "$apres" ] && [ "$apres" -ge 1 ] || { echo "ÉCHEC : données perdues ($foyers → $apres foyers)"; exit 1; }
+          echo "OK : mise à jour 0.0.1 → 0.0.2, puis 0.0.3 refusée au contrôle de santé, retour à 0.0.2 avec base restaurée ($apres foyer(s))."
       - name: Arrêt
         if: always()
         run: docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml down -v

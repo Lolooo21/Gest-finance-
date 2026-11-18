@@ -484,6 +484,13 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `infra/scripts/attendre-controles.sh` (attend que tous les contrôles d'un commit soient verts, contrôles obligatoires, workflows en retard, délai maximal) et `infra/scripts/compter-failles.sh` : testés dans un conteneur avec un faux `gh` (6 scénarios) et des résultats Trivy. Workflows vérifiés par actionlint et shellcheck.
 - `docs/deploiement.md` : fonctionnement et réglage GitHub à faire une fois.
 
+## Jalon 25 — Installation automatique sur le VPS avec retour arrière
+- `infra/deploy/auto-update.sh` : dernière version du même numéro majeur (sinon notification), signature cosign des images vérifiée (identité du workflow `release.yml` sur un tag), dépôt sans modification locale, images téléchargées d'abord, sauvegarde chiffrée et copie locale `pg_dump` (droits 700), bascule et contrôle de santé (migrate réussi, api et proxy « healthy », `/health`), retour à la version précédente et `pg_restore` de la base d'avant si une migration a été appliquée, notification (`NOTIFY_URL`), verrou contre deux passages simultanés ; ne fait rien avec `GEST_VERSION=local`.
+- `infra/deploy/install-auto-update.sh` : service systemd « oneshot » sous l'utilisateur du dépôt et minuteur nocturne (04:30, après la sauvegarde), `--retirer`.
+- CI (`docker.yml`) : sur la pile de production, mise à jour 0.0.1 → 0.0.2 réussie, puis 0.0.3 (API qui ne démarre pas) refusée au contrôle de santé, retour à 0.0.2 avec base restaurée et données intactes.
+- `docs/deploiement.md` : fonctionnement, prérequis (images publiées, accès GHCR), installation, notifications ntfy.
+- `docs/deploiement-ovh.md` (plan de déploiement) : schéma de la chaîne GitHub → VPS, préparation de GitHub (2FA, réglage Actions, première version, paquets publics), installation depuis les images publiées et de la mise à jour automatique avec ntfy, conduite à tenir pour chaque notification, mise à jour manuelle, checklist et dépannage complétés. `.gitignore` : `.auto-update/`, `infra/deploy/auto-update.env`.
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

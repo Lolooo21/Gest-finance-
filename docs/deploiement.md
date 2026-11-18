@@ -131,6 +131,36 @@ Sans intervention de votre part :
 
 À savoir : la publication emporte tout ce qui est sur `develop` (fonctionnalités déjà fusionnées et testées comprises).
 
+### Installation automatique sur le VPS (jalon 25)
+Chaque nuit à 04:30 (après la sauvegarde de 03:30 UTC), le serveur **vient chercher** la dernière version : GitHub n'a aucun accès à
+votre serveur. Le script `infra/deploy/auto-update.sh` :
+1. prend le tag `v*` le plus récent **du même numéro majeur** (un changement majeur est seulement signalé) ;
+2. **vérifie la signature** des trois images (cosign : publiées par `release.yml` de ce dépôt, sur un tag) ; sinon, rien ne change ;
+3. télécharge les images, puis fait une **sauvegarde chiffrée** et une copie locale temporaire de la base (droits 700) ;
+4. bascule (fichiers du tag, images, migrations) et attend le **contrôle de santé** (migrations réussies, API et proxy « healthy ») ;
+5. en cas d'échec : **retour à la version précédente**, avec la base d'avant si une migration a été appliquée ;
+6. vous envoie un **compte rendu** si `NOTIFY_URL` est renseigné.
+
+Prérequis :
+- l'application tourne depuis les **images publiées** : `GEST_VERSION=0.1.0` (par exemple) dans `infra/docker/.env`, sans `--build`.
+  Avec `GEST_VERSION=local`, le script ne fait rien ;
+- si les images GHCR sont privées : `docker login ghcr.io` une fois, avec un jeton GitHub limité à `read:packages`. Plus simple : rendez
+  les paquets publics dans GitHub (Packages → Package settings), ils ne contiennent aucun secret ;
+- le dépôt du serveur sans modification locale (`git status` propre ; `.env` et `secrets/` sont ignorés par Git).
+
+Installation (une fois) :
+```
+sudo sh infra/deploy/install-auto-update.sh          # service + minuteur systemd, sous votre utilisateur (groupe docker)
+sudo systemctl start gest-finance-maj.service        # essai immédiat
+journalctl -u gest-finance-maj.service               # journal
+```
+Notifications (facultatif) : créez `infra/deploy/auto-update.env` avec `NOTIFY_URL=https://ntfy.sh/<sujet-long-et-secret>` et installez
+l'application ntfy sur votre téléphone, abonnée à ce sujet. N'importe quelle adresse qui accepte un POST convient. Le message ne contient
+aucune donnée financière. Pour retirer : `sudo sh infra/deploy/install-auto-update.sh --retirer`.
+
+En cas d'échec, l'état est dans `.auto-update/` à la racine du dépôt (journaux de l'échec ; copie de la base si le retour arrière lui-même
+a échoué : notification « URGENT »).
+
 ## 7. Sauvegardes
 - Chaque jour à **03:30 UTC** : copie de la base, chiffrement avec votre clé publique, conservation de 7 copies sur le serveur, envoi vers le S3
   (35 jours de sauvegardes quotidiennes, 12 mensuelles).
