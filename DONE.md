@@ -472,6 +472,10 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Infra
 - `infra/scripts/smoke.sh` : la CI vérifie dans l'image Docker (lecture seule) qu'un libellé chiffré est relu en clair et qu'une photo de fiche synthétique est lue par OCR.
 
+## Jalon 23 — Veille de sécurité planifiée
+- `.github/workflows/veille-securite.yml` : chaque lundi (et à la demande), Trivy 0.58.1 analyse le lockfile de `main`, les images publiées de la dernière version `v*` (api, proxy, backup) et les images tierces du compose (PostgreSQL, Tailscale) ; failles hautes ou critiques corrigeables seulement ; rapport dans le résumé du workflow ; issue « Veille de sécurité : failles à corriger » (étiquette `securite`) ouverte, mise à jour avec un commentaire, ou fermée quand tout est propre.
+- `infra/scripts/veille-rapport.sh` : résultats JSON de Trivy → tableau Markdown par cible (gravité, faille, paquet, version installée et corrigée), code de sortie 1 s'il reste quelque chose à corriger. Vérifié dans un conteneur Alpine (cas avec faille, cas propre).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
