@@ -248,7 +248,7 @@ describe("import d'une fiche de paie", () => {
 
   async function openAndUpload(user: ReturnType<typeof userEvent.setup>) {
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
-    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
     return screen.findByTestId("confidence");
   }
 
@@ -296,15 +296,31 @@ describe("import d'une fiche de paie", () => {
     expect(calls.filter((c) => c.url === "/payslips/confirm")[1]?.body).toMatchObject({ force: true });
   });
 
-  it("affiche le message du serveur si le PDF est un scan", async () => {
-    mockApi((m, u, b) => (u === "/payslips/parse" ? { status: 422, json: { message: "Aucun texte exploitable : OCR pas encore disponible." } } : payslipApi()(m, u, b)));
+  it("affiche le message du serveur si l'image est illisible", async () => {
+    mockApi((m, u, b) => (u === "/payslips/parse" ? { status: 422, json: { message: "Image illisible : envoyez une photo nette." } } : payslipApi()(m, u, b)));
     startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
-    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-"], "scan.pdf", { type: "application/pdf" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("OCR");
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["%PDF-"], "scan.pdf", { type: "application/pdf" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Image illisible");
     expect(screen.queryByTestId("confidence")).not.toBeInTheDocument();
+  });
+
+  it("envoie une photo de fiche de paie et signale une lecture sur image", async () => {
+    const calls = mockApi((m, u, b) => (u === "/payslips/parse"
+      ? { json: { netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-09", employer: "ACME", confidence: 1, ocr: true,
+          warnings: ["Lu sur une image (scan ou photo) : vérifiez chaque montant, la reconnaissance de caractères peut se tromper."] } }
+      : payslipApi()(m, u, b)));
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["\xff\xd8\xff"], "photo.jpg", { type: "image/jpeg" }));
+    expect(await screen.findByTestId("confidence")).toHaveTextContent("100 %");
+    expect(screen.getByText("lue sur une image")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("vérifiez chaque montant");
+    expect(calls.find((c) => c.url === "/payslips/parse")?.body).toEqual({ file: "photo.jpg" });
   });
 });
 
@@ -363,20 +379,20 @@ describe("gestion des erreurs et ergonomie", () => {
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
-    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("introuvable sur le serveur");
     expect(alert.textContent).not.toContain("<");
   });
 
-  it("refuse un fichier qui n'est pas un PDF avant tout envoi", async () => {
+  it("refuse un fichier qui n'est ni un PDF ni une photo avant tout envoi", async () => {
     const calls = mockApi(dash());
     startAt("#operations");
     renderApp();
     const user = userEvent.setup({ applyAccept: false });
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
-    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["texte"], "photo.png", { type: "image/png" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("« photo.png » n'est pas un PDF");
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["texte"], "notes.txt", { type: "text/plain" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("« notes.txt » n'est ni un PDF ni une photo");
     expect(calls.some((c) => c.url === "/payslips/parse")).toBe(false);
   });
 
