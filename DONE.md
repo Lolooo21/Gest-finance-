@@ -491,6 +491,9 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `docs/deploiement.md` : fonctionnement, prérequis (images publiées, accès GHCR), installation, notifications ntfy.
 - `docs/deploiement-ovh.md` (plan de déploiement) : schéma de la chaîne GitHub → VPS, préparation de GitHub (2FA, réglage Actions, première version, paquets publics), installation depuis les images publiées et de la mise à jour automatique avec ntfy, conduite à tenir pour chaque notification, mise à jour manuelle, checklist et dépannage complétés. `.gitignore` : `.auto-update/`, `infra/deploy/auto-update.env`.
 
+## Correctif — publication des images (v0.1.1)
+- `.github/workflows/release.yml` : la signature cosign recevait le nom du propriétaire du dépôt avec sa majuscule (« Lolooo21 »), refusé dans une référence d'image ; il est mis en minuscules (comme le fait déjà `docker/metadata-action` pour l'envoi). `fail-fast: false` : une image en échec n'annule plus les autres. Défaut présent depuis le jalon 8a, révélé par le premier tag `v0.1.0` (images non signées : version remplacée par `v0.1.1`).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
