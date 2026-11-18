@@ -8,3 +8,6 @@ secrets/
 .vite/
 # Le projet utilise pnpm (pnpm-lock.yaml) : un package-lock.json vient d'un « npm install » par erreur
 package-lock.json
+# Mise à jour automatique du VPS : état, copies temporaires de la base et réglages locaux
+.auto-update/
+infra/deploy/auto-update.env
