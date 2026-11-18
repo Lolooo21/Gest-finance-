@@ -64,6 +64,8 @@ jobs:
           export COMPOSE="$C" AUTO_UPDATE_SKIP_GIT=1 AUTO_UPDATE_SKIP_VERIFY=1 AUTO_UPDATE_SKIP_PULL=1 HEALTH_TIMEOUT=180
           AUTO_UPDATE_TARGET=0.0.2 sh infra/deploy/auto-update.sh
           grep -qx 'GEST_VERSION=0.0.2' infra/docker/.env || { echo "ÉCHEC : version 0.0.2 non enregistrée"; exit 1; }
+          # Nettoyage : la version installée (0.0.2) et la précédente (0.0.1) sont gardées, la 0.0.3 aussi (pas encore installée).
+          for n in api proxy backup; do docker image inspect "$R-$n:0.0.1" "$R-$n:0.0.2" "$R-$n:0.0.3" > /dev/null || { echo "ÉCHEC : image $n supprimée à tort"; exit 1; }; done
           foyers="$($C exec -T postgres psql -U gest -d gest_finance -tAc 'SELECT count(*) FROM "Household"')"
           code=0; AUTO_UPDATE_TARGET=0.0.3 AUTO_UPDATE_FORCE_RESTORE=1 sh infra/deploy/auto-update.sh || code=$?
           [ "$code" = "1" ] || { echo "ÉCHEC : code $code attendu 1 (retour arrière réussi)"; exit 1; }
@@ -71,7 +73,14 @@ jobs:
           curl -fsS -m 5 http://127.0.0.1:8080/health > /dev/null || { echo "ÉCHEC : application injoignable après le retour arrière"; exit 1; }
           apres="$($C exec -T postgres psql -U gest -d gest_finance -tAc 'SELECT count(*) FROM "Household"')"
           [ "$foyers" = "$apres" ] && [ "$apres" -ge 1 ] || { echo "ÉCHEC : données perdues ($foyers → $apres foyers)"; exit 1; }
-          echo "OK : mise à jour 0.0.1 → 0.0.2, puis 0.0.3 refusée au contrôle de santé, retour à 0.0.2 avec base restaurée ($apres foyer(s))."
+          # Mise à jour suivante (0.0.4, saine) : la 0.0.1, ni installée ni précédente, est supprimée ; 0.0.2 (précédente) gardée.
+          for n in api proxy backup; do docker tag "$R-$n:local" "$R-$n:0.0.4"; done
+          AUTO_UPDATE_TARGET=0.0.4 sh infra/deploy/auto-update.sh
+          for n in api proxy backup; do
+            docker image inspect "$R-$n:0.0.1" > /dev/null 2>&1 && { echo "ÉCHEC : ancienne image $n:0.0.1 non supprimée"; exit 1; }
+            docker image inspect "$R-$n:0.0.2" "$R-$n:0.0.4" > /dev/null || { echo "ÉCHEC : image $n utile supprimée"; exit 1; }
+          done
+          echo "OK : mise à jour 0.0.1 → 0.0.2, puis 0.0.3 refusée au contrôle de santé, retour à 0.0.2 avec base restaurée ($apres foyer(s)), puis 0.0.4 installée et ancienne 0.0.1 supprimée."
       - name: Arrêt
         if: always()
         run: docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml down -v

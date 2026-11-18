@@ -494,6 +494,10 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ## Correctif — publication des images (v0.1.1)
 - `.github/workflows/release.yml` : la signature cosign recevait le nom du propriétaire du dépôt avec sa majuscule (« Lolooo21 »), refusé dans une référence d'image ; il est mis en minuscules (comme le fait déjà `docker/metadata-action` pour l'envoi). `fail-fast: false` : une image en échec n'annule plus les autres. Défaut présent depuis le jalon 8a, révélé par le premier tag `v0.1.0` (images non signées : version remplacée par `v0.1.1`).
 
+## Nettoyage des images et guide à jour pour v0.1.1
+- `infra/deploy/auto-update.sh` : après une mise à jour réussie, `prune_images` supprime les images de l'application des versions antérieures à la précédente (disque du VPS) ; la version installée, la précédente et une version plus récente déjà téléchargée restent, images tierces intactes. CI : après le retour arrière, une mise à jour 0.0.4 supprime la 0.0.1 et garde 0.0.2 et 0.0.4.
+- `docs/deploiement-ovh.md`, `docs/deploiement.md` : première version `v0.1.1` publiée et signée (signatures vérifiées anonymement avec cosign), `v0.1.0` à ne pas installer, exemples en `0.1.1`, accès aux images sans identifiant.
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
