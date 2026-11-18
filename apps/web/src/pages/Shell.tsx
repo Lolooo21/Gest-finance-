@@ -10,6 +10,7 @@ import { GoalsPanel } from "./Goals";
 import { Home } from "./Home";
 import { HouseholdAdmin } from "./Household";
 import { More, type MoreView } from "./More";
+import { MyData } from "./MyData";
 import { News } from "./News";
 import { Operations, TwoFactor } from "./Operations";
 import { SavingsPanel } from "./Savings";
@@ -30,7 +31,7 @@ const TABS: { id: Tab; label: string; title: string; icon: ReactNode }[] = [
 
 const MORE_TITLES: Record<MoreView, string> = {
   bilan: "Bilan et rappel", news: "Actualités financières", "2fa": "Double authentification", password: "Changer le mot de passe",
-  backups: "Sauvegardes", foyer: "Administration du foyer",
+  backups: "Sauvegardes", foyer: "Administration du foyer", donnees: "Mes données",
 };
 
 /** Onglet et sous-écran tirés de l'adresse (#budgets, #plus:2fa, #actualites…) : un lien direct y mène. */
@@ -127,6 +128,7 @@ export function Shell({ onLogout }: { onLogout: () => void }) {
         {route.sub === "password" && <ChangePassword onClose={() => go("plus")} />}
         {route.sub === "backups" && <BackupSummary />}
         {route.sub === "foyer" && <HouseholdAdmin />}
+        {route.sub === "donnees" && <MyData me={me.data} onDeleted={() => { window.history.replaceState(null, "", "/"); onLogout(); }} />}
       </main>
 
       {route.tab !== "plus" && (

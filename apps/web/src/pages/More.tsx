@@ -3,7 +3,7 @@ import { api, type Member, type Reminder } from "../api";
 import { Icon } from "../ui";
 import { useBackupStatus } from "./BackupStatus";
 
-export type MoreView = "bilan" | "news" | "2fa" | "password" | "backups" | "foyer";
+export type MoreView = "bilan" | "news" | "2fa" | "password" | "backups" | "foyer" | "donnees";
 
 const WEEKDAYS = ["", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
@@ -62,6 +62,10 @@ export function More({ me, onOpen, onTutorial, onLogout }: { me?: Member; onOpen
           <Row label="Membres et journal d'activité" onClick={() => onOpen("foyer")} />
         </Group>
       )}
+
+      <Group title="Mes données">
+        <Row label="Exporter ou supprimer mes données" onClick={() => onOpen("donnees")} />
+      </Group>
 
       <button type="button" onClick={onLogout}
         className="min-h-12 w-full rounded-2xl border border-brand-sage bg-white font-semibold text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600">

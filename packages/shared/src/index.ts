@@ -58,6 +58,12 @@ export type ChangePasswordDto = z.infer<typeof ChangePasswordDto>;
 
 /** Le propriétaire choisit un nouveau mot de passe pour un membre (oubli sans e-mail) ; son propre mot de passe est exigé. */
 export const MemberPasswordDto = z.object({ ownerPassword: z.string().min(1).max(128), password });
+/** Action sensible (export des données, retrait d'un membre) : le mot de passe de l'utilisateur connecté est redemandé. */
+export const ConfirmPasswordDto = z.object({ password: z.string().min(1).max(128) });
+export type ConfirmPasswordDto = z.infer<typeof ConfirmPasswordDto>;
+/** Effacement définitif : mot de passe et mot « SUPPRIMER » tapé en toutes lettres. */
+export const DeleteConfirmDto = ConfirmPasswordDto.extend({ confirm: z.literal("SUPPRIMER", { error: "Tapez SUPPRIMER pour confirmer" }) });
+export type DeleteConfirmDto = z.infer<typeof DeleteConfirmDto>;
 export type MemberPasswordDto = z.infer<typeof MemberPasswordDto>;
 /** Journal d'activité : 50 entrées par page, avant une date ; `security=1` ne garde que l'authentification. */
 export const AuditQuery = z.object({

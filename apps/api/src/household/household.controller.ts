@@ -1,5 +1,5 @@
-import { Body, ConflictException, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from "@nestjs/common";
-import { AddMemberDto, AuditQuery, MemberPasswordDto } from "@gest-finance/shared";
+import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Query, UseGuards } from "@nestjs/common";
+import { AddMemberDto, AuditQuery, ConfirmPasswordDto, MemberPasswordDto } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
 import { AuthService } from "../auth/auth.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
@@ -73,6 +73,22 @@ export class HouseholdController {
   async resetMemberPassword(@CurrentUser() user: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(MemberPasswordDto)) dto: MemberPasswordDto) {
     await this.auth.resetMemberPassword(user.userId, id, dto);
     return { ok: true };
+  }
+
+  /**
+   * Le propriétaire retire un membre (départ du foyer, droit à l'effacement) : son compte, ses sessions et ses comptes personnels
+   * (avec leurs opérations) sont supprimés ; ce qu'il a saisi sur les comptes joints reste au foyer. Mot de passe du propriétaire exigé.
+   */
+  @Post("members/:id/remove")
+  @HttpCode(204)
+  @Roles("OWNER")
+  async removeMember(@CurrentUser() user: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(ConfirmPasswordDto)) dto: ConfirmPasswordDto) {
+    if (id === user.userId) throw new BadRequestException("Pour vous retirer, supprimez le foyer entier");
+    await this.auth.verifyPassword(user.userId, dto.password);
+    const member = await this.prisma.user.findFirst({ where: { id, householdId: user.householdId }, select: { role: true } });
+    if (!member) throw new NotFoundException("Membre introuvable");
+    await this.prisma.user.deleteMany({ where: { id, householdId: user.householdId } });
+    await this.audit.record(user.householdId, user.userId, `household.member_removed:${member.role}`);
   }
 
   @Post("members")

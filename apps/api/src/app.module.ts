@@ -26,6 +26,7 @@ import { AuditModule } from "./audit/audit.module.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { HouseholdModule } from "./household/household.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
+import { PrivacyController } from "./privacy/privacy.controller.js";
 
 @Controller("health")
 class HealthController {
@@ -37,7 +38,7 @@ class HealthController {
 
 @Module({
   imports: [PrismaModule, CryptoModule, AuditModule, AuthModule, HouseholdModule],
-  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController, ForecastController, GoalsController, SavingsGoalsController, CategoriesController, ImportsController, SubscriptionsController, BackupsController],
+  controllers: [HealthController, AccountsController, TransactionsController, RecurringController, SummaryController, ReminderController, ReviewController, PayslipController, MarketController, SavingsController, ForecastController, GoalsController, SavingsGoalsController, CategoriesController, ImportsController, SubscriptionsController, BackupsController, PrivacyController],
   providers: [ReminderService, MarketService, GoalsService, CategoriesService, CategorizerService, SubscriptionsService, { provide: PushSender, useClass: WebPushSender }],
 })
 export class AppModule {}
