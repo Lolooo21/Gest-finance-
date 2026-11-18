@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { FieldCipher } from "../crypto/field-cipher.js";
 
 /**
  * Accès à la base à deux niveaux (voir la migration `rls_foyer`) :
@@ -10,29 +11,34 @@ import { AsyncLocalStorage } from "node:async_hooks";
  *    et les indicateurs de marché. Droits limités aux tables nécessaires.
  */
 
-const households = new AsyncLocalStorage<{ householdId: string }>();
+const households = new AsyncLocalStorage<{ householdId: string; userId?: string }>();
 
 
 /**
  * Exécute `fn` dans le contexte d'un foyer : requête HTTP entière (hook Fastify de app.ts, avec le foyer d'un jeton vérifié), tests, scripts.
+ * `userId` ouvre en plus les comptes personnels de cet utilisateur ; sans lui, seuls les comptes joints sont visibles.
  * `enterWith` depuis une garde Nest ne convient pas : le contexte asynchrone se perd après un `await`.
  */
-export const runInHousehold = <T>(householdId: string, fn: () => T): T => households.run({ householdId }, fn);
+export const runInHousehold = <T>(householdId: string, fn: () => T, userId?: string): T => households.run({ householdId, userId }, fn);
 
 const noHousehold = () => new Error("Accès à la base refusé : aucun foyer dans le contexte de la requête");
 
-export function scopeClient(base: PrismaClient) {
-  const setHousehold = (client: Prisma.TransactionClient | PrismaClient, householdId: string) =>
-    client.$executeRaw`SELECT set_config('app.household_id', ${householdId}, true)`;
+/**
+ * Client soumis à la RLS (foyer et utilisateur courants) qui chiffre aussi les champs texte sensibles à l'écriture et les
+ * déchiffre à la lecture (voir crypto/field-cipher.ts), y compris dans les transactions interactives.
+ */
+export function scopeClient(base: PrismaClient, cipher: FieldCipher = new FieldCipher()) {
+  const setHousehold = (client: Prisma.TransactionClient | PrismaClient, ctx: { householdId: string; userId?: string }) =>
+    client.$executeRaw`SELECT set_config('app.household_id', ${ctx.householdId}, true), set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
   return base.$extends({
     query: {
       $allModels: {
-        async $allOperations({ args, query }) {
+        async $allOperations({ operation, args, query }) {
           const ctx = households.getStore();
           if (!ctx) throw noHousehold();
           // Lot transactionnel : le foyer n'existe que le temps de la requête (set_config local à la transaction).
-          const [, result] = await base.$transaction([setHousehold(base, ctx.householdId), query(args)]);
-          return result;
+          const [, result] = await base.$transaction([setHousehold(base, ctx), query(cipher.encryptArgs(operation, args))]);
+          return cipher.decryptResult(result);
         },
       },
     },
@@ -42,8 +48,8 @@ export function scopeClient(base: PrismaClient) {
         const ctx = households.getStore();
         if (!ctx) return Promise.reject(noHousehold());
         return base.$transaction(async (tx) => {
-          await setHousehold(tx, ctx.householdId);
-          return fn(tx);
+          await setHousehold(tx, ctx);
+          return fn(cipher.wrap(tx));
         });
       },
     },
@@ -70,7 +76,7 @@ const notMigrated = (model: string) =>
   `Base de données non migrée ou client Prisma obsolète (modèle « ${model} ») : dans apps/api, lancez \`pnpm exec prisma migrate deploy\` puis \`pnpm exec prisma generate\`, et redémarrez.`;
 
 /** Un modèle par table : une migration oubliée est détectée au démarrage, pas à la première requête. */
-const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot", "auditLog", "refreshToken", "behaviorGoal", "savingsGoal", "savingsContribution"] as const;
+const MODELS = ["user", "bankAccount", "transaction", "recurringRule", "reminderSetting", "pushSubscription", "payslipImport", "marketSnapshot", "auditLog", "refreshToken", "behaviorGoal", "savingsGoal", "savingsContribution", "passkey"] as const;
 const SYSTEM_CHECKS = ["household", "user", "refreshToken", "reminderSetting", "pushSubscription", "marketSnapshot"] as const;
 
 /** Possède les connexions : vérifie la configuration au démarrage et les ferme à l'arrêt. */

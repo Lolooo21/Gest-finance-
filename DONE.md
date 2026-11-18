@@ -410,6 +410,87 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### API
 - `User.tutorialSeenAt` (migration `tutoriel`) ; `GET /household/me` renvoie `tutorialDone` ; `POST /household/me/tutorial`. Tests (API : 208, +1).
 
+## Jalon 18 — Comptes personnels et joints, vue par personne
+### Base et API
+- Migration `comptes_personnels` : `BankAccount.ownerId` (vide = compte joint, sinon titulaire ; clé étrangère `NO ACTION`), fonction `app_user()` ; politiques RLS de `BankAccount` (joint ou titulaire) et de `Transaction`, `RecurringRule`, `PayslipImport` (compte visible), en lecture et en écriture. Comptes existants inchangés (joints).
+- `prisma/prisma.service.ts` : `runInHousehold(householdId, fn, userId?)` fixe aussi `app.user_id` ; `app.ts` le lit dans le jeton vérifié.
+- `accounts/accounts.controller.ts` : `personal` à la création et dans la liste ; `PATCH { personal }` : le titulaire partage son compte, seul le propriétaire du foyer rend personnel un compte joint (403 sinon) ; journal `account.created:personal`, `account.shared`, `account.made_personal`.
+- `summary/summary.controller.ts` : `scope=all|joint|personal` (`SummaryQuery`, `AccountScope` dans `packages/shared`).
+- Vue appliquée au prévisionnel et aux budgets : `common/finance-data.ts` (`ownerFilter`, `accountFilter`, `loadHouseholdFinance(…, view)`), `forecast/forecast.controller.ts` et `categories/categories.service.ts` (`budgets(…, view)` : plafonds du foyer, dépenses de la vue) ; `scope` dans `ForecastQuery` et `BudgetQuery`. Le bilan de la semaine reste sur tous les comptes visibles.
+- Tests : `personal-accounts.int.test.ts` (visibilité par membre, opérations et récurrences invisibles, IDOR en écriture → 404, reste à vivre, prévisionnel et budgets par vue, partage et droits, enfant) et `rls.int.test.ts` (politiques en base, sans utilisateur, création usurpée refusée). API : 217 tests.
+### Front
+- `pages/Operations.tsx` : case « Compte personnel » à la création, pastille `OwnershipBadge` (Joint / Personnel), boutons « Partager » (titulaire) et « Rendre personnel » (propriétaire du foyer) avec confirmation.
+- `scope.tsx` : vue partagée (`useAccountScope`, `ScopeFilter`, `scopeParam`) mémorisée sur l'appareil, ramenée à « Tout » sans compte personnel visible ; filtre affiché sur l'accueil (reste à vivre et solde à 30 jours), les budgets (`useCategories`) et le prévisionnel. `ui.tsx` : confirmation au ton « neutral » (bouton non destructif). `pages/Household.tsx` : libellés du journal.
+- Tests : 93 (+6 : création personnelle et pastilles, rendre personnel par le propriétaire, filtre de l'accueil, filtre absent sans compte personnel, vue partagée entre budgets, prévisionnel et accueil, vue mémorisée ignorée sans compte personnel).
+
+## Jalon 19 — Mes données : export et effacement (RGPD)
+### Base et API
+- Migration `suppression_donnees` : `BankAccount.ownerId` en `ON DELETE CASCADE` (un membre supprimé emporte ses comptes personnels), `GRANT DELETE ON "Household"` à `gest_app` (limité au foyer courant par la RLS).
+- `auth/auth.service.ts` : `verifyPassword(userId, password)` redemande le mot de passe (compte verrouillé → 403, erreur comptée comme un échec de connexion).
+- `privacy/privacy.controller.ts` (`/privacy`) : `POST export` (JSON de toutes les données visibles, IBAN déchiffré, journal pour le propriétaire, aucun secret, `format: 1`, inscrit au journal) ; `POST delete-me` (adulte ou enfant, mot de passe + « SUPPRIMER », cookies effacés ; refusé au propriétaire) ; `POST delete-household` (propriétaire, cascade complète). Routes ajoutées au plafond des routes d'authentification, à `routes.ts` et au Caddyfile.
+- `household/household.controller.ts` : `POST /household/members/:id/remove` (propriétaire, mot de passe ; pas soi-même ; 404 hors foyer).
+- `packages/shared` : `ConfirmPasswordDto`, `DeleteConfirmDto`.
+- Tests : `privacy.int.test.ts` (export complet et sans secret ni compte personnel d'autrui, export d'un membre sans journal, verrouillage, suppression de son compte avec conservation des saisies jointes, refus pour le propriétaire, retrait d'un membre et droits, IDOR entre foyers, suppression du foyer sans toucher aux autres). API : 225 tests.
+### Front
+- `pages/MyData.tsx` (Plus → « Mes données », `#plus:donnees`) : export avec mot de passe et téléchargement du fichier, suppression de son compte ou du foyer (mot de passe + « SUPPRIMER »), avertissement sur les sauvegardes ; retour à la connexion ensuite.
+- `pages/Household.tsx` : bouton « Retirer » par membre avec confirmation par mot de passe ; libellés du journal.
+- `App.tsx` : la déconnexion vide le cache et passe la session à « déconnecté » sans attendre de nouvelle requête.
+- Tests : 96 (+3 : export et téléchargement, suppression de son compte puis connexion, suppression du foyer et retrait d'un membre).
+### Documentation
+- `docs/rgpd.md` : contenu de l'export, effets de chaque effacement, rotation des sauvegardes et effacement complet.
+
+## Jalon 20 — Passkeys (WebAuthn)
+### Base et API
+- Migration `passkeys` : table `Passkey` (clé publique, compteur, transports, nom, dates) ; RLS « chacun les siennes » (`userId = app_user()`), `gest_system` en lecture et mise à jour pour la connexion ; suppression en cascade avec l'utilisateur.
+- `auth/passkey.service.ts` (`@simplewebauthn/server` 13.3.3) : options d'ajout (mot de passe redemandé, passkey découvrable, vérification de l'utilisateur exigée, attestation « none », passkeys existantes exclues), vérification et stockage ; options de connexion sans identifiant ; connexion (passkey inconnue → 401, signature invalide → 401 journalisé, compte verrouillé → 403, compteur et date d'usage mis à jour, session ouverte sans 2FA) ; liste et suppression. Défis à usage unique, 5 min, en mémoire ; `relyingParty()` : `APP_URL` en production, sinon l'origine vérifiée par la protection CSRF.
+- `auth/passkey.controller.ts` (`/auth/passkeys`, cookie `webauthn` HttpOnly limité à ce chemin) ; `AuthService.issueSession` public ; routes d'ajout et de connexion au plafond de l'authentification ; noms des passkeys dans l'export RGPD.
+- `packages/shared` : `PasskeyRegisterDto`, `PasskeyLoginDto` (réponse WebAuthn validée).
+- Tests : `passkeys.int.test.ts` (seules les deux vérifications cryptographiques sont simulées) : options et stockage, mot de passe exigé, cérémonie rejouée ou absente, réponse mal formée ou refusée, cloisonnement entre membres, connexion sans 2FA, passkey inconnue, signature invalide, compte verrouillé, export, suppression avec le membre. API : 231 tests.
+### Front
+- `passkeys.ts` (`@simplewebauthn/browser` 13.3.0) : connexion et ajout, messages clairs (annulation, appareil déjà inscrit, https requis).
+- `pages/AuthPage.tsx` : bouton « Se connecter avec une passkey » si le navigateur les gère. `pages/Passkeys.tsx` (Plus → Sécurité → Passkeys, `#plus:passkeys`) : liste, ajout, suppression avec confirmation. Libellés du journal.
+- Tests : 99 (+3 : connexion par passkey, annulation et navigateur sans prise en charge, ajout, liste et suppression).
+
+## Jalon 21 — Chiffrement des champs sensibles
+### API
+- `crypto/field-cipher.ts` : `FieldCipher` (AES-256-GCM, IV aléatoire, préfixe `enc1:`, valeurs d'avant lues telles quelles) ; `encryptArgs` (écritures seulement : `data`, `create`, `update`, à toute profondeur, listes et `{ set }`), `decryptResult` (résultats, relations comprises), `wrap` (transactions interactives). Champs : `label` (opérations, récurrences), `employer` (fiches de paie), `note` (versements d'épargne). `CryptoService` (IBAN) réutilise les mêmes fonctions.
+- `prisma/prisma.service.ts` : le client soumis à la RLS chiffre et déchiffre dans chaque requête et dans `$householdTransaction` (imports, fiches de paie, abonnements, versements).
+- `scripts/encrypt-fields.ts` (`pnpm db:encrypt`, lancé par `predev` et par le service `migrate`, avec le secret `field_encryption_key`) : chiffre par lots les valeurs encore en clair, requêtes paramétrées, relançable sans effet.
+- Tests : `field-cipher.test.ts` (aller-retour, IV aléatoire, altération et mauvaise clé refusées, écritures imbriquées, filtres intacts, résultats imbriqués, clé de 32 octets) ; `field-encryption.int.test.ts` (valeurs chiffrées en base et lues en clair par l'API et l'export, modification rechiffrée, script de reprise idempotent) ; fiche de paie écrite dans une transaction chiffrée ; tests existants adaptés (`plainLabels`). API : 238 tests.
+### Documentation
+- README (schéma et fonctionnalités), `docs/deploiement.md`, `docs/deploiement-ovh.md` (la clé protège désormais aussi les libellés), `docs/threat-model.md` (ce qui reste en clair et pourquoi).
+
+## Jalon 22 — Lecture des fiches de paie scannées ou photographiées (OCR)
+### API
+- `payslip/ocr.ts` : `ocrImages` (`tesseract.js` 6.0.1 en WebAssembly, français « best_int » embarqué par `@tesseract.js-data/fra`, `cacheMethod: none` pour le système de fichiers en lecture seule ; une lecture à la fois (429), 60 s au plus puis arrêt du thread, erreurs du moteur converties en message clair) ; `extractScanImages` (`pdf-lib` : pages JPEG/DCTDecode d'un PDF scanné, 3 au plus, logos ignorés) ; `looksLikeJpeg`, `looksLikePng`.
+- `payslip/pdf-text.ts` : `readPdfText` (texte éventuellement vide) et `hasUsableText` ; `extractPdfText` garde le refus des scans pour `pnpm payslip:debug`.
+- `payslip/payslip.controller.ts` : PDF numérique → texte ; PDF scanné → OCR de ses pages ; photo JPEG ou PNG → OCR ; autre format → 400 ; rien de lisible → 422 explicite ; résultat `ocr: true` et avertissement « vérifiez chaque montant » ; journal `payslip.parsed:ocr`. Taille maximale portée à 10 Mo (photos de téléphone), plafond multipart global aligné.
+- Tests : `payslip-ocr.int.test.ts` avec une fiche de paie **synthétique** rendue en PNG et JPEG (`test/fixtures`) : vraie reconnaissance d'une photo et d'un PDF scanné, format refusé, page blanche, image dégénérée, délai dépassé, une lecture à la fois. API : 243 tests.
+### Front
+- `pages/Payslip.tsx` : PDF ou photo (JPEG, PNG), 10 Mo, contrôle avant envoi (`checkPayslipFile`), mention « lue sur une image », attente annoncée. `errors.ts` : messages du serveur repris pour 413 et 429 (taille exacte, lecture déjà en cours), messages anglais filtrés.
+- Tests : 100 (+1 : photo envoyée et lecture sur image signalée ; tests existants adaptés).
+### Infra
+- `infra/scripts/smoke.sh` : la CI vérifie dans l'image Docker (lecture seule) qu'un libellé chiffré est relu en clair et qu'une photo de fiche synthétique est lue par OCR.
+
+## Jalon 23 — Veille de sécurité planifiée
+- `.github/workflows/veille-securite.yml` : chaque lundi (et à la demande), Trivy 0.58.1 analyse le lockfile de `main`, les images publiées de la dernière version `v*` (api, proxy, backup) et les images tierces du compose (PostgreSQL, Tailscale) ; failles hautes ou critiques corrigeables seulement ; rapport dans le résumé du workflow ; issue « Veille de sécurité : failles à corriger » (étiquette `securite`) ouverte, mise à jour avec un commentaire, ou fermée quand tout est propre.
+- `infra/scripts/veille-rapport.sh` : résultats JSON de Trivy → tableau Markdown par cible (gravité, faille, paquet, version installée et corrigée), code de sortie 1 s'il reste quelque chose à corriger. Vérifié dans un conteneur Alpine (cas avec faille, cas propre).
+
+## Jalon 24 — Mises à jour de sécurité et publication automatiques
+- `.github/dependabot.yml` : toutes les mises à jour visent `develop` ; images du compose (PostgreSQL, Tailscale) suivies (`docker-compose`).
+- `.github/workflows/maj-auto.yml` : sur une pull request Dependabot, fusion dans `develop` des versions correctives et mineures quand tous les contrôles sont verts ; commentaire et validation humaine pour une majeure ; puis appel de la publication automatique. Valeurs de Dependabot passées par variables d'environnement (pas d'injection dans les commandes).
+- `.github/workflows/publication-auto.yml` (appelable, ou manuelle avec « forcer ») : rien sans première version publiée ; motif `dependances` (Trivy sur le lockfile de la dernière version et de `develop`) ou `reconstruction` (images publiées contre images reconstruites depuis `main`) ; si moins de failles : pull request `develop` → `main` fusionnée, tag correctif annoté, lancement de `release.yml`.
+- `.github/workflows/release.yml` : lançable sur un tag (`workflow_dispatch`), un tag poussé par un workflow ne déclenchant pas `push`. `veille-securite.yml` : appelle la reconstruction quand des failles sont trouvées.
+- `infra/scripts/attendre-controles.sh` (attend que tous les contrôles d'un commit soient verts, contrôles obligatoires, workflows en retard, délai maximal) et `infra/scripts/compter-failles.sh` : testés dans un conteneur avec un faux `gh` (6 scénarios) et des résultats Trivy. Workflows vérifiés par actionlint et shellcheck.
+- `docs/deploiement.md` : fonctionnement et réglage GitHub à faire une fois.
+
+## Jalon 25 — Installation automatique sur le VPS avec retour arrière
+- `infra/deploy/auto-update.sh` : dernière version du même numéro majeur (sinon notification), signature cosign des images vérifiée (identité du workflow `release.yml` sur un tag), dépôt sans modification locale, images téléchargées d'abord, sauvegarde chiffrée et copie locale `pg_dump` (droits 700), bascule et contrôle de santé (migrate réussi, api et proxy « healthy », `/health`), retour à la version précédente et `pg_restore` de la base d'avant si une migration a été appliquée, notification (`NOTIFY_URL`), verrou contre deux passages simultanés ; ne fait rien avec `GEST_VERSION=local`.
+- `infra/deploy/install-auto-update.sh` : service systemd « oneshot » sous l'utilisateur du dépôt et minuteur nocturne (04:30, après la sauvegarde), `--retirer`.
+- CI (`docker.yml`) : sur la pile de production, mise à jour 0.0.1 → 0.0.2 réussie, puis 0.0.3 (API qui ne démarre pas) refusée au contrôle de santé, retour à 0.0.2 avec base restaurée et données intactes.
+- `docs/deploiement.md` : fonctionnement, prérequis (images publiées, accès GHCR), installation, notifications ntfy.
+- `docs/deploiement-ovh.md` (plan de déploiement) : schéma de la chaîne GitHub → VPS, préparation de GitHub (2FA, réglage Actions, première version, paquets publics), installation depuis les images publiées et de la mise à jour automatique avec ntfy, conduite à tenir pour chaque notification, mise à jour manuelle, checklist et dépannage complétés. `.gitignore` : `.auto-update/`, `infra/deploy/auto-update.env`.
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

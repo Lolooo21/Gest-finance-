@@ -18,7 +18,10 @@ export interface AppOptions {
 }
 
 /** Routes d'authentification exposées à la force brute : plafond dédié, compteur à part. */
-const AUTH_ATTEMPT_ROUTES = ["/auth/login", "/auth/register", "/auth/2fa/enable", "/auth/password/reset", "/auth/password/change"];
+const AUTH_ATTEMPT_ROUTES = [
+  "/auth/login", "/auth/register", "/auth/2fa/enable", "/auth/password/reset", "/auth/password/change",
+  "/privacy/export", "/privacy/delete-me", "/privacy/delete-household", "/auth/passkeys/register/options", "/auth/passkeys/login",
+];
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
@@ -50,18 +53,19 @@ export async function createApp(opts: AppOptions = {}): Promise<NestFastifyAppli
   await app.register(helmet, { contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } } });
   await app.register(cookie);
   // Foyer de la requête : lu dans le jeton d'accès (signature vérifiée) et conservé pendant toute la requête.
-  // La RLS PostgreSQL ne montre ensuite que les lignes de ce foyer ; sans jeton valide, aucun accès aux tables du foyer.
+  // La RLS PostgreSQL ne montre ensuite que les lignes de ce foyer, et parmi les comptes les joints et ceux de l'utilisateur ;
+  // sans jeton valide, aucun accès aux tables du foyer.
   // L'authentification et les rôles restent contrôlés par AuthGuard.
   const jwt = app.get(JwtService);
   app.getHttpAdapter().getInstance().addHook("onRequest", (req, _reply, done) => {
     const token = (req as { cookies?: Record<string, string | undefined> }).cookies?.access;
-    let householdId: string | undefined;
+    let claims: { householdId?: string; userId?: string } = {};
     try {
-      householdId = token ? jwt.verify<{ householdId?: string }>(token).householdId : undefined;
+      claims = token ? jwt.verify<{ householdId?: string; userId?: string }>(token) : {};
     } catch {
-      householdId = undefined;
+      claims = {};
     }
-    if (householdId) runInHousehold(householdId, done);
+    if (claims.householdId) runInHousehold(claims.householdId, done, claims.userId);
     else done();
   });
   // CSRF : avant toute autre lecture de la requête (voir csrfRejection).
@@ -77,7 +81,8 @@ export async function createApp(opts: AppOptions = {}): Promise<NestFastifyAppli
     void reply.header("Cache-Control", "no-store");
     done(null, payload);
   });
-  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 } });
+  // Plafond global : chaque route fixe le sien (relevés 2 Mo, fiches de paie 10 Mo pour les photos).
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 0 } });
   // L'import de PDF (coûteux) a son propre plafond et son propre compteur, par IP.
   const isUpload = (url: string) => url.startsWith("/payslips/parse");
   // Plafonds dédiés, chacun avec son compteur par IP : demandes de lien de réinitialisation (5/min), tentatives

@@ -76,7 +76,9 @@ Le script génère les mots de passe et clés, puis vous demande : la **clé pub
 informations du **stockage S3**. Il crée le dossier `secrets/` (accessible à vous seul, droits 700) et `infra/docker/.env`.
 
 > **Sauvegardez le dossier `secrets/` séparément** (gestionnaire de mots de passe), en particulier `field_encryption_key` :
-> elle chiffre les IBAN. Sans elle, une base restaurée contiendrait des IBAN illisibles. Le script ne régénère jamais un secret existant.
+> elle chiffre les IBAN, les libellés des opérations et des récurrences, les employeurs des fiches de paie et les notes d'épargne.
+> Sans elle, une base restaurée serait en grande partie illisible. Le script ne régénère jamais un secret existant.
+> Au premier déploiement d'une version ≥ jalon 21, le service `migrate` chiffre les libellés encore en clair (sans effet ensuite).
 
 Démarrage :
 ```
@@ -109,6 +111,55 @@ docker compose -f infra/docker/compose.prod.yml --profile prod up -d --build
 Les migrations s'appliquent automatiquement. Après une mise à jour qui ajoute un secret (par exemple `smtp_url`), relancez d'abord
 `sh infra/scripts/init-secrets.sh` : il ne crée que les secrets manquants. **Retour arrière** : `git checkout <version précédente>` puis la même commande. Une migration
 de base n'est pas annulable automatiquement : en cas de problème de données, restaurez la dernière sauvegarde (§ 8).
+
+### Mises à jour de sécurité automatiques (côté GitHub, jalon 24)
+Sans intervention de votre part :
+1. **Dependabot** ouvre des pull requests vers `develop` (dépendances npm, images Docker, actions GitHub), dès qu'une faille est publiée
+   et chaque semaine sinon.
+2. **Fusion automatique** (`maj-auto.yml`) des mises à jour correctives et mineures quand *tous* les contrôles sont verts (tests, test de
+   fumée des images, CodeQL, Semgrep, Trivy). Une mise à jour **majeure** reçoit un commentaire et attend votre validation.
+3. **Publication automatique** (`publication-auto.yml`) seulement si la mise à jour **corrige des failles** de la version publiée
+   (comparaison Trivy) : pull request `develop` → `main` fusionnée, tag `vX.Y.Z+1`, images signées publiées. La veille du lundi fait de
+   même quand une simple reconstruction des images corrige des paquets système.
+
+**Réglages GitHub à faire une fois** (Settings) :
+- *Actions → General → Workflow permissions* : cochez **« Allow GitHub Actions to create and approve pull requests »** (pull request
+  `develop` → `main`).
+- Si vous protégez `main` ou `develop` (*Branches*), n'exigez pas de relecture humaine pour ces fusions, sinon la publication automatique
+  s'arrêtera en attendant votre validation (ce qui reste un choix possible).
+- La **première version** (`git tag v0.1.0 && git push origin v0.1.0`) se fait à la main : rien n'est publié automatiquement avant.
+
+À savoir : la publication emporte tout ce qui est sur `develop` (fonctionnalités déjà fusionnées et testées comprises).
+
+### Installation automatique sur le VPS (jalon 25)
+Chaque nuit à 04:30 (après la sauvegarde de 03:30 UTC), le serveur **vient chercher** la dernière version : GitHub n'a aucun accès à
+votre serveur. Le script `infra/deploy/auto-update.sh` :
+1. prend le tag `v*` le plus récent **du même numéro majeur** (un changement majeur est seulement signalé) ;
+2. **vérifie la signature** des trois images (cosign : publiées par `release.yml` de ce dépôt, sur un tag) ; sinon, rien ne change ;
+3. télécharge les images, puis fait une **sauvegarde chiffrée** et une copie locale temporaire de la base (droits 700) ;
+4. bascule (fichiers du tag, images, migrations) et attend le **contrôle de santé** (migrations réussies, API et proxy « healthy ») ;
+5. en cas d'échec : **retour à la version précédente**, avec la base d'avant si une migration a été appliquée ;
+6. vous envoie un **compte rendu** si `NOTIFY_URL` est renseigné.
+
+Prérequis :
+- l'application tourne depuis les **images publiées** : `GEST_VERSION=0.1.0` (par exemple) dans `infra/docker/.env`, sans `--build`.
+  Avec `GEST_VERSION=local`, le script ne fait rien ;
+- si les images GHCR sont privées : `docker login ghcr.io` une fois, avec un jeton GitHub limité à `read:packages`. Plus simple : rendez
+  les paquets publics dans GitHub (Packages → Package settings), ils ne contiennent aucun secret ;
+- le dépôt du serveur sans modification locale (`git status` propre ; `.env` et `secrets/` sont ignorés par Git).
+
+Installation (une fois) :
+```
+sudo sh infra/deploy/install-auto-update.sh          # service + minuteur systemd, sous votre utilisateur (groupe docker)
+sudo systemctl start gest-finance-maj.service        # essai immédiat
+journalctl -u gest-finance-maj.service               # journal
+```
+Notifications (facultatif) : créez `infra/deploy/auto-update.env` avec `NOTIFY_URL=https://ntfy.sh/<sujet-long-et-secret>` et installez
+l'application ntfy sur votre téléphone, abonnée à ce sujet. N'importe quelle adresse qui accepte un POST convient. Le message ne contient
+aucune donnée financière. Pour retirer : `sudo sh infra/deploy/install-auto-update.sh --retirer`.
+
+En cas d'échec, l'état est dans `.auto-update/` à la racine du dépôt (journaux de l'échec ; copie de la base si le retour arrière lui-même
+a échoué : notification « URGENT »).
 
 ## 7. Sauvegardes
 - Chaque jour à **03:30 UTC** : copie de la base, chiffrement avec votre clé publique, conservation de 7 copies sur le serveur, envoi vers le S3

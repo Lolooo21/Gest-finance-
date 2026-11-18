@@ -230,6 +230,19 @@ export class AuthService {
   }
 
   /**
+   * Redemande le mot de passe avant une action sensible (export, effacement, retrait d'un membre). Compte verrouillé : refus ;
+   * erreur : comptée comme un échec de connexion (verrouillage au 5e).
+   */
+  async verifyPassword(userId: string, password: string): Promise<void> {
+    const user = await this.system.user.findUniqueOrThrow({ where: { id: userId } });
+    if (user.lockedUntil && user.lockedUntil > new Date()) throw new ForbiddenException("Compte verrouillé : réessayez dans quelques minutes");
+    if (!(await argon2.verify(user.passwordHash, password))) {
+      await this.registerFailure(user.id, user.householdId, user.failedLogins + 1);
+      throw new BadRequestException("Mot de passe incorrect");
+    }
+  }
+
+  /**
    * Ferme toutes les sessions après un changement de mot de passe : jetons de rafraîchissement révoqués ET expirés, pour qu'un
    * autre appareil qui tente encore de s'en servir soit simplement refusé, sans déclencher la détection de vol (qui couperait
    * aussi la session qu'on vient d'ouvrir).
@@ -248,7 +261,8 @@ export class AuthService {
     await this.audit.record(householdId, userId, lock ? "auth.locked" : "auth.login_failed");
   }
 
-  private async issueSession(user: { id: string; householdId: string; role: "OWNER" | "ADULT" | "CHILD"; sessionVersion: number }): Promise<Session> {
+  /** Ouvre une session (jeton d'accès 15 min + jeton de rafraîchissement à rotation) ; utilisé aussi par la connexion par passkey. */
+  async issueSession(user: { id: string; householdId: string; role: "OWNER" | "ADULT" | "CHILD"; sessionVersion: number }): Promise<Session> {
     const access = await this.jwt.signAsync({ userId: user.id, householdId: user.householdId, role: user.role, sv: user.sessionVersion });
     const refresh = randomBytes(32).toString("base64url");
     await this.system.refreshToken.create({

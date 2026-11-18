@@ -23,8 +23,12 @@ describe("friendlyMessage", () => {
   });
 
   it("couvre les cas fichier, débit et serveur", () => {
-    expect(friendlyMessage(413)).toContain("5 Mo");
+    expect(friendlyMessage(413)).toBe("Fichier trop volumineux.");
+    expect(friendlyMessage(413, "Fichier trop volumineux (10 Mo maximum)")).toContain("10 Mo");
+    expect(friendlyMessage(413, "request file too large")).toBe("Fichier trop volumineux.");
     expect(friendlyMessage(429)).toContain("Patientez");
+    expect(friendlyMessage(429, "Rate limit exceeded, retry in 1 minute")).toContain("Patientez");
+    expect(friendlyMessage(429, "Une autre fiche de paie est en cours de lecture : réessayez dans un instant.")).toContain("en cours de lecture");
     expect(friendlyMessage(500, "Internal Server Error")).toContain("erreur");
     expect(friendlyMessage(503)).toContain("terminal de l'API");
     expect(friendlyMessage(418)).toBe("Une erreur est survenue.");

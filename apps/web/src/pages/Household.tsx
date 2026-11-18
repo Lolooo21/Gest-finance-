@@ -13,6 +13,8 @@ const ACTIONS: Record<string, string> = {
   "auth.login_failed": "Échec de connexion",
   "auth.locked": "Compte verrouillé 15 min après 5 échecs",
   "auth.totp_enabled": "Double authentification activée",
+  "auth.passkey_added": "Passkey ajoutée", "auth.passkey_removed": "Passkey supprimée",
+  "auth.passkey_login": "Connexion par passkey", "auth.passkey_failed": "Passkey refusée",
   "auth.password_changed": "Mot de passe changé",
   "auth.password_reset_requested": "Lien « mot de passe oublié » envoyé",
   "auth.password_reset_not_sent": "Lien « mot de passe oublié » non envoyé (e-mail non configuré ou en échec)",
@@ -20,7 +22,11 @@ const ACTIONS: Record<string, string> = {
   "auth.refresh_reuse_detected": "Jeton de session volé détecté : toutes les sessions fermées",
   "household.member_added": "Membre ajouté",
   "household.member_password_reset": "Mot de passe d'un membre réinitialisé",
+  "household.member_removed": "Membre retiré du foyer",
+  "privacy.exported": "Données exportées",
+  "privacy.member_deleted_self": "Un membre a supprimé son compte",
   "account.created": "Compte créé", "account.updated": "Compte modifié", "account.deleted": "Compte supprimé",
+  "account.shared": "Compte personnel partagé avec le foyer", "account.made_personal": "Compte joint rendu personnel",
   "transaction.created": "Opération ajoutée", "transaction.updated": "Opération modifiée", "transaction.deleted": "Opération supprimée",
   "recurring_rule.created": "Récurrence ajoutée", "recurring_rule.updated": "Récurrence modifiée", "recurring_rule.deleted": "Récurrence supprimée",
   "statement.previewed": "Relevé analysé", "statement.imported": "Relevé importé",
@@ -35,11 +41,11 @@ const ACTIONS: Record<string, string> = {
   "subscription.price_updated": "Nouveau prix d'abonnement appliqué",
   "reminder.sent": "Rappel hebdomadaire envoyé", "review.done": "Bilan de la semaine fait",
 };
-const ALERTS = new Set(["auth.login_failed", "auth.locked", "auth.refresh_reuse_detected", "auth.password_reset_not_sent"]);
+const ALERTS = new Set(["auth.passkey_failed", "auth.login_failed", "auth.locked", "auth.refresh_reuse_detected", "auth.password_reset_not_sent"]);
 /** « household.member_added:CHILD » → code et détail. */
 const describe = (action: string) => {
   const [code, detail] = action.split(":") as [string, string | undefined];
-  const role = detail && detail in ROLE_LABEL ? ROLE_LABEL[detail as keyof typeof ROLE_LABEL] : detail;
+  const role = detail === "personal" ? "personnel" : detail && detail in ROLE_LABEL ? ROLE_LABEL[detail as keyof typeof ROLE_LABEL] : detail;
   return { code, label: `${ACTIONS[code] ?? code}${role ? ` (${role})` : ""}` };
 };
 const formatDateTime = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -69,6 +75,36 @@ function ResetMemberPassword({ member, onDone }: { member: Member; onDone: () =>
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" icon="check" loading={reset.isPending}>Enregistrer le nouveau mot de passe</Button>
+        <Button variant="ghost" onClick={onDone}>Annuler</Button>
+      </div>
+    </form>
+  );
+}
+
+/** Retrait d'un membre : son compte et ses comptes personnels sont effacés ; mot de passe du propriétaire exigé. */
+function RemoveMember({ member, onDone }: { member: Member; onDone: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [error, setError] = useState("");
+  const remove = useMutation({
+    meta: { inline: true },
+    mutationFn: (password: string) => api("POST", `/household/members/${member.id}/remove`, { password }),
+    onSuccess: () => { toast.success(`${member.displayName} a été retiré du foyer.`); onDone(); return qc.invalidateQueries(); },
+    onError: (e) => setError(e instanceof ApiError ? e.message : "Une erreur est survenue."),
+  });
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    remove.mutate(String(new FormData(e.currentTarget).get("ownerPassword") ?? ""));
+  }
+  return (
+    <form onSubmit={submit} className="mt-2 flex flex-col gap-2 rounded-lg border border-red-300 p-3" aria-label={`Retirer ${member.displayName} du foyer`}>
+      <p className="text-sm text-slate-700">
+        Le compte de {member.displayName}, ses comptes personnels et leurs opérations seront effacés définitivement. Ce qu'il ou elle a saisi sur les comptes joints reste au foyer.
+      </p>
+      <PasswordField name="ownerPassword" label="Votre mot de passe (confirmation)" autoComplete="current-password" minLength={1} />
+      {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="danger" icon="trash" loading={remove.isPending}>Retirer définitivement</Button>
         <Button variant="ghost" onClick={onDone}>Annuler</Button>
       </div>
     </form>
@@ -156,6 +192,7 @@ export function HouseholdAdmin() {
   const members = useQuery({ queryKey: ["members"], queryFn: () => api<Member[]>("GET", "/household/members") });
   const [adding, setAdding] = useState(false);
   const [resetting, setResetting] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   return (
     <section className={cardClass} aria-label="Administration du foyer">
       <h2 className="text-lg font-semibold">Administration du foyer</h2>
@@ -164,11 +201,15 @@ export function HouseholdAdmin() {
           <li key={m.id} className="py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span>{m.displayName} <span className="text-xs text-slate-600">{m.email} · {ROLE_LABEL[m.role]}</span></span>
-              {m.role !== "OWNER" && resetting !== m.id && (
-                <Button variant="ghost" icon="shield" aria-label={`Réinitialiser le mot de passe de ${m.displayName}`} onClick={() => setResetting(m.id)}>Nouveau mot de passe</Button>
+              {m.role !== "OWNER" && resetting !== m.id && removing !== m.id && (
+                <span className="flex flex-wrap gap-1">
+                  <Button variant="ghost" icon="shield" aria-label={`Réinitialiser le mot de passe de ${m.displayName}`} onClick={() => setResetting(m.id)}>Nouveau mot de passe</Button>
+                  <Button variant="ghost" icon="trash" aria-label={`Retirer ${m.displayName} du foyer`} onClick={() => setRemoving(m.id)}>Retirer</Button>
+                </span>
               )}
             </div>
             {resetting === m.id && <ResetMemberPassword member={m} onDone={() => setResetting(null)} />}
+            {removing === m.id && <RemoveMember member={m} onDone={() => setRemoving(null)} />}
           </li>
         ))}
       </ul>

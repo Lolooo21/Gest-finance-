@@ -49,8 +49,10 @@ export function App() {
     try {
       await api("POST", "/auth/logout");
     } finally {
-      qc.clear();
-      await qc.invalidateQueries();
+      // Toutes les données du compte quittent le cache ; la session passe à « déconnecté » (sa requête reste observée par cet écran,
+      // qui affiche aussitôt la connexion).
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "session" });
+      qc.setQueryData(["session"], false);
     }
   };
   return <Shell onLogout={logout} />;

@@ -4,6 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { AppProviders } from "./providers";
 
+// L'appareil (capteur d'empreinte, visage) est simulé : le navigateur de test n'a pas d'API WebAuthn.
+const webauthn = vi.hoisted(() => ({ supported: true, startAuthentication: vi.fn(), startRegistration: vi.fn() }));
+vi.mock("@simplewebauthn/browser", () => ({
+  browserSupportsWebAuthn: () => webauthn.supported,
+  startAuthentication: webauthn.startAuthentication,
+  startRegistration: webauthn.startRegistration,
+}));
+
 type Handler = (method: string, url: string, body: unknown) => { status?: number; json?: unknown; network?: boolean; html?: boolean };
 
 const EMPTY_FORECAST = { from: "2026-10-21", to: "2026-11-20", days: 30, startCents: 0, endCents: 0, incomeCents: 0, expensesCents: 0, points: [{ date: "2026-10-21", totalCents: 0, checkingCents: 0 }], accounts: [], events: [], firstNegativeDate: null, lowestCheckingCents: 0, lowestCheckingDate: null };
@@ -240,7 +248,7 @@ describe("import d'une fiche de paie", () => {
 
   async function openAndUpload(user: ReturnType<typeof userEvent.setup>) {
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
-    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
     return screen.findByTestId("confidence");
   }
 
@@ -288,15 +296,31 @@ describe("import d'une fiche de paie", () => {
     expect(calls.filter((c) => c.url === "/payslips/confirm")[1]?.body).toMatchObject({ force: true });
   });
 
-  it("affiche le message du serveur si le PDF est un scan", async () => {
-    mockApi((m, u, b) => (u === "/payslips/parse" ? { status: 422, json: { message: "Aucun texte exploitable : OCR pas encore disponible." } } : payslipApi()(m, u, b)));
+  it("affiche le message du serveur si l'image est illisible", async () => {
+    mockApi((m, u, b) => (u === "/payslips/parse" ? { status: 422, json: { message: "Image illisible : envoyez une photo nette." } } : payslipApi()(m, u, b)));
     startAt("#operations");
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
-    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-"], "scan.pdf", { type: "application/pdf" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("OCR");
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["%PDF-"], "scan.pdf", { type: "application/pdf" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Image illisible");
     expect(screen.queryByTestId("confidence")).not.toBeInTheDocument();
+  });
+
+  it("envoie une photo de fiche de paie et signale une lecture sur image", async () => {
+    const calls = mockApi((m, u, b) => (u === "/payslips/parse"
+      ? { json: { netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-09", employer: "ACME", confidence: 1, ocr: true,
+          warnings: ["Lu sur une image (scan ou photo) : vérifiez chaque montant, la reconnaissance de caractères peut se tromper."] } }
+      : payslipApi()(m, u, b)));
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["\xff\xd8\xff"], "photo.jpg", { type: "image/jpeg" }));
+    expect(await screen.findByTestId("confidence")).toHaveTextContent("100 %");
+    expect(screen.getByText("lue sur une image")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("vérifiez chaque montant");
+    expect(calls.find((c) => c.url === "/payslips/parse")?.body).toEqual({ file: "photo.jpg" });
   });
 });
 
@@ -355,20 +379,20 @@ describe("gestion des erreurs et ergonomie", () => {
     renderApp();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
-    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["%PDF-1.4"], "paie.pdf", { type: "application/pdf" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("introuvable sur le serveur");
     expect(alert.textContent).not.toContain("<");
   });
 
-  it("refuse un fichier qui n'est pas un PDF avant tout envoi", async () => {
+  it("refuse un fichier qui n'est ni un PDF ni une photo avant tout envoi", async () => {
     const calls = mockApi(dash());
     startAt("#operations");
     renderApp();
     const user = userEvent.setup({ applyAccept: false });
     await user.click(await screen.findByRole("button", { name: /Importer une fiche de paie/ }));
-    await user.upload(screen.getByLabelText("Fiche de paie (PDF)"), new File(["texte"], "photo.png", { type: "image/png" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("« photo.png » n'est pas un PDF");
+    await user.upload(screen.getByLabelText("Fiche de paie (PDF ou photo)"), new File(["texte"], "notes.txt", { type: "text/plain" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("« notes.txt » n'est ni un PDF ni une photo");
     expect(calls.some((c) => c.url === "/payslips/parse")).toBe(false);
   });
 
@@ -1534,5 +1558,305 @@ describe("tutoriel de première connexion", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(calls.some((c) => c.url === "/household/me/tutorial")).toBe(false);
+  });
+});
+
+describe("comptes personnels et joints", () => {
+  const SUMMARY = (remaining: number) => ({ json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: remaining } });
+
+  it("crée un compte personnel et affiche les pastilles Joint / Personnel", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/household/me") return { json: { id: "u1", email: "a@example.com", displayName: "Sam", role: "ADULT", tutorialDone: true } };
+      if (u === "/accounts" && m === "GET") return { json: [
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+      ] };
+      if (u === "/accounts" && m === "POST") return { status: 201, json: {} };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return SUMMARY(0);
+    });
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    const list = (await screen.findByRole("heading", { name: "Comptes" })).parentElement!;
+    await waitFor(() => expect(within(list).getByText("Commun")).toBeInTheDocument());
+    expect(within(list).getByText("Joint")).toBeInTheDocument();
+    expect(within(list).getByText("Personnel")).toBeInTheDocument();
+    // Un adulte peut partager son compte personnel, mais pas rendre personnel un compte joint.
+    expect(screen.getByRole("button", { name: "Partager Perso avec le foyer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rendre Commun personnel" })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Nom du compte"), "Mon livret");
+    await user.click(screen.getByRole("checkbox", { name: /Compte personnel/ }));
+    await user.click(screen.getByRole("button", { name: "Ajouter le compte" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/accounts" && c.method === "POST")?.body).toMatchObject({ name: "Mon livret", personal: true }));
+  });
+
+  it("le propriétaire rend personnel un compte joint après confirmation", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/household/me") return { json: { id: "u1", email: "o@example.com", displayName: "Ada", role: "OWNER", tutorialDone: true } };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/accounts/a1" && m === "PATCH") return { json: { ok: true } };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return SUMMARY(0);
+    });
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Rendre Commun personnel" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Les autres membres ne verront plus ce compte");
+    await user.click(within(dialog).getByRole("button", { name: "Rendre personnel" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/accounts/a1" && c.method === "PATCH")?.body).toEqual({ personal: true }));
+  });
+
+  it("l'accueil filtre le reste à vivre : tout, joint ou mes comptes", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+      ] };
+      if (u.startsWith("/summary")) return SUMMARY(u.includes("scope=personal") ? 30_000 : u.includes("scope=joint") ? 120_000 : 150_000);
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return SUMMARY(0);
+    });
+    renderApp();
+    const user = userEvent.setup();
+    const remaining = () => screen.getByTestId("remaining").textContent?.replace(/\s/g, " ");
+    await waitFor(() => expect(remaining()).toContain("1 500,00"));
+    const group = await screen.findByRole("group", { name: "Comptes pris en compte" });
+    expect(within(group).getByRole("button", { name: "Tout" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(within(group).getByRole("button", { name: "Perso" }));
+    await waitFor(() => expect(remaining()).toContain("300,00"));
+    expect(screen.getByText(/mes comptes/)).toBeInTheDocument();
+    await user.click(within(group).getByRole("button", { name: "Joint" }));
+    await waitFor(() => expect(remaining()).toContain("1 200,00"));
+    expect(calls.some((c) => c.url.includes("scope=joint"))).toBe(true);
+  });
+
+  it("sans compte personnel, l'accueil n'affiche pas le filtre", async () => {
+    mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return SUMMARY(10_000);
+    });
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId("remaining").textContent?.replace(/\s/g, " ")).toContain("100,00"));
+    expect(screen.queryByRole("group", { name: "Comptes pris en compte" })).not.toBeInTheDocument();
+  });
+});
+
+describe("vue partagée par l'accueil, les budgets et le prévisionnel", () => {
+  it("choisir « Perso » dans les budgets filtre aussi le prévisionnel et l'accueil, et reste mémorisé", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+      ] };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    startAt("#budgets");
+    renderApp();
+    const user = userEvent.setup();
+    const budgets = await screen.findByRole("region", { name: "Budgets du mois" });
+    await user.click(within(await within(budgets).findByRole("group", { name: "Comptes pris en compte" })).getByRole("button", { name: "Perso" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/categories?scope=personal")).toBe(true));
+    expect(localStorage.getItem("gest.accountScope")).toBe("personal");
+
+    await openTab(user, "Opérations");
+    await waitFor(() => expect(calls.some((c) => c.url === "/forecast?days=30&scope=personal")).toBe(true));
+    const forecast = await screen.findByRole("region", { name: "Prévisionnel" });
+    expect(within(await within(forecast).findByRole("group", { name: "Comptes pris en compte" })).getByRole("button", { name: "Perso" })).toHaveAttribute("aria-pressed", "true");
+
+    await openTab(user, "Accueil");
+    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/summary") && c.url.endsWith("&scope=personal"))).toBe(true));
+    expect(screen.getByText(/mes comptes/)).toBeInTheDocument();
+  });
+
+  it("sans compte personnel, une vue mémorisée est ignorée : tout est compté", async () => {
+    localStorage.setItem("gest.accountScope", "joint");
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    startAt("#budgets");
+    renderApp();
+    await screen.findByRole("region", { name: "Budgets du mois" });
+    await waitFor(() => expect(calls.some((c) => c.url === "/categories")).toBe(true));
+    expect(calls.some((c) => c.url.includes("scope="))).toBe(false);
+    expect(screen.queryByRole("group", { name: "Comptes pris en compte" })).not.toBeInTheDocument();
+  });
+});
+
+describe("mes données (RGPD)", () => {
+  const me = (role: string) => ({ id: "u1", email: "ada@example.com", displayName: "Ada", role, tutorialDone: true });
+  const base = (role: string, extra: Handler): Handler => (m, u, b) => {
+    const r = extra(m, u, b);
+    if (r) return r;
+    if (u === "/household/me") return { json: me(role) };
+    if (u === "/household/members") return { json: [me("OWNER"), { id: "u2", email: "sam@example.com", displayName: "Sam", role: "ADULT" }] };
+    if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    if (u.startsWith("/household/audit")) return { json: { entries: [], next: null } };
+    return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("exporte les données après le mot de passe et propose le fichier au téléchargement", async () => {
+    const createObjectURL = vi.fn(() => "blob:export");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const calls = mockApi(base("ADULT", (m, u, b) => {
+      if (u === "/privacy/export") return (b as { password: string }).password === "bon-mot-de-passe"
+        ? { json: { format: 1, accounts: [] } } : { status: 400, json: { message: "Mot de passe incorrect" } };
+      return undefined as never;
+    }));
+    startAt("#plus");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Exporter ou supprimer mes données/ }));
+    const section = await screen.findByRole("region", { name: "Exporter mes données" });
+    await user.type(within(section).getByLabelText("Votre mot de passe"), "faux");
+    await user.click(within(section).getByRole("button", { name: "Télécharger mes données" }));
+    expect(await within(section).findByRole("alert")).toHaveTextContent("Mot de passe incorrect");
+    expect(click).not.toHaveBeenCalled();
+
+    await user.clear(within(section).getByLabelText("Votre mot de passe"));
+    await user.type(within(section).getByLabelText("Votre mot de passe"), "bon-mot-de-passe");
+    await user.click(within(section).getByRole("button", { name: "Télécharger mes données" }));
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(calls.filter((c) => c.url === "/privacy/export").at(-1)?.body).toEqual({ password: "bon-mot-de-passe" });
+    click.mockRestore();
+  });
+
+  it("un membre supprime son compte en tapant SUPPRIMER, puis revient à la connexion", async () => {
+    let deleted = false;
+    const calls = mockApi(base("ADULT", (m, u) => {
+      if (u === "/privacy/delete-me") { deleted = true; return { status: 204 }; }
+      if (u === "/household/members" && deleted) return { status: 401 };
+      if (u === "/auth/refresh" && deleted) return { status: 401 };
+      return undefined as never;
+    }));
+    startAt("#plus:donnees");
+    renderApp();
+    const user = userEvent.setup();
+    const section = await screen.findByRole("region", { name: "Supprimer mon compte" });
+    await user.type(within(section).getByLabelText("Votre mot de passe"), "mon-mot-de-passe");
+    await user.type(within(section).getByLabelText("Tapez SUPPRIMER pour confirmer"), "supprimer");
+    await user.click(within(section).getByRole("button", { name: "Supprimer définitivement mon compte" }));
+    expect(await within(section).findByRole("alert")).toHaveTextContent("Tapez SUPPRIMER en majuscules");
+    expect(calls.some((c) => c.url === "/privacy/delete-me")).toBe(false);
+
+    await user.clear(within(section).getByLabelText("Tapez SUPPRIMER pour confirmer"));
+    await user.type(within(section).getByLabelText("Tapez SUPPRIMER pour confirmer"), "SUPPRIMER");
+    await user.click(within(section).getByRole("button", { name: "Supprimer définitivement mon compte" }));
+    expect(await screen.findByRole("button", { name: "Se connecter" })).toBeInTheDocument();
+    expect(calls.find((c) => c.url === "/privacy/delete-me")?.body).toEqual({ password: "mon-mot-de-passe", confirm: "SUPPRIMER" });
+  });
+
+  it("le propriétaire voit « Supprimer le foyer » et retire un membre avec son mot de passe", async () => {
+    const calls = mockApi(base("OWNER", (m, u) => {
+      if (u === "/household/members/u2/remove") return { status: 204 };
+      return undefined as never;
+    }));
+    startAt("#plus:donnees");
+    renderApp();
+    const user = userEvent.setup();
+    expect(await screen.findByRole("region", { name: "Supprimer le foyer" })).toHaveTextContent("Tous les membres");
+    expect(screen.getByRole("button", { name: "Supprimer définitivement le foyer" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Retour" }));
+    await user.click(await screen.findByRole("button", { name: /Membres et journal/ }));
+    await user.click(await screen.findByRole("button", { name: "Retirer Sam du foyer" }));
+    const form = screen.getByRole("form", { name: "Retirer Sam du foyer" });
+    expect(form).toHaveTextContent("ses comptes personnels");
+    await user.type(within(form).getByLabelText("Votre mot de passe (confirmation)"), "mot-de-passe-ada");
+    await user.click(within(form).getByRole("button", { name: "Retirer définitivement" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/household/members/u2/remove")?.body).toEqual({ password: "mot-de-passe-ada" }));
+    expect(screen.queryByRole("button", { name: "Retirer Ada du foyer" })).not.toBeInTheDocument();
+  });
+});
+
+describe("passkeys", () => {
+  afterEach(() => { webauthn.supported = true; webauthn.startAuthentication.mockReset(); webauthn.startRegistration.mockReset(); });
+
+  it("se connecte avec une passkey sans e-mail ni mot de passe", async () => {
+    let logged = false;
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return logged ? { json: [] } : { status: 401 };
+      if (u === "/auth/refresh") return { status: 401 };
+      if (u === "/auth/passkeys/login/options") return { json: { challenge: "defi", rpId: "localhost" } };
+      if (u === "/auth/passkeys/login") { logged = true; return { json: { ok: true } }; }
+      if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    webauthn.startAuthentication.mockResolvedValue({ id: "cred-1", type: "public-key" });
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Se connecter avec une passkey" }));
+    expect(await screen.findByLabelText("Reste à vivre")).toBeInTheDocument();
+    expect(webauthn.startAuthentication).toHaveBeenCalledWith({ optionsJSON: { challenge: "defi", rpId: "localhost" } });
+    expect(calls.find((c) => c.url === "/auth/passkeys/login")?.body).toEqual({ response: { id: "cred-1", type: "public-key" } });
+  });
+
+  it("explique une annulation sur l'appareil, et masque le bouton sans prise en charge", async () => {
+    mockApi((m, u) => {
+      if (u === "/household/members" || u === "/auth/refresh") return { status: 401 };
+      if (u === "/auth/passkeys/login/options") return { json: { challenge: "defi" } };
+      return { json: {} };
+    });
+    webauthn.startAuthentication.mockRejectedValue(Object.assign(new Error("x"), { name: "NotAllowedError" }));
+    const { unmount } = renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Se connecter avec une passkey" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Opération annulée ou délai dépassé");
+    unmount();
+
+    webauthn.supported = false;
+    renderApp();
+    await screen.findByRole("button", { name: "Se connecter" });
+    expect(screen.queryByRole("button", { name: "Se connecter avec une passkey" })).not.toBeInTheDocument();
+  });
+
+  it("ajoute une passkey avec un nom et le mot de passe, liste et supprime", async () => {
+    let list = [{ id: "p1", name: "Ordinateur", createdAt: "2026-11-01T10:00:00Z", lastUsedAt: null }];
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/auth/passkeys" && m === "GET") return { json: list };
+      if (u === "/auth/passkeys/register/options") return { json: { challenge: "defi", rp: { id: "localhost" } } };
+      if (u === "/auth/passkeys/register") { list = [...list, { id: "p2", name: "iPhone de Sam", createdAt: "2026-11-19T10:00:00Z", lastUsedAt: null }]; return { status: 201, json: list[1] }; }
+      if (u === "/auth/passkeys/p1" && m === "DELETE") { list = list.filter((p) => p.id !== "p1"); return { status: 204 }; }
+      if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    webauthn.startRegistration.mockResolvedValue({ id: "cred-2", type: "public-key" });
+    startAt("#plus");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Passkeys/ }));
+    const section = await screen.findByRole("region", { name: "Passkeys" });
+    expect(await within(section).findByText("Ordinateur")).toBeInTheDocument();
+    expect(section).toHaveTextContent("jamais utilisée");
+
+    await user.click(within(section).getByRole("button", { name: "Ajouter une passkey sur cet appareil" }));
+    await user.type(within(section).getByLabelText("Nom de cet appareil"), "iPhone de Sam");
+    await user.type(within(section).getByLabelText("Votre mot de passe"), "mon-mot-de-passe");
+    await user.click(within(section).getByRole("button", { name: "Créer la passkey" }));
+    expect(await within(section).findByText("iPhone de Sam")).toBeInTheDocument();
+    expect(calls.find((c) => c.url === "/auth/passkeys/register/options")?.body).toEqual({ password: "mon-mot-de-passe" });
+    expect(webauthn.startRegistration).toHaveBeenCalledWith({ optionsJSON: { challenge: "defi", rp: { id: "localhost" } } });
+    expect(calls.find((c) => c.url === "/auth/passkeys/register")?.body).toEqual({ response: { id: "cred-2", type: "public-key" }, name: "iPhone de Sam" });
+
+    await user.click(within(section).getByRole("button", { name: "Supprimer la passkey Ordinateur" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }));
+    await waitFor(() => expect(within(section).queryByText("Ordinateur")).not.toBeInTheDocument());
   });
 });

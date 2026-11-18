@@ -2,10 +2,14 @@ name: Publication des images
 on:
   push:
     tags: ["v*"]
+  # Lancée par la publication automatique (un tag poussé par le jeton d'un workflow ne déclenche pas « push ») :
+  # à exécuter sur un tag (--ref vX.Y.Z).
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   publish:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:

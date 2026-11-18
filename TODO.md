@@ -18,7 +18,9 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Publication des images GHCR signées (tags `v*`) | Terminé (jalon 8a), non exécutée |
 | Circuit Git : branche `develop`, workflows déclenchés sur develop/main/PR | Terminé |
 | GitHub : définir `develop` par défaut et protéger `develop`/`main` (PR obligatoire, contrôles requis) | À faire (réglage utilisateur) |
-| CD : déploiement automatique via Tailscale, rollback | À faire |
+| CD : déploiement automatique via Tailscale, rollback | Terminé autrement (jalon 25) : le VPS tire les versions signées chaque nuit, sans accès de GitHub au serveur ; sauvegarde, contrôle de santé et retour arrière testés par la CI ; reste : premier essai réel sur le VPS |
+| Veille de sécurité planifiée (dépendances et images publiées, issue d'alerte) | Terminé (jalon 23) ; à confirmer au premier lundi après fusion (ou lancement manuel) |
+| Mises à jour de sécurité automatiques (fusion Dependabot, publication si failles corrigées) | Terminé (jalon 24) ; à confirmer à la première pull request Dependabot après fusion ; réglage GitHub « Allow GitHub Actions to create and approve pull requests » à cocher |
 | Production : désactiver l'inscription publique une fois le foyer créé | Terminé (jalon 14) |
 | Production : rotation des secrets, épinglage des images par empreinte, compilation de l'API (sans chargeur swc) | À faire |
 
@@ -29,12 +31,12 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Récurrences (expansion des occurrences) | Terminé (jalon 1) |
 | Recalcul du reste à vivre à chaque entrée/sortie (`GET /summary`, recalculé à la lecture ; cache/événements à faire si besoin de perf) | Terminé (jalon 3) |
 | Auth foyer : users, Argon2id, 2FA TOTP, rôles OWNER/ADULT/CHILD | Terminé (jalon 2) |
-| Passkeys WebAuthn | À faire (reporté du jalon 2) |
+| Passkeys WebAuthn | Terminé (jalon 20) ; reste : essai réel sur iPhone, Android et ordinateur après le déploiement en https |
 | Afficher / masquer le mot de passe à la connexion et à l'inscription | Terminé (jalon 12) |
 | Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | Terminé (jalon 12) ; envoi réel à vérifier avec votre SMTP en production |
 | Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | Terminé (jalon 16) |
 | Sécurité : vérifier au premier déploiement que chaque appareil Tailscale a sa propre IP côté API (limites de débit) | À faire (déploiement) |
-| Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | À étudier |
+| Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | Libellés, employeurs et notes : Terminé (jalon 21) ; montants : non (calculs SQL), à compenser par un disque chiffré sur le VPS |
 | Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | Terminé (jalon 16) ; reste : export du journal |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
@@ -55,10 +57,10 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Rappel : écarts vs budget dans le bilan (dépend des enveloppes) | Terminé (jalon 10) |
 | Documents : upload, antivirus, chiffrement | À faire |
 | Lecture des fiches de paie (PDF numérique, parseur générique, validation humaine, anti-doublon, sans conservation) | Terminé (jalon 6) ; à confronter à de vraies fiches |
-| Fiches de paie : OCR des scans et photos (Tesseract) | À faire |
+| Fiches de paie : OCR des scans et photos (Tesseract) | Terminé (jalon 22) ; reste : à confronter à vos vraies photos, redressement automatique d'une photo de travers, PDF scannés hors JPEG (fax, JBIG2) |
 | Fiches de paie : lecture robuste (espaces insécables, position des fragments, libellés élargis, plage de dates, employeur par forme juridique) | Terminé |
 | Fiches de paie : parseurs par employeur / logiciel de paie selon vos vrais PDF | En cours : dépend de vos vrais PDF (utiliser `pnpm payslip:debug --anonymize`) |
-| Fiches de paie : isoler l'extraction PDF dans un processus ou worker avec délai maximal | À faire |
+| Fiches de paie : isoler l'extraction PDF dans un processus ou worker avec délai maximal | OCR : Terminé (jalon 22, thread dédié, 60 s, une lecture à la fois) ; reste : extraction du texte des PDF numériques |
 | Fiches de paie : conservation chiffrée du PDF dans le coffre-fort | À faire |
 | Page actualités financières : taux réglementés, indicateurs de marché automatiques, fiches d'épargne, simulateur d'intérêts | Terminé (jalon 7) ; appels réels BCE/Eurostat à vérifier chez vous (`pnpm market:check`) |
 | Actualités : confirmer chez vous les 3 indicateurs avec `pnpm market:check` (taux de dépôt BCE vérifié ; OAT et inflation corrigés, à confirmer) | En test |
@@ -113,7 +115,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### Spécifique à un foyer de 5
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Multi-membres avec rôles, comptes individuels/joints, vues par personne | P1 | Étend le modèle `User`/RLS : rôles OWNER / ADULTE / ENFANT (lecture seule) ; propriété d'un compte = individuel ou joint |
+| Multi-membres avec rôles, comptes individuels/joints, vues par personne | P1 · **Terminé (jalon 18)**, vue appliquée au reste à vivre, au prévisionnel et aux budgets ; reste : compte personnel visible aussi d'un second membre choisi, bilan de la semaine par vue | Étend le modèle `User`/RLS : rôles OWNER / ADULTE / ENFANT (lecture seule) ; propriété d'un compte = individuel ou joint |
 | Argent de poche et objectifs des enfants (mode lecture seule) | P2 | Sous-compte virtuel par enfant, versement récurrent, vue simplifiée sans autres données du foyer |
 | Suivi du coût par enfant (cantine, activités, santé) | P3 | Étiquette « bénéficiaire » sur les opérations plutôt qu'un modèle séparé |
 
@@ -134,16 +136,16 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### Sécurité et confiance
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Passkeys WebAuthn (verrouillage biométrique) en plus ou à la place du TOTP | P1 | Intégré à l'auth dès le jalon 2 plutôt qu'en ajout tardif |
-| Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
+| Passkeys WebAuthn (verrouillage biométrique) en plus ou à la place du TOTP | P1 · **Terminé (jalon 20)** | Intégré à l'auth dès le jalon 2 plutôt qu'en ajout tardif |
+| Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 · **Terminé (jalon 21)** ; reste : rotation de la clé | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
 | Mode confidentialité (masquer les montants d'un geste) | P1 · **Terminé (jalon 3)** | Purement front, quasi gratuit, stocké par appareil |
-| Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
+| Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 · **Terminé (jalon 19)** ; reste : export CSV des opérations pour un tableur | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
 | Journal d'audit des accès et modifications (consultable par le propriétaire) | P1 · **Terminé (jalon 16)** | Déjà prévu en base ; ajouter une page de consultation |
 
 ### IA locale
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Extraction fiches de paie et catégorisation en local (Tesseract + règles ; petit modèle auto-hébergé en option) | P1 | Conteneur worker sans accès réseau sortant ; modèle LLM local seulement si les règles sont insuffisantes |
+| Extraction fiches de paie et catégorisation en local (Tesseract + règles ; petit modèle auto-hébergé en option) | P1 · **Terminé (jalons 6, 11b et 22)** | Conteneur worker sans accès réseau sortant ; modèle LLM local seulement si les règles sont insuffisantes |
 
 ### Simulateurs bancaires (ajout)
 | Idée | Prio | Notes / faisabilité des données |

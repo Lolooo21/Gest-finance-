@@ -4,7 +4,9 @@ import { api, ApiError, apiUpload, type Account, type PayslipExtraction } from "
 import { centsToInput, parseEuros, todayIso } from "../money";
 import { Button, cardClass, fieldClass, Icon, useToast } from "../ui";
 
-export const MAX_PDF_MB = 5;
+export const MAX_UPLOAD_MB = 10;
+const ACCEPTED = ["application/pdf", "image/jpeg", "image/png"];
+const EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"];
 
 /** Ce que la lecture a trouvé ou non : explique le pourcentage de fiabilité et ce qu'il reste à saisir. */
 export const detected = (e: PayslipExtraction) => [
@@ -15,9 +17,12 @@ export const detected = (e: PayslipExtraction) => [
 ];
 
 /** Contrôle avant envoi : évite un aller-retour réseau pour un fichier manifestement refusé. */
-export function checkPdf(file: File): string | null {
-  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) return `« ${file.name} » n'est pas un PDF. Choisissez le PDF de votre fiche de paie.`;
-  if (file.size > MAX_PDF_MB * 1024 * 1024) return `« ${file.name} » dépasse ${MAX_PDF_MB} Mo. Choisissez un PDF plus léger.`;
+export function checkPayslipFile(file: File): string | null {
+  const name = file.name.toLowerCase();
+  if (!ACCEPTED.includes(file.type) && !EXTENSIONS.some((ext) => name.endsWith(ext))) {
+    return `« ${file.name} » n'est ni un PDF ni une photo JPEG ou PNG. Choisissez le PDF de votre fiche de paie, ou prenez-la en photo.`;
+  }
+  if (file.size > MAX_UPLOAD_MB * 1024 * 1024) return `« ${file.name} » dépasse ${MAX_UPLOAD_MB} Mo. Choisissez un fichier plus léger.`;
   if (file.size === 0) return `« ${file.name} » est vide.`;
   return null;
 }
@@ -54,7 +59,7 @@ export function PayslipImport({ accounts, onClose }: { accounts: Account[]; onCl
 
   function pick(file: File | undefined) {
     if (!file) return;
-    const problem = checkPdf(file);
+    const problem = checkPayslipFile(file);
     setExtraction(null);
     setFileName(file.name);
     if (problem) return setError(problem);
@@ -87,7 +92,7 @@ export function PayslipImport({ accounts, onClose }: { accounts: Account[]; onCl
         <h2 className="text-lg font-semibold">Importer une fiche de paie</h2>
         <Button variant="ghost" icon="x" onClick={onClose}>Fermer</Button>
       </div>
-      <p className="mt-1 text-sm text-slate-600">Le PDF est lu sur le serveur puis jeté : seules les valeurs que vous validez sont enregistrées. Seuls les PDF numériques sont lus (pas les scans ni les photos).</p>
+      <p className="mt-1 text-sm text-slate-600">Le fichier est lu sur votre serveur puis jeté : seules les valeurs que vous validez sont enregistrées. PDF numérique, PDF scanné ou photo prise bien droite et bien éclairée (lecture des scans et photos par reconnaissance de caractères, sans envoi à un tiers).</p>
 
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -96,17 +101,20 @@ export function PayslipImport({ accounts, onClose }: { accounts: Account[]; onCl
         className={`mt-3 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-6 text-center ${dragging ? "border-teal-600 bg-teal-50" : "border-slate-300 bg-slate-50"}`}
       >
         <Icon name="file" className="h-8 w-8 text-slate-500" />
-        <p className="text-sm">Glissez votre fiche de paie ici (PDF, {MAX_PDF_MB} Mo maximum)</p>
-        <Button icon="upload" loading={parse.isPending} onClick={() => fileInput.current?.click()}>{extraction || fileName ? "Choisir un autre fichier" : "Choisir un PDF"}</Button>
-        <input ref={fileInput} type="file" accept="application/pdf" aria-label="Fiche de paie (PDF)" className="sr-only" tabIndex={-1} onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+        <p className="text-sm">Glissez votre fiche de paie ici (PDF ou photo, {MAX_UPLOAD_MB} Mo maximum)</p>
+        <Button icon="upload" loading={parse.isPending} onClick={() => fileInput.current?.click()}>{extraction || fileName ? "Choisir un autre fichier" : "Choisir un PDF ou une photo"}</Button>
+        <input ref={fileInput} type="file" accept="application/pdf,image/jpeg,image/png" aria-label="Fiche de paie (PDF ou photo)" className="sr-only" tabIndex={-1} onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
         {fileName && <p className="text-xs text-slate-600">Fichier : {fileName}</p>}
-        {parse.isPending && <p role="status" className="text-sm">Lecture de la fiche en cours…</p>}
+        {parse.isPending && <p role="status" className="text-sm">Lecture de la fiche en cours… (jusqu'à une minute pour un scan ou une photo)</p>}
       </div>
 
       {extraction && (
         <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(e: FormEvent<HTMLFormElement>) => { e.preventDefault(); send(e.currentTarget, false); }}>
           <div className="sm:col-span-2">
-            <p className="text-sm text-slate-700">Fiabilité de la lecture : <strong data-testid="confidence">{Math.round(extraction.confidence * 100)} %</strong>. Vérifiez chaque valeur avant de valider.</p>
+            <p className="text-sm text-slate-700">
+              Fiabilité de la lecture : <strong data-testid="confidence">{Math.round(extraction.confidence * 100)} %</strong>
+              {extraction.ocr ? <> · <strong>lue sur une image</strong></> : null}. Vérifiez chaque valeur avant de valider.
+            </p>
             <ul aria-label="Éléments détectés" className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
               {detected(extraction).map((d) => (
                 <li key={d.name} className={d.found ? "text-emerald-800" : "text-red-800"}>{d.found ? "✓" : "✗"} {d.name}{d.found ? "" : " non détecté : à saisir"}</li>

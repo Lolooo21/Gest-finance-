@@ -45,16 +45,18 @@ services:
     restart: "no"
     working_dir: /app/apps/api
     # Seul ce service connaît le rôle propriétaire. Les URL sont lues dans les secrets, jamais écrites dans l'image.
-    # 1) migrations (créent aussi les rôles gest_app et gest_system sans mot de passe) ; 2) mots de passe des rôles, tirés des URL.
+    # 1) migrations (créent aussi les rôles gest_app et gest_system sans mot de passe) ; 2) mots de passe des rôles, tirés des URL ;
+    # 3) chiffrement des champs sensibles encore en clair (données d'avant le jalon 21 ; sans effet ensuite).
     entrypoint:
       - /bin/sh
       - -c
       - |
-        export DATABASE_OWNER_URL="$$(cat /run/secrets/database_owner_url)" DATABASE_URL="$$(cat /run/secrets/database_url)" DATABASE_SYSTEM_URL="$$(cat /run/secrets/database_system_url)"
-        node_modules/.bin/prisma migrate deploy && exec node scripts/setup-roles.mjs
+        export DATABASE_OWNER_URL="$$(cat /run/secrets/database_owner_url)" DATABASE_URL="$$(cat /run/secrets/database_url)" DATABASE_SYSTEM_URL="$$(cat /run/secrets/database_system_url)" FIELD_ENCRYPTION_KEY="$$(cat /run/secrets/field_encryption_key)"
+        node_modules/.bin/prisma migrate deploy && node scripts/setup-roles.mjs && exec node --import @swc-node/register/esm-register scripts/encrypt-fields.ts
     command: []
-    secrets: [database_owner_url, database_url, database_system_url]
-    tmpfs: ["/tmp"]
+    secrets: [database_owner_url, database_url, database_system_url, field_encryption_key]
+    # Le script de chiffrement est en TypeScript (chargeur SWC) : même /tmp exécutable que l'API (voir le service api).
+    tmpfs: ["/tmp:rw,exec,nosuid,nodev,size=128m"]
     networks: [backend]
     depends_on:
       postgres: { condition: service_healthy }
@@ -80,7 +82,7 @@ services:
     secrets: [jwt_secret, field_encryption_key, database_url, database_system_url, smtp_url]
     volumes: [backupstatus:/backup-status:ro]
     # Docker monte les tmpfs en « noexec » : SWC (compilateur TypeScript chargé au démarrage) extrait son module natif dans /tmp
-    # et doit pouvoir l'exécuter. Exception limitée à ce conteneur, avec nosuid/nodev et une taille bornée.
+    # et doit pouvoir l'exécuter. Exception limitée à ce conteneur et à migrate, avec nosuid/nodev et une taille bornée.
     tmpfs: ["/tmp:rw,exec,nosuid,nodev,size=128m"]
     networks: [backend, frontend, egress]
     depends_on:

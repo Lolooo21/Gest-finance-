@@ -26,7 +26,7 @@ describe("catégories et budgets", () => {
   it("exige une session et commence vide", async () => {
     expect((await get(app, "/categories")).statusCode).toBe(401);
     const c = await register();
-    expect(await overview(c)).toEqual({ month: month(), categories: [], uncategorizedSpentCents: 0, totals: { availableCents: 0, spentCents: 0 } });
+    expect(await overview(c)).toEqual({ month: month(), scope: "all", categories: [], uncategorizedSpentCents: 0, totals: { availableCents: 0, spentCents: 0 } });
   });
 
   it("valide les catégories : nom obligatoire et unique dans le foyer, plafond positif, mois au bon format", async () => {

@@ -1,7 +1,7 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { get, owner, post, resetDb, sessionCookies, startApp, admin } from "./helpers.js";
+import { get, owner, post, resetDb, sessionCookies, startApp, admin, fieldCipher } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -45,13 +45,13 @@ describe("lecture d'une fiche de paie", () => {
     const c = await register();
     const res = await upload(c, await makePdf(PAYSLIP));
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-09", employer: "ACME Conseil SAS", confidence: 1, warnings: [] });
+    expect(res.json()).toMatchObject({ netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-09", employer: "ACME Conseil SAS", confidence: 1, warnings: [], ocr: false });
     const prisma = admin;
     expect(await prisma.transaction.count()).toBe(0);
     expect(await prisma.payslipImport.count()).toBe(0);
   });
 
-  it("refuse un fichier qui n'est pas un PDF, un PDF corrompu, un scan sans texte et une requête non multipart", async () => {
+  it("refuse un fichier ni PDF ni photo, un PDF corrompu, un PDF sans texte ni page scannée et une requête non multipart", async () => {
     const c = await register();
     expect((await upload(c, Buffer.from("juste du texte"), "text/plain")).statusCode).toBe(400);
     expect((await upload(c, Buffer.from("%PDF-1.4 ceci est corrompu"))).statusCode).toBe(400);
@@ -59,13 +59,13 @@ describe("lecture d'une fiche de paie", () => {
     blank.addPage();
     const scan = await upload(c, Buffer.from(await blank.save()));
     expect(scan.statusCode).toBe(422);
-    expect(scan.json().message).toContain("OCR");
+    expect(scan.json().message).toContain("photo");
     expect((await post(app, "/payslips/parse", { a: 1 }, c)).statusCode).toBe(400);
   });
 
-  it("refuse un fichier de plus de 5 Mo", async () => {
+  it("refuse un fichier de plus de 10 Mo", async () => {
     const c = await register();
-    const big = Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.alloc(5 * 1024 * 1024 + 10)]);
+    const big = Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.alloc(10 * 1024 * 1024 + 10)]);
     expect((await upload(c, big)).statusCode).toBe(413);
   });
 
@@ -99,6 +99,11 @@ describe("validation et enregistrement", () => {
 
     const txs = (await get(app, "/transactions", c)).json();
     expect(txs[0]).toMatchObject({ label: "Salaire 2026-09", amountCents: 228_540, date: "2026-09-30" });
+    // L'employeur et le libellé sont chiffrés en base, même écrits dans une transaction.
+    const stored = await admin.payslipImport.findFirstOrThrow({ include: { transaction: true } });
+    expect(stored.employer).toMatch(/^enc1:/);
+    expect(stored.transaction!.label).toMatch(/^enc1:/);
+    expect(fieldCipher.decryptField(stored.employer!)).toBe("ACME Conseil SAS");
     expect((await get(app, "/summary?from=2026-09-01&to=2026-09-30", c)).json().remainingCents).toBe(228_540);
 
     const audit = JSON.stringify((await get(app, "/household/audit", c)).json());

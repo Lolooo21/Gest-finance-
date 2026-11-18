@@ -1,0 +1,102 @@
+name: Veille de sécurité
+# Chaque lundi, sans attendre un changement de code : les failles publiées depuis la dernière version sont recherchées dans
+# les dépendances (lockfile de main) et dans les images réellement publiées (dernier tag v*), plus PostgreSQL et Tailscale.
+# Résultat : une issue « Veille de sécurité » ouverte ou mise à jour s'il y a quelque chose à corriger, fermée sinon.
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+  # Essai sur la pull request qui modifie la veille elle-même (l'issue n'est alors ni ouverte ni fermée).
+  pull_request:
+    paths: [".github/workflows/veille-securite.yml", "infra/scripts/veille-rapport.sh"]
+permissions:
+  contents: read
+concurrency:
+  group: veille-securite
+  cancel-in-progress: false
+env:
+  TRIVY: aquasec/trivy:0.58.1
+  ISSUE_TITLE: "Veille de sécurité : failles à corriger"
+jobs:
+  veille:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
+      packages: read
+    outputs:
+      failles: ${{ steps.scan.outputs.findings }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Analyser main (la version qui part en production)
+        run: git checkout -q origin/main -- pnpm-lock.yaml infra/docker/compose.prod.yml
+      - name: Dernière version publiée
+        id: version
+        run: |
+          tag="$(git tag --list 'v*' --sort=-v:refname | head -n1)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Dernière version : ${tag:-aucune}"
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Analyse des dépendances et des images
+        id: scan
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          mkdir -p veille
+          trivy() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" -w /src "$TRIVY" "$@"; }
+          trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --format json --output "veille/Dépendances (pnpm-lock.yaml de main).json" --skip-dirs node_modules .
+          images="$(grep -E '^\s+image: (postgres|tailscale)' infra/docker/compose.prod.yml | awk '{print $2}')"
+          if [ -n "$TAG" ]; then
+            for name in api proxy backup; do images="$images ghcr.io/lolooo21/gest-finance-$name:${TAG#v}"; done
+          else
+            echo "Aucun tag v* : les images de l'application ne sont pas encore publiées, seules les dépendances et les images tierces sont analysées."
+          fi
+          for image in $images; do
+            docker pull -q "$image" > /dev/null
+            trivy image --severity HIGH,CRITICAL --ignore-unfixed --format json --output "veille/Image ${image##*/}.json" "$image"
+          done
+          if sh infra/scripts/veille-rapport.sh veille/rapport.md veille/*.json; then echo "findings=0" >> "$GITHUB_OUTPUT"; else echo "findings=1" >> "$GITHUB_OUTPUT"; fi
+          cat veille/rapport.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Ouvrir, mettre à jour ou fermer l'issue de veille
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FINDINGS: ${{ steps.scan.outputs.findings }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create securite --color B60205 --description "Veille et correctifs de sécurité" 2>/dev/null || true
+          number="$(gh issue list --state open --label securite --json number,title --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" | head -n1)"
+          {
+            cat veille/rapport.md
+            echo
+            echo "Détail de l'analyse : $RUN_URL"
+            echo
+            echo "**Que faire ?** Les dépendances npm sont mises à jour par Dependabot (fusion automatique des correctifs si la CI est verte). Une faille d'image qui disparaît en reconstruisant l'image est corrigée par une nouvelle version publiée automatiquement. Sinon : monter la version de l'image de base dans le Dockerfile ou le compose, ou attendre le correctif amont."
+          } > veille/issue.md
+          if [ "$FINDINGS" = "1" ]; then
+            if [ -n "$number" ]; then
+              gh issue edit "$number" --body-file veille/issue.md
+              gh issue comment "$number" --body "Toujours des failles à corriger au $(date -u '+%Y-%m-%d') : $RUN_URL"
+            else
+              gh issue create --title "$ISSUE_TITLE" --label securite --body-file veille/issue.md
+            fi
+          elif [ -n "$number" ]; then
+            gh issue close "$number" --comment "Plus aucune faille haute ou critique corrigeable au $(date -u '+%Y-%m-%d') : $RUN_URL"
+          fi
+
+  # Des failles dans les images publiées disparaissent souvent en reconstruisant (paquets système corrigés) :
+  # la publication automatique compare images publiées et reconstruites, et sort une version si c'est mieux.
+  reconstruction:
+    needs: veille
+    if: needs.veille.outputs.failles == '1' && github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      packages: read
+    uses: ./.github/workflows/publication-auto.yml
+    with:
+      motif: reconstruction
