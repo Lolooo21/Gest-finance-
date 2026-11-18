@@ -1,5 +1,10 @@
 # DONE — réalisé
 
+## Correctif : solde des comptes et solde initial négatif (novembre 2026)
+- `apps/api/src/accounts/accounts.controller.ts` (`GET /accounts`) : le solde ne comptait d'avance **toutes** les opérations, même datées dans le futur (alors que les récurrences s'arrêtaient à aujourd'hui). Désormais `balanceCents` = solde à aujourd'hui (opérations datées ≤ aujourd'hui + occurrences échues, via `accountBalanceAt` de `finance-core`, comme le prévisionnel) et nouveau `endOfMonthCents` = solde prévu au dernier jour du mois.
+- `apps/web/src/pages/Operations.tsx` : solde du jour en gras, « fin du mois : … » dessous quand il diffère ; formulaire de compte avec case **« Découvert »** (le clavier numérique des téléphones n'a pas de « - »), signe moins typographique (−, –) accepté.
+- Tests : `finance.int.test.ts` (opération du jour, de fin de mois et lointaine ; solde initial négatif), `app.test.tsx` (affichage fin de mois, création à découvert = −150,25 €).
+
 ## Jalon 1 — Socle et domaine financier
 ### `packages/finance-core/src/recurrence.ts`
 - `occurrences(rule, from, to)` : renvoie les dates d'une règle récurrente (WEEKLY/MONTHLY/YEARLY) dans [from, to], bornes incluses, en respectant la date de fin. Pour MONTHLY/YEARLY, un jour 31 est ramené au dernier jour des mois plus courts (31 → 28/30).

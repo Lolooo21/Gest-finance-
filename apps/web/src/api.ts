@@ -42,7 +42,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 }
 
 /** `personal` : compte visible par son titulaire seul (sinon compte joint, visible par tout le foyer). */
-export interface Account { id: string; name: string; type: "CHECKING" | "SAVINGS"; balanceCents: number; ibanMasked: string | null; personal?: boolean }
+export interface Account { id: string; name: string; type: "CHECKING" | "SAVINGS"; balanceCents: number; endOfMonthCents: number; ibanMasked: string | null; personal?: boolean }
 export interface Tx { id: string; accountId: string; amountCents: number; date: string; label: string; categoryId: string | null }
 export interface Rule { id: string; accountId: string; label: string; amountCents: number; frequency: "WEEKLY" | "MONTHLY" | "YEARLY"; start: string; end: string | null; categoryId: string | null }
 export type AccountScope = "all" | "joint" | "personal";

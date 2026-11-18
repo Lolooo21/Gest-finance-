@@ -74,7 +74,8 @@ describe("App", () => {
   it("affiche le reste à vivre, masque les montants et envoie une sortie en centimes négatifs", async () => {
     const calls = mockApi((m, u) => {
       if (u === "/household/members") return { json: [] };
-      if (u === "/accounts" && m === "GET") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 100_000, ibanMasked: null }] };
+      if (u === "/accounts" && m === "GET") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 100_000, endOfMonthCents: 20_000, ibanMasked: null }] };
+      if (u === "/accounts" && m === "POST") return { status: 201, json: {} };
       if (u === "/recurring-rules") return { json: [] };
       if (u.startsWith("/transactions") && m === "GET") return { json: [] };
       if (u === "/transactions" && m === "POST") return { status: 201, json: {} };
@@ -95,12 +96,23 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Enregistrer" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/transactions" && c.method === "POST")).toBe(true));
     expect(calls.find((c) => c.url === "/transactions" && c.method === "POST")?.body).toMatchObject({ accountId: "a1", amountCents: -4550, label: "Courses" });
+
+    // Solde d'aujourd'hui et solde prévu en fin de mois ; compte créé à découvert sans saisir de « - » (clavier mobile).
+    await user.click(screen.getByRole("button", { name: /Afficher les montants/ }));
+    expect(screen.getByText(/fin du mois/).textContent?.replace(/\s/g, " ")).toContain("200,00");
+    await user.type(screen.getByLabelText("Nom du compte"), "Joint");
+    await user.type(screen.getByLabelText("Solde initial"), "150,25");
+    expect(screen.getByLabelText("Nom du compte")).toHaveValue("Joint");
+    expect(screen.getByLabelText("Solde initial")).toHaveValue("150,25");
+    await user.click(screen.getByLabelText(/Découvert/));
+    await user.click(screen.getByRole("button", { name: "Ajouter le compte" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/accounts" && c.method === "POST")?.body).toMatchObject({ name: "Joint", initialBalanceCents: -15_025 }));
   });
 
   it("refuse un montant invalide sans appeler l'API", async () => {
     const calls = mockApi((m, u) => {
       if (u === "/household/members") return { json: [] };
-      if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
       if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
       return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
     });
@@ -122,7 +134,7 @@ describe("modification et 2FA", () => {
     const r = extra(m, u, b);
     if (r.json !== undefined || r.status) return r;
     if (u === "/household/members") return { json: [] };
-    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
     if (u === "/recurring-rules") return { json: [] };
     if (u.startsWith("/transactions")) return { json: [{ id: "t1", accountId: "a1", amountCents: -4550, date: "2026-10-05", label: "Courses" }] };
     return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
@@ -238,7 +250,7 @@ describe("import d'une fiche de paie", () => {
   const extraction = { netToPayCents: 228_540, grossCents: 312_050, periodMonth: "2026-09", employer: "ACME Conseil SAS", confidence: 0.9, warnings: ["Salaire brut introuvable."] };
   const payslipApi = (confirm: { status?: number; json?: unknown } = { status: 201, json: { recurringStart: null } }): Handler => (m, u) => {
     if (u === "/household/members") return { json: [] };
-    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
     if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
     if (u === "/reminder") return { json: { enabled: false, weekday: 7, hour: 18, timezone: "Europe/Paris", lastDoneAt: null, due: false, pushConfigured: false, subscribed: false } };
     if (u === "/payslips/parse") return { json: extraction };
@@ -330,7 +342,7 @@ describe("gestion des erreurs et ergonomie", () => {
     const r = extra(m, u, b);
     if (r.json !== undefined || r.status || r.network || r.html) return r;
     if (u === "/household/members") return { json: [] };
-    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
     if (u === "/recurring-rules") return { json: [] };
     if (u.startsWith("/transactions")) return { json: rows.tx };
     if (u === "/reminder") return { json: { enabled: false, weekday: 7, hour: 18, timezone: "Europe/Paris", lastDoneAt: null, due: false, pushConfigured: false, subscribed: false } };
@@ -454,7 +466,7 @@ describe("actualités financières", () => {
     if (u === "/household/members") return { json: [] };
     if (u === "/market") return { json: market };
     if (u === "/savings/products") return { json: products };
-    if (u === "/accounts") return { json: [{ id: "s1", name: "Livret A", type: "SAVINGS", balanceCents: 250_000, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "s1", name: "Livret A", type: "SAVINGS", balanceCents: 250_000, endOfMonthCents: 250_000, ibanMasked: null }] };
     return { json: [] };
   };
   /** Les actualités sont dans l'onglet Plus. */
@@ -683,7 +695,7 @@ describe("objectifs d'épargne", () => {
   const base = (extra: Handler): Handler => (m, u, b) => {
     if (u === "/household/members") return { json: [] };
     if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
-    if (u === "/accounts") return { json: [{ id: "a1", name: "Livret A", type: "SAVINGS", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Livret A", type: "SAVINGS", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
     return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
   };
 
@@ -795,7 +807,7 @@ describe("budgets par catégorie", () => {
   });
   const base = (extra: Handler): Handler => (m, u, b) => {
     if (u === "/household/members") return { json: [] };
-    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
     if (u === "/recurring-rules") return { json: [] };
     if (u.startsWith("/transactions") && m === "GET") return { json: [{ id: "t1", accountId: "a1", amountCents: -2_500, date: "2026-11-03", label: "Marché", categoryId: "k1" }] };
     return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
@@ -916,7 +928,7 @@ describe("import de relevés", () => {
   };
   const base = (extra: Handler): Handler => (m, u, b) => {
     if (u === "/household/members") return { json: [] };
-    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
     if (u === "/recurring-rules" || (u.startsWith("/transactions") && m === "GET")) return { json: [] };
     return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
   };
@@ -989,7 +1001,7 @@ describe("catégorisation automatique", () => {
   };
   const base = (extra: Handler): Handler => (m, u, b) => {
     if (u === "/household/members") return { json: [] };
-    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
     if (u === "/recurring-rules" || (u.startsWith("/transactions") && m === "GET")) return { json: [] };
     if (u === "/categories" && m === "GET") return { json: categories };
     return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
@@ -1191,7 +1203,7 @@ describe("abonnements détectés", () => {
   };
   const base = (extra: Handler): Handler => (m, u, b) => {
     if (u === "/household/members") return { json: [] };
-    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] };
+    if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
     if (u === "/recurring-rules" && m === "GET") return { json: [] };
     if (u.startsWith("/transactions") && m === "GET") return { json: [] };
     return extra(m, u, b) ?? { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
@@ -1491,7 +1503,7 @@ describe("navigation et accueil", () => {
   });
 
   it("indique quand il n'y a rien à faire, et le bouton + ouvre la saisie dans Opérations", async () => {
-    mockApi(base((m, u) => (u === "/accounts" ? { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, ibanMasked: null }] } : (undefined as never))));
+    mockApi(base((m, u) => (u === "/accounts" ? { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] } : (undefined as never))));
     renderApp();
     const user = userEvent.setup();
     expect(await screen.findByText("Rien à faire : tout est à jour.")).toBeInTheDocument();
@@ -1569,8 +1581,8 @@ describe("comptes personnels et joints", () => {
       if (u === "/household/members") return { json: [] };
       if (u === "/household/me") return { json: { id: "u1", email: "a@example.com", displayName: "Sam", role: "ADULT", tutorialDone: true } };
       if (u === "/accounts" && m === "GET") return { json: [
-        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
-        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: true },
       ] };
       if (u === "/accounts" && m === "POST") return { status: 201, json: {} };
       if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
@@ -1597,7 +1609,7 @@ describe("comptes personnels et joints", () => {
     const calls = mockApi((m, u) => {
       if (u === "/household/members") return { json: [] };
       if (u === "/household/me") return { json: { id: "u1", email: "o@example.com", displayName: "Ada", role: "OWNER", tutorialDone: true } };
-      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: false }] };
       if (u === "/accounts/a1" && m === "PATCH") return { json: { ok: true } };
       if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
       return SUMMARY(0);
@@ -1616,8 +1628,8 @@ describe("comptes personnels et joints", () => {
     const calls = mockApi((m, u) => {
       if (u === "/household/members") return { json: [] };
       if (u === "/accounts") return { json: [
-        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
-        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: true },
       ] };
       if (u.startsWith("/summary")) return SUMMARY(u.includes("scope=personal") ? 30_000 : u.includes("scope=joint") ? 120_000 : 150_000);
       if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
@@ -1641,7 +1653,7 @@ describe("comptes personnels et joints", () => {
   it("sans compte personnel, l'accueil n'affiche pas le filtre", async () => {
     mockApi((m, u) => {
       if (u === "/household/members") return { json: [] };
-      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: false }] };
       if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
       return SUMMARY(10_000);
     });
@@ -1656,8 +1668,8 @@ describe("vue partagée par l'accueil, les budgets et le prévisionnel", () => {
     const calls = mockApi((m, u) => {
       if (u === "/household/members") return { json: [] };
       if (u === "/accounts") return { json: [
-        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
-        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: true },
       ] };
       if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
       return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
@@ -1684,7 +1696,7 @@ describe("vue partagée par l'accueil, les budgets et le prévisionnel", () => {
     localStorage.setItem("gest.accountScope", "joint");
     const calls = mockApi((m, u) => {
       if (u === "/household/members") return { json: [] };
-      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null, personal: false }] };
       if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
       return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
     });
