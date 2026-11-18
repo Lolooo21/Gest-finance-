@@ -41,10 +41,12 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
-export interface Account { id: string; name: string; type: "CHECKING" | "SAVINGS"; balanceCents: number; ibanMasked: string | null }
+/** `personal` : compte visible par son titulaire seul (sinon compte joint, visible par tout le foyer). */
+export interface Account { id: string; name: string; type: "CHECKING" | "SAVINGS"; balanceCents: number; ibanMasked: string | null; personal?: boolean }
 export interface Tx { id: string; accountId: string; amountCents: number; date: string; label: string; categoryId: string | null }
 export interface Rule { id: string; accountId: string; label: string; amountCents: number; frequency: "WEEKLY" | "MONTHLY" | "YEARLY"; start: string; end: string | null; categoryId: string | null }
-export interface Summary { from: string; to: string; incomeCents: number; fixedChargesCents: number; oneOffExpensesCents: number; remainingCents: number }
+export type AccountScope = "all" | "joint" | "personal";
+export interface Summary { from: string; to: string; scope?: AccountScope; incomeCents: number; fixedChargesCents: number; oneOffExpensesCents: number; remainingCents: number }
 
 export interface ForecastAccountView { id: string; name: string; type: "CHECKING" | "SAVINGS"; endCents: number; minCents: number; minDate: string; firstNegativeDate: string | null }
 export interface ForecastEventView { date: string; account: string; label: string; amountCents: number }

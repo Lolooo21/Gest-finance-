@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ScopeFilter, scopeParam, useAccountScope } from "../scope";
 import { useState, type FormEvent } from "react";
 import { api, type BudgetStatus, type BudgetsOverview, type CategoryView } from "../api";
 import { centsToInput, parseEuros } from "../money";
@@ -13,7 +14,11 @@ export const BUDGET_STATUS: Record<BudgetStatus, { label: string; className: str
 };
 
 /** Catégories du foyer pour les listes déroulantes (opérations, récurrences). */
-export const useCategories = () => useQuery({ queryKey: ["categories"], queryFn: () => api<BudgetsOverview>("GET", "/categories") });
+/** Catégories et budgets du mois ; les dépenses comptées suivent la vue partagée (tout, joints, mes comptes). */
+export function useCategories() {
+  const [scope] = useAccountScope();
+  return useQuery({ queryKey: ["categories", scope], queryFn: () => api<BudgetsOverview>("GET", `/categories${scopeParam(scope, "?")}`) });
+}
 
 interface Draft { id?: string; name: string; budget: string; rollover: boolean }
 
@@ -110,6 +115,7 @@ export function BudgetsPanel() {
     <section className={cardClass} aria-label="Budgets du mois">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Budgets du mois</h2>
+        <ScopeFilter />
         {q.data && q.data.totals.availableCents > 0 && (
           <p className="text-sm text-slate-600"><Money cents={q.data.totals.spentCents} /> dépensés sur <Money cents={q.data.totals.availableCents} /> budgétés</p>
         )}

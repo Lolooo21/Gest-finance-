@@ -86,6 +86,8 @@ export const AccountDto = z.object({
   type: AccountType,
   initialBalanceCents: z.number().int().min(-2_000_000_000).max(2_000_000_000),
   iban: iban.optional(),
+  /** Compte personnel, visible par son titulaire seul (absent ou false = compte joint, visible par tout le foyer). */
+  personal: z.boolean().optional(),
 });
 export type AccountDto = z.infer<typeof AccountDto>;
 
@@ -112,13 +114,17 @@ export const RecurringRuleDto = z.object({
 });
 export type RecurringRuleDto = z.infer<typeof RecurringRuleDto>;
 
-export const SummaryQuery = z.object({ from: isoDate, to: isoDate }).refine((q) => q.from <= q.to, "from doit précéder to");
+/** Vue du reste à vivre : tous les comptes visibles, les comptes joints seulement ou mes comptes personnels seulement. */
+export const AccountScope = z.enum(["all", "joint", "personal"]);
+export type AccountScope = z.infer<typeof AccountScope>;
+export const SummaryQuery = z.object({ from: isoDate, to: isoDate, scope: AccountScope.default("all") }).refine((q) => q.from <= q.to, "from doit précéder to");
 export type SummaryQuery = z.infer<typeof SummaryQuery>;
 
 /** Horizons du prévisionnel de trésorerie, en jours. */
 export const FORECAST_HORIZONS = [30, 60, 90] as const;
 export const ForecastQuery = z.object({
   days: z.coerce.number().int().refine((d) => (FORECAST_HORIZONS as readonly number[]).includes(d), "Horizon : 30, 60 ou 90 jours").default(30),
+  scope: AccountScope.default("all"),
 });
 export type ForecastQuery = z.infer<typeof ForecastQuery>;
 
@@ -167,7 +173,7 @@ export type CategoryRuleDto = z.infer<typeof CategoryRuleDto>;
 /** Abonnement détecté ou écart de prix à ignorer (clé renvoyée par GET /subscriptions). */
 export const SubscriptionDismissDto = z.object({ key: z.string().min(3).max(300) });
 export type SubscriptionDismissDto = z.infer<typeof SubscriptionDismissDto>;
-export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional() });
+export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional(), scope: AccountScope.default("all") });
 export type BudgetQuery = z.infer<typeof BudgetQuery>;
 
 /** Import de relevés : lignes cochées dans l'aperçu (à créer, ou à rapprocher d'une opération déjà saisie). */

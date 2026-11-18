@@ -31,6 +31,7 @@ export const admin = new PrismaClient({ datasourceUrl: process.env.DATABASE_OWNE
 export async function resetDb(_app?: NestFastifyApplication) {
   await admin.auditLog.deleteMany();
   await admin.refreshToken.deleteMany();
+  await admin.bankAccount.deleteMany();
   await admin.user.deleteMany();
   await admin.household.deleteMany();
 }

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type Account, type CategoryView, type Rule, type Tx } from "../api";
+import { api, ApiError, type Account, type CategoryView, type Member, type Rule, type Tx } from "../api";
 import { centsToInput, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
@@ -26,6 +26,7 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<Account[]>("GET", "/accounts") });
   const txs = useQuery({ queryKey: ["tx"], queryFn: () => api<Tx[]>("GET", "/transactions?limit=50") });
   const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("GET", "/recurring-rules") });
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<Member>("GET", "/household/me") });
   const categories = useCategories();
   const refresh = () => qc.invalidateQueries();
   const failed = [accounts, txs, rules].find((q) => q.isError);
@@ -53,6 +54,13 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
 
   async function askDelete(path: string, what: string, extra: string, done: string) {
     if (await confirm({ title: `Supprimer ${what} ?`, message: `${extra} Cette action est définitive.`, confirmLabel: "Supprimer" })) remove.mutate({ path, done });
+  }
+  /** Partager un compte personnel avec le foyer, ou (propriétaire du foyer) rendre personnel un compte joint. */
+  async function askOwnership(a: Account) {
+    const ok = await confirm(a.personal
+      ? { title: `Partager « ${a.name} » avec le foyer ?`, message: "Tous les membres verront ce compte, son solde, ses opérations et ses récurrences.", confirmLabel: "Partager", tone: "neutral" }
+      : { title: `Rendre « ${a.name} » personnel ?`, message: "Les autres membres ne verront plus ce compte ni ses opérations ; il ne comptera plus dans leur reste à vivre.", confirmLabel: "Rendre personnel", tone: "neutral" });
+    if (ok) patch.mutate({ path: `/accounts/${a.id}`, body: { personal: !a.personal } });
   }
 
   return (
@@ -82,9 +90,15 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
                   onSave={(v) => patch.mutate({ path: `/accounts/${a.id}`, body: { name: v.name } })} />
               ) : (
                 <>
-                  <span>{a.name} <span className="text-xs text-slate-600">{a.type === "SAVINGS" ? "épargne" : "courant"}{a.ibanMasked ? ` · ${a.ibanMasked}` : ""}</span></span>
+                  <span>{a.name} <span className="text-xs text-slate-600">{a.type === "SAVINGS" ? "épargne" : "courant"}{a.ibanMasked ? ` · ${a.ibanMasked}` : ""}</span>{" "}
+                    <OwnershipBadge personal={a.personal} /></span>
                   <span className="flex flex-wrap items-center gap-2">
                     <strong className="tabular-nums"><Money cents={a.balanceCents} /></strong>
+                    {(a.personal || me.data?.role === "OWNER") && (
+                      <Button variant="ghost" onClick={() => void askOwnership(a)} aria-label={a.personal ? `Partager ${a.name} avec le foyer` : `Rendre ${a.name} personnel`}>
+                        {a.personal ? "Partager" : "Rendre personnel"}
+                      </Button>
+                    )}
                     <RowActions label={a.name} onEdit={() => setEditing(a.id)} onDelete={() => askDelete(`/accounts/${a.id}`, `le compte « ${a.name} »`, "Toutes ses opérations et récurrences seront aussi supprimées.", "Compte supprimé.")} />
                   </span>
                 </>
@@ -163,6 +177,13 @@ function RowActions({ label, onEdit, onDelete }: { label: string; onEdit: () => 
   );
 }
 
+/** Pastille « Personnel » / « Joint » d'un compte. */
+function OwnershipBadge({ personal }: { personal?: boolean }) {
+  return personal
+    ? <span className="rounded-full bg-brand-deep px-2 py-0.5 text-xs text-brand-cream">Personnel</span>
+    : <span className="rounded-full bg-brand-sage px-2 py-0.5 text-xs text-brand-deep">Joint</span>;
+}
+
 function AccountForm({ onDone }: { onDone: () => void }) {
   const toast = useToast();
   const [error, setError] = useState("");
@@ -182,7 +203,8 @@ function AccountForm({ onDone }: { onDone: () => void }) {
     if (cents === null) return setError("Le solde initial est invalide. Saisissez un montant comme 1 250,00 (ou -50 pour un solde négatif).");
     setError("");
     const iban = String(f.get("iban") ?? "").trim();
-    create.mutate({ name: f.get("name"), type: f.get("type"), initialBalanceCents: negative ? -cents : cents, ...(iban ? { iban } : {}) }, { onSuccess: () => form.reset() });
+    const personal = f.get("personal") === "on";
+    create.mutate({ name: f.get("name"), type: f.get("type"), initialBalanceCents: negative ? -cents : cents, ...(iban ? { iban } : {}), ...(personal ? { personal } : {}) }, { onSuccess: () => form.reset() });
   }
   return (
     <form onSubmit={submit} className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
@@ -191,6 +213,10 @@ function AccountForm({ onDone }: { onDone: () => void }) {
       <select name="type" aria-label="Type de compte" className={fieldClass}><option value="CHECKING">Compte courant</option><option value="SAVINGS">Épargne</option></select>
       <input name="balance" placeholder="Solde initial (€)" aria-label="Solde initial" inputMode="decimal" className={fieldClass} />
       <input name="iban" placeholder="IBAN (optionnel, chiffré)" aria-label="IBAN" className={fieldClass} autoComplete="off" />
+      <label className="flex min-h-11 items-start gap-2 text-sm sm:col-span-2">
+        <input type="checkbox" name="personal" className="mt-1 h-4 w-4 accent-teal-600" />
+        <span>Compte personnel <span className="text-slate-600">— visible par vous seul ; sinon compte joint, visible par tout le foyer</span></span>
+      </label>
       <Button type="submit" icon="plus" loading={create.isPending} className="sm:col-span-2">Ajouter le compte</Button>
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800 sm:col-span-2">{error}</p>}
     </form>

@@ -95,7 +95,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 /* ---------- Confirmation ---------- */
-interface ConfirmRequest { title: string; message: string; confirmLabel: string; resolve: (ok: boolean) => void }
+/** `tone` : « danger » (suppression, par défaut) ou « neutral » (changement réversible). */
+interface ConfirmRequest { title: string; message: string; confirmLabel: string; tone?: "danger" | "neutral"; resolve: (ok: boolean) => void }
 const ConfirmContext = createContext<(r: Omit<ConfirmRequest, "resolve">) => Promise<boolean>>(async () => false);
 export const useConfirm = () => useContext(ConfirmContext);
 
@@ -120,7 +121,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <p className="mt-2 text-sm text-slate-700">{request.message}</p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => close(false)}>Annuler</Button>
-              <Button variant="danger" icon="trash" onClick={() => close(true)}>{request.confirmLabel}</Button>
+              {request.tone === "neutral"
+                ? <Button icon="check" onClick={() => close(true)}>{request.confirmLabel}</Button>
+                : <Button variant="danger" icon="trash" onClick={() => close(true)}>{request.confirmLabel}</Button>}
             </div>
           </div>
         </div>

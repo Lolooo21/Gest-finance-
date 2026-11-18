@@ -36,7 +36,7 @@ export class CategoriesController {
   /** Catégories avec leurs dépenses et l'état de leur budget pour `month` (mois en cours par défaut). */
   @Get()
   list(@CurrentUser() user: AuthUser, @Query(new ZodPipe(BudgetQuery)) q: BudgetQuery) {
-    return this.categories.budgets(user.householdId, q.month ?? toIso(new Date()).slice(0, 7));
+    return this.categories.budgets(user.householdId, q.month ?? toIso(new Date()).slice(0, 7), { scope: q.scope, userId: user.userId });
   }
 
   /** Règles de catégorisation (saisies et apprises), les plus utilisées d'abord. */
