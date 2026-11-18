@@ -64,6 +64,23 @@ export type ConfirmPasswordDto = z.infer<typeof ConfirmPasswordDto>;
 /** Effacement définitif : mot de passe et mot « SUPPRIMER » tapé en toutes lettres. */
 export const DeleteConfirmDto = ConfirmPasswordDto.extend({ confirm: z.literal("SUPPRIMER", { error: "Tapez SUPPRIMER pour confirmer" }) });
 export type DeleteConfirmDto = z.infer<typeof DeleteConfirmDto>;
+
+/** Réponse d'un appareil à une cérémonie WebAuthn (format JSON de @simplewebauthn) : vérifiée ensuite par le serveur. */
+const webAuthnResponse = z.object({
+  id: z.string().min(1).max(1024),
+  rawId: z.string().min(1).max(1024),
+  type: z.literal("public-key"),
+  response: z.record(z.string(), z.unknown()),
+  clientExtensionResults: z.record(z.string(), z.unknown()).default({}),
+  authenticatorAttachment: z.enum(["platform", "cross-platform"]).optional(),
+});
+export const PasskeyRegisterDto = z.object({
+  response: webAuthnResponse,
+  name: z.string().trim().min(1, "Donnez un nom à cette passkey").max(60),
+});
+export type PasskeyRegisterDto = z.infer<typeof PasskeyRegisterDto>;
+export const PasskeyLoginDto = z.object({ response: webAuthnResponse });
+export type PasskeyLoginDto = z.infer<typeof PasskeyLoginDto>;
 export type MemberPasswordDto = z.infer<typeof MemberPasswordDto>;
 /** Journal d'activité : 50 entrées par page, avant une date ; `security=1` ne garde que l'authentification. */
 export const AuditQuery = z.object({

@@ -44,7 +44,7 @@ export class PrivacyController {
   async export(@CurrentUser() user: AuthUser, @Body(new ZodPipe(ConfirmPasswordDto)) dto: ConfirmPasswordDto) {
     await this.auth.verifyPassword(user.userId, dto.password);
     const where = { householdId: user.householdId };
-    const [household, me, members, accounts, transactions, rules, categories, categoryRules, behaviorGoals, savingsGoals, payslips, dismissals, reminder, audit] = await Promise.all([
+    const [household, me, members, accounts, transactions, rules, categories, categoryRules, behaviorGoals, savingsGoals, payslips, dismissals, reminder, passkeys, audit] = await Promise.all([
       this.prisma.household.findUniqueOrThrow({ where: { id: user.householdId }, select: { name: true, createdAt: true } }),
       this.prisma.user.findUniqueOrThrow({ where: { id: user.userId }, select: { email: true, displayName: true, role: true, totpEnabled: true, createdAt: true } }),
       this.prisma.user.findMany({ where, select: { id: true, displayName: true, email: true, role: true, createdAt: true }, orderBy: { createdAt: "asc" } }),
@@ -58,6 +58,7 @@ export class PrivacyController {
       this.prisma.payslipImport.findMany({ where, orderBy: { periodMonth: "asc" } }),
       this.prisma.subscriptionDismissal.findMany({ where }),
       this.prisma.reminderSetting.findUnique({ where: { userId: user.userId } }),
+      this.prisma.passkey.findMany({ where: { userId: user.userId }, select: { name: true, createdAt: true, lastUsedAt: true }, orderBy: { createdAt: "asc" } }),
       user.role === "OWNER" ? this.prisma.auditLog.findMany({ where, orderBy: { createdAt: "asc" } }) : Promise.resolve(null),
     ]);
     await this.audit.record(user.householdId, user.userId, "privacy.exported");
@@ -84,6 +85,8 @@ export class PrivacyController {
       })),
       payslips: payslips.map((p) => ({ accountId: p.accountId, periodMonth: p.periodMonth, netCents: p.netCents, grossCents: p.grossCents, employer: p.employer, transactionId: p.transactionId })),
       ignoredSubscriptions: dismissals.map((d) => d.key),
+      // Noms et dates seulement : la clé publique n'a aucun intérêt hors de l'application.
+      passkeys: passkeys.map((p) => ({ name: p.name, createdAt: p.createdAt.toISOString(), lastUsedAt: p.lastUsedAt?.toISOString() ?? null })),
       reminder: reminder ? { enabled: reminder.enabled, weekday: reminder.weekday, hour: reminder.hour, timezone: reminder.timezone } : null,
       ...(audit ? { auditLog: audit.map((e) => ({ action: e.action, userId: e.userId, createdAt: e.createdAt.toISOString() })) } : {}),
     };

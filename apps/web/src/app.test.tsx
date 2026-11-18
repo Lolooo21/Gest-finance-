@@ -4,6 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { AppProviders } from "./providers";
 
+// L'appareil (capteur d'empreinte, visage) est simulé : le navigateur de test n'a pas d'API WebAuthn.
+const webauthn = vi.hoisted(() => ({ supported: true, startAuthentication: vi.fn(), startRegistration: vi.fn() }));
+vi.mock("@simplewebauthn/browser", () => ({
+  browserSupportsWebAuthn: () => webauthn.supported,
+  startAuthentication: webauthn.startAuthentication,
+  startRegistration: webauthn.startRegistration,
+}));
+
 type Handler = (method: string, url: string, body: unknown) => { status?: number; json?: unknown; network?: boolean; html?: boolean };
 
 const EMPTY_FORECAST = { from: "2026-10-21", to: "2026-11-20", days: 30, startCents: 0, endCents: 0, incomeCents: 0, expensesCents: 0, points: [{ date: "2026-10-21", totalCents: 0, checkingCents: 0 }], accounts: [], events: [], firstNegativeDate: null, lowestCheckingCents: 0, lowestCheckingDate: null };
@@ -1758,5 +1766,81 @@ describe("mes données (RGPD)", () => {
     await user.click(within(form).getByRole("button", { name: "Retirer définitivement" }));
     await waitFor(() => expect(calls.find((c) => c.url === "/household/members/u2/remove")?.body).toEqual({ password: "mot-de-passe-ada" }));
     expect(screen.queryByRole("button", { name: "Retirer Ada du foyer" })).not.toBeInTheDocument();
+  });
+});
+
+describe("passkeys", () => {
+  afterEach(() => { webauthn.supported = true; webauthn.startAuthentication.mockReset(); webauthn.startRegistration.mockReset(); });
+
+  it("se connecte avec une passkey sans e-mail ni mot de passe", async () => {
+    let logged = false;
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return logged ? { json: [] } : { status: 401 };
+      if (u === "/auth/refresh") return { status: 401 };
+      if (u === "/auth/passkeys/login/options") return { json: { challenge: "defi", rpId: "localhost" } };
+      if (u === "/auth/passkeys/login") { logged = true; return { json: { ok: true } }; }
+      if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    webauthn.startAuthentication.mockResolvedValue({ id: "cred-1", type: "public-key" });
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Se connecter avec une passkey" }));
+    expect(await screen.findByLabelText("Reste à vivre")).toBeInTheDocument();
+    expect(webauthn.startAuthentication).toHaveBeenCalledWith({ optionsJSON: { challenge: "defi", rpId: "localhost" } });
+    expect(calls.find((c) => c.url === "/auth/passkeys/login")?.body).toEqual({ response: { id: "cred-1", type: "public-key" } });
+  });
+
+  it("explique une annulation sur l'appareil, et masque le bouton sans prise en charge", async () => {
+    mockApi((m, u) => {
+      if (u === "/household/members" || u === "/auth/refresh") return { status: 401 };
+      if (u === "/auth/passkeys/login/options") return { json: { challenge: "defi" } };
+      return { json: {} };
+    });
+    webauthn.startAuthentication.mockRejectedValue(Object.assign(new Error("x"), { name: "NotAllowedError" }));
+    const { unmount } = renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Se connecter avec une passkey" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Opération annulée ou délai dépassé");
+    unmount();
+
+    webauthn.supported = false;
+    renderApp();
+    await screen.findByRole("button", { name: "Se connecter" });
+    expect(screen.queryByRole("button", { name: "Se connecter avec une passkey" })).not.toBeInTheDocument();
+  });
+
+  it("ajoute une passkey avec un nom et le mot de passe, liste et supprime", async () => {
+    let list = [{ id: "p1", name: "Ordinateur", createdAt: "2026-11-01T10:00:00Z", lastUsedAt: null }];
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/auth/passkeys" && m === "GET") return { json: list };
+      if (u === "/auth/passkeys/register/options") return { json: { challenge: "defi", rp: { id: "localhost" } } };
+      if (u === "/auth/passkeys/register") { list = [...list, { id: "p2", name: "iPhone de Sam", createdAt: "2026-11-19T10:00:00Z", lastUsedAt: null }]; return { status: 201, json: list[1] }; }
+      if (u === "/auth/passkeys/p1" && m === "DELETE") { list = list.filter((p) => p.id !== "p1"); return { status: 204 }; }
+      if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    webauthn.startRegistration.mockResolvedValue({ id: "cred-2", type: "public-key" });
+    startAt("#plus");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Passkeys/ }));
+    const section = await screen.findByRole("region", { name: "Passkeys" });
+    expect(await within(section).findByText("Ordinateur")).toBeInTheDocument();
+    expect(section).toHaveTextContent("jamais utilisée");
+
+    await user.click(within(section).getByRole("button", { name: "Ajouter une passkey sur cet appareil" }));
+    await user.type(within(section).getByLabelText("Nom de cet appareil"), "iPhone de Sam");
+    await user.type(within(section).getByLabelText("Votre mot de passe"), "mon-mot-de-passe");
+    await user.click(within(section).getByRole("button", { name: "Créer la passkey" }));
+    expect(await within(section).findByText("iPhone de Sam")).toBeInTheDocument();
+    expect(calls.find((c) => c.url === "/auth/passkeys/register/options")?.body).toEqual({ password: "mon-mot-de-passe" });
+    expect(webauthn.startRegistration).toHaveBeenCalledWith({ optionsJSON: { challenge: "defi", rp: { id: "localhost" } } });
+    expect(calls.find((c) => c.url === "/auth/passkeys/register")?.body).toEqual({ response: { id: "cred-2", type: "public-key" }, name: "iPhone de Sam" });
+
+    await user.click(within(section).getByRole("button", { name: "Supprimer la passkey Ordinateur" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }));
+    await waitFor(() => expect(within(section).queryByText("Ordinateur")).not.toBeInTheDocument());
   });
 });

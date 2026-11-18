@@ -261,7 +261,8 @@ export class AuthService {
     await this.audit.record(householdId, userId, lock ? "auth.locked" : "auth.login_failed");
   }
 
-  private async issueSession(user: { id: string; householdId: string; role: "OWNER" | "ADULT" | "CHILD"; sessionVersion: number }): Promise<Session> {
+  /** Ouvre une session (jeton d'accès 15 min + jeton de rafraîchissement à rotation) ; utilisé aussi par la connexion par passkey. */
+  async issueSession(user: { id: string; householdId: string; role: "OWNER" | "ADULT" | "CHILD"; sessionVersion: number }): Promise<Session> {
     const access = await this.jwt.signAsync({ userId: user.id, householdId: user.householdId, role: user.role, sv: user.sessionVersion });
     const refresh = randomBytes(32).toString("base64url");
     await this.system.refreshToken.create({

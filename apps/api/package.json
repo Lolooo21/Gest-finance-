@@ -28,6 +28,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-fastify": "^11.2.7",
     "@prisma/client": "^6.0.0",
+    "@simplewebauthn/server": "13.3.3",
     "@swc-node/register": "^1.12.1",
     "@swc/core": "^1.7.0",
     "argon2": "^0.41.0",

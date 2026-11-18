@@ -9,7 +9,7 @@ import { AuthService, type Session } from "./auth.service.js";
 
 export const cookieBase = { httpOnly: true, sameSite: "strict" as const, secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE !== "0" : process.env.NODE_ENV === "production", path: "/" };
 
-function setSession(res: FastifyReply, s: Session) {
+export function setSession(res: FastifyReply, s: Session) {
   res.setCookie("access", s.access, { ...cookieBase, maxAge: 15 * 60 });
   res.setCookie("refresh", s.refresh, { ...cookieBase, path: "/auth", maxAge: 14 * 86_400 });
 }

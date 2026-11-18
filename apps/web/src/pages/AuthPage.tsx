@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { loginWithPasskey, passkeysSupported } from "../passkeys";
 import { api, ApiError } from "../api";
 import { Button, fieldClass, Icon } from "../ui";
 
@@ -42,6 +43,21 @@ export function AuthPage({ onDone }: { onDone: () => void }) {
   }, []);
 
   const go = (m: Mode) => { setMode(m); setError(""); setNotice(""); };
+
+  // Connexion par passkey : ni e-mail, ni mot de passe, ni code 2FA (l'appareil vérifie l'utilisateur).
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  async function passkeyLogin() {
+    setPasskeyBusy(true);
+    setError("");
+    try {
+      await loginWithPasskey();
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Une erreur est survenue.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -96,6 +112,9 @@ export function AuthPage({ onDone }: { onDone: () => void }) {
         {notice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {!(mode === "forgot" && notice) && <Button type="submit" loading={busy}>{action}</Button>}
+        {mode === "login" && passkeysSupported() && (
+          <Button variant="secondary" icon="shield" loading={passkeyBusy} onClick={() => void passkeyLogin()}>Se connecter avec une passkey</Button>
+        )}
         {mode === "login" && <Button variant="ghost" onClick={() => go("forgot")}>Mot de passe oublié ?</Button>}
         {mode === "login" && !registrationOpen ? (
           <p className="text-center text-xs text-slate-600">Pas encore de compte ? Demandez au propriétaire du foyer de vous ajouter.</p>

@@ -439,6 +439,18 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Documentation
 - `docs/rgpd.md` : contenu de l'export, effets de chaque effacement, rotation des sauvegardes et effacement complet.
 
+## Jalon 20 — Passkeys (WebAuthn)
+### Base et API
+- Migration `passkeys` : table `Passkey` (clé publique, compteur, transports, nom, dates) ; RLS « chacun les siennes » (`userId = app_user()`), `gest_system` en lecture et mise à jour pour la connexion ; suppression en cascade avec l'utilisateur.
+- `auth/passkey.service.ts` (`@simplewebauthn/server` 13.3.3) : options d'ajout (mot de passe redemandé, passkey découvrable, vérification de l'utilisateur exigée, attestation « none », passkeys existantes exclues), vérification et stockage ; options de connexion sans identifiant ; connexion (passkey inconnue → 401, signature invalide → 401 journalisé, compte verrouillé → 403, compteur et date d'usage mis à jour, session ouverte sans 2FA) ; liste et suppression. Défis à usage unique, 5 min, en mémoire ; `relyingParty()` : `APP_URL` en production, sinon l'origine vérifiée par la protection CSRF.
+- `auth/passkey.controller.ts` (`/auth/passkeys`, cookie `webauthn` HttpOnly limité à ce chemin) ; `AuthService.issueSession` public ; routes d'ajout et de connexion au plafond de l'authentification ; noms des passkeys dans l'export RGPD.
+- `packages/shared` : `PasskeyRegisterDto`, `PasskeyLoginDto` (réponse WebAuthn validée).
+- Tests : `passkeys.int.test.ts` (seules les deux vérifications cryptographiques sont simulées) : options et stockage, mot de passe exigé, cérémonie rejouée ou absente, réponse mal formée ou refusée, cloisonnement entre membres, connexion sans 2FA, passkey inconnue, signature invalide, compte verrouillé, export, suppression avec le membre. API : 231 tests.
+### Front
+- `passkeys.ts` (`@simplewebauthn/browser` 13.3.0) : connexion et ajout, messages clairs (annulation, appareil déjà inscrit, https requis).
+- `pages/AuthPage.tsx` : bouton « Se connecter avec une passkey » si le navigateur les gère. `pages/Passkeys.tsx` (Plus → Sécurité → Passkeys, `#plus:passkeys`) : liste, ajout, suppression avec confirmation. Libellés du journal.
+- Tests : 99 (+3 : connexion par passkey, annulation et navigateur sans prise en charge, ajout, liste et suppression).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

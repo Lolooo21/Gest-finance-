@@ -13,6 +13,8 @@ const ACTIONS: Record<string, string> = {
   "auth.login_failed": "Échec de connexion",
   "auth.locked": "Compte verrouillé 15 min après 5 échecs",
   "auth.totp_enabled": "Double authentification activée",
+  "auth.passkey_added": "Passkey ajoutée", "auth.passkey_removed": "Passkey supprimée",
+  "auth.passkey_login": "Connexion par passkey", "auth.passkey_failed": "Passkey refusée",
   "auth.password_changed": "Mot de passe changé",
   "auth.password_reset_requested": "Lien « mot de passe oublié » envoyé",
   "auth.password_reset_not_sent": "Lien « mot de passe oublié » non envoyé (e-mail non configuré ou en échec)",
@@ -39,7 +41,7 @@ const ACTIONS: Record<string, string> = {
   "subscription.price_updated": "Nouveau prix d'abonnement appliqué",
   "reminder.sent": "Rappel hebdomadaire envoyé", "review.done": "Bilan de la semaine fait",
 };
-const ALERTS = new Set(["auth.login_failed", "auth.locked", "auth.refresh_reuse_detected", "auth.password_reset_not_sent"]);
+const ALERTS = new Set(["auth.passkey_failed", "auth.login_failed", "auth.locked", "auth.refresh_reuse_detected", "auth.password_reset_not_sent"]);
 /** « household.member_added:CHILD » → code et détail. */
 const describe = (action: string) => {
   const [code, detail] = action.split(":") as [string, string | undefined];
