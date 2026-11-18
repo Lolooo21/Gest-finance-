@@ -113,9 +113,9 @@ model BankAccount {
   id                  String   @id @default(uuid())
   householdId         String
   household           Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  /// Titulaire d'un compte personnel, visible par lui seul (RLS) ; null = compte joint, visible par tout le foyer
+  /// Titulaire d'un compte personnel, visible par lui seul (RLS) ; null = compte joint. Supprimé avec son titulaire.
   ownerId             String?
-  owner               User?    @relation(fields: [ownerId], references: [id], onDelete: NoAction)
+  owner               User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name                String
   type                AccountType
   initialBalanceCents Int

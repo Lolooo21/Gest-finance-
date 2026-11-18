@@ -1672,3 +1672,91 @@ describe("vue partagée par l'accueil, les budgets et le prévisionnel", () => {
     expect(screen.queryByRole("group", { name: "Comptes pris en compte" })).not.toBeInTheDocument();
   });
 });
+
+describe("mes données (RGPD)", () => {
+  const me = (role: string) => ({ id: "u1", email: "ada@example.com", displayName: "Ada", role, tutorialDone: true });
+  const base = (role: string, extra: Handler): Handler => (m, u, b) => {
+    const r = extra(m, u, b);
+    if (r) return r;
+    if (u === "/household/me") return { json: me(role) };
+    if (u === "/household/members") return { json: [me("OWNER"), { id: "u2", email: "sam@example.com", displayName: "Sam", role: "ADULT" }] };
+    if (u === "/accounts" || u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+    if (u.startsWith("/household/audit")) return { json: { entries: [], next: null } };
+    return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+  };
+
+  it("exporte les données après le mot de passe et propose le fichier au téléchargement", async () => {
+    const createObjectURL = vi.fn(() => "blob:export");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const calls = mockApi(base("ADULT", (m, u, b) => {
+      if (u === "/privacy/export") return (b as { password: string }).password === "bon-mot-de-passe"
+        ? { json: { format: 1, accounts: [] } } : { status: 400, json: { message: "Mot de passe incorrect" } };
+      return undefined as never;
+    }));
+    startAt("#plus");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Exporter ou supprimer mes données/ }));
+    const section = await screen.findByRole("region", { name: "Exporter mes données" });
+    await user.type(within(section).getByLabelText("Votre mot de passe"), "faux");
+    await user.click(within(section).getByRole("button", { name: "Télécharger mes données" }));
+    expect(await within(section).findByRole("alert")).toHaveTextContent("Mot de passe incorrect");
+    expect(click).not.toHaveBeenCalled();
+
+    await user.clear(within(section).getByLabelText("Votre mot de passe"));
+    await user.type(within(section).getByLabelText("Votre mot de passe"), "bon-mot-de-passe");
+    await user.click(within(section).getByRole("button", { name: "Télécharger mes données" }));
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(calls.filter((c) => c.url === "/privacy/export").at(-1)?.body).toEqual({ password: "bon-mot-de-passe" });
+    click.mockRestore();
+  });
+
+  it("un membre supprime son compte en tapant SUPPRIMER, puis revient à la connexion", async () => {
+    let deleted = false;
+    const calls = mockApi(base("ADULT", (m, u) => {
+      if (u === "/privacy/delete-me") { deleted = true; return { status: 204 }; }
+      if (u === "/household/members" && deleted) return { status: 401 };
+      if (u === "/auth/refresh" && deleted) return { status: 401 };
+      return undefined as never;
+    }));
+    startAt("#plus:donnees");
+    renderApp();
+    const user = userEvent.setup();
+    const section = await screen.findByRole("region", { name: "Supprimer mon compte" });
+    await user.type(within(section).getByLabelText("Votre mot de passe"), "mon-mot-de-passe");
+    await user.type(within(section).getByLabelText("Tapez SUPPRIMER pour confirmer"), "supprimer");
+    await user.click(within(section).getByRole("button", { name: "Supprimer définitivement mon compte" }));
+    expect(await within(section).findByRole("alert")).toHaveTextContent("Tapez SUPPRIMER en majuscules");
+    expect(calls.some((c) => c.url === "/privacy/delete-me")).toBe(false);
+
+    await user.clear(within(section).getByLabelText("Tapez SUPPRIMER pour confirmer"));
+    await user.type(within(section).getByLabelText("Tapez SUPPRIMER pour confirmer"), "SUPPRIMER");
+    await user.click(within(section).getByRole("button", { name: "Supprimer définitivement mon compte" }));
+    expect(await screen.findByRole("button", { name: "Se connecter" })).toBeInTheDocument();
+    expect(calls.find((c) => c.url === "/privacy/delete-me")?.body).toEqual({ password: "mon-mot-de-passe", confirm: "SUPPRIMER" });
+  });
+
+  it("le propriétaire voit « Supprimer le foyer » et retire un membre avec son mot de passe", async () => {
+    const calls = mockApi(base("OWNER", (m, u) => {
+      if (u === "/household/members/u2/remove") return { status: 204 };
+      return undefined as never;
+    }));
+    startAt("#plus:donnees");
+    renderApp();
+    const user = userEvent.setup();
+    expect(await screen.findByRole("region", { name: "Supprimer le foyer" })).toHaveTextContent("Tous les membres");
+    expect(screen.getByRole("button", { name: "Supprimer définitivement le foyer" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Retour" }));
+    await user.click(await screen.findByRole("button", { name: /Membres et journal/ }));
+    await user.click(await screen.findByRole("button", { name: "Retirer Sam du foyer" }));
+    const form = screen.getByRole("form", { name: "Retirer Sam du foyer" });
+    expect(form).toHaveTextContent("ses comptes personnels");
+    await user.type(within(form).getByLabelText("Votre mot de passe (confirmation)"), "mot-de-passe-ada");
+    await user.click(within(form).getByRole("button", { name: "Retirer définitivement" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/household/members/u2/remove")?.body).toEqual({ password: "mot-de-passe-ada" }));
+    expect(screen.queryByRole("button", { name: "Retirer Ada du foyer" })).not.toBeInTheDocument();
+  });
+});

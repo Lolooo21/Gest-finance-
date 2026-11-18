@@ -18,7 +18,10 @@ export interface AppOptions {
 }
 
 /** Routes d'authentification exposées à la force brute : plafond dédié, compteur à part. */
-const AUTH_ATTEMPT_ROUTES = ["/auth/login", "/auth/register", "/auth/2fa/enable", "/auth/password/reset", "/auth/password/change"];
+const AUTH_ATTEMPT_ROUTES = [
+  "/auth/login", "/auth/register", "/auth/2fa/enable", "/auth/password/reset", "/auth/password/change",
+  "/privacy/export", "/privacy/delete-me", "/privacy/delete-household",
+];
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**

@@ -137,7 +137,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 | Passkeys WebAuthn (verrouillage biométrique) en plus ou à la place du TOTP | P1 | Intégré à l'auth dès le jalon 2 plutôt qu'en ajout tardif |
 | Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
 | Mode confidentialité (masquer les montants d'un geste) | P1 · **Terminé (jalon 3)** | Purement front, quasi gratuit, stocké par appareil |
-| Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
+| Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 · **Terminé (jalon 19)** ; reste : export CSV des opérations pour un tableur | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
 | Journal d'audit des accès et modifications (consultable par le propriétaire) | P1 · **Terminé (jalon 16)** | Déjà prévu en base ; ajouter une page de consultation |
 
 ### IA locale

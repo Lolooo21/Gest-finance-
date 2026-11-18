@@ -423,6 +423,22 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `scope.tsx` : vue partagée (`useAccountScope`, `ScopeFilter`, `scopeParam`) mémorisée sur l'appareil, ramenée à « Tout » sans compte personnel visible ; filtre affiché sur l'accueil (reste à vivre et solde à 30 jours), les budgets (`useCategories`) et le prévisionnel. `ui.tsx` : confirmation au ton « neutral » (bouton non destructif). `pages/Household.tsx` : libellés du journal.
 - Tests : 93 (+6 : création personnelle et pastilles, rendre personnel par le propriétaire, filtre de l'accueil, filtre absent sans compte personnel, vue partagée entre budgets, prévisionnel et accueil, vue mémorisée ignorée sans compte personnel).
 
+## Jalon 19 — Mes données : export et effacement (RGPD)
+### Base et API
+- Migration `suppression_donnees` : `BankAccount.ownerId` en `ON DELETE CASCADE` (un membre supprimé emporte ses comptes personnels), `GRANT DELETE ON "Household"` à `gest_app` (limité au foyer courant par la RLS).
+- `auth/auth.service.ts` : `verifyPassword(userId, password)` redemande le mot de passe (compte verrouillé → 403, erreur comptée comme un échec de connexion).
+- `privacy/privacy.controller.ts` (`/privacy`) : `POST export` (JSON de toutes les données visibles, IBAN déchiffré, journal pour le propriétaire, aucun secret, `format: 1`, inscrit au journal) ; `POST delete-me` (adulte ou enfant, mot de passe + « SUPPRIMER », cookies effacés ; refusé au propriétaire) ; `POST delete-household` (propriétaire, cascade complète). Routes ajoutées au plafond des routes d'authentification, à `routes.ts` et au Caddyfile.
+- `household/household.controller.ts` : `POST /household/members/:id/remove` (propriétaire, mot de passe ; pas soi-même ; 404 hors foyer).
+- `packages/shared` : `ConfirmPasswordDto`, `DeleteConfirmDto`.
+- Tests : `privacy.int.test.ts` (export complet et sans secret ni compte personnel d'autrui, export d'un membre sans journal, verrouillage, suppression de son compte avec conservation des saisies jointes, refus pour le propriétaire, retrait d'un membre et droits, IDOR entre foyers, suppression du foyer sans toucher aux autres). API : 225 tests.
+### Front
+- `pages/MyData.tsx` (Plus → « Mes données », `#plus:donnees`) : export avec mot de passe et téléchargement du fichier, suppression de son compte ou du foyer (mot de passe + « SUPPRIMER »), avertissement sur les sauvegardes ; retour à la connexion ensuite.
+- `pages/Household.tsx` : bouton « Retirer » par membre avec confirmation par mot de passe ; libellés du journal.
+- `App.tsx` : la déconnexion vide le cache et passe la session à « déconnecté » sans attendre de nouvelle requête.
+- Tests : 96 (+3 : export et téléchargement, suppression de son compte puis connexion, suppression du foyer et retrait d'un membre).
+### Documentation
+- `docs/rgpd.md` : contenu de l'export, effets de chaque effacement, rotation des sauvegardes et effacement complet.
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
