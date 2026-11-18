@@ -86,6 +86,8 @@ export const AccountDto = z.object({
   type: AccountType,
   initialBalanceCents: z.number().int().min(-2_000_000_000).max(2_000_000_000),
   iban: iban.optional(),
+  /** Compte personnel, visible par son titulaire seul (absent ou false = compte joint, visible par tout le foyer). */
+  personal: z.boolean().optional(),
 });
 export type AccountDto = z.infer<typeof AccountDto>;
 
@@ -112,7 +114,10 @@ export const RecurringRuleDto = z.object({
 });
 export type RecurringRuleDto = z.infer<typeof RecurringRuleDto>;
 
-export const SummaryQuery = z.object({ from: isoDate, to: isoDate }).refine((q) => q.from <= q.to, "from doit précéder to");
+/** Vue du reste à vivre : tous les comptes visibles, les comptes joints seulement ou mes comptes personnels seulement. */
+export const AccountScope = z.enum(["all", "joint", "personal"]);
+export type AccountScope = z.infer<typeof AccountScope>;
+export const SummaryQuery = z.object({ from: isoDate, to: isoDate, scope: AccountScope.default("all") }).refine((q) => q.from <= q.to, "from doit précéder to");
 export type SummaryQuery = z.infer<typeof SummaryQuery>;
 
 /** Horizons du prévisionnel de trésorerie, en jours. */

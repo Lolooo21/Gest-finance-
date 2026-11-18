@@ -10,20 +10,21 @@ import { AsyncLocalStorage } from "node:async_hooks";
  *    et les indicateurs de marché. Droits limités aux tables nécessaires.
  */
 
-const households = new AsyncLocalStorage<{ householdId: string }>();
+const households = new AsyncLocalStorage<{ householdId: string; userId?: string }>();
 
 
 /**
  * Exécute `fn` dans le contexte d'un foyer : requête HTTP entière (hook Fastify de app.ts, avec le foyer d'un jeton vérifié), tests, scripts.
+ * `userId` ouvre en plus les comptes personnels de cet utilisateur ; sans lui, seuls les comptes joints sont visibles.
  * `enterWith` depuis une garde Nest ne convient pas : le contexte asynchrone se perd après un `await`.
  */
-export const runInHousehold = <T>(householdId: string, fn: () => T): T => households.run({ householdId }, fn);
+export const runInHousehold = <T>(householdId: string, fn: () => T, userId?: string): T => households.run({ householdId, userId }, fn);
 
 const noHousehold = () => new Error("Accès à la base refusé : aucun foyer dans le contexte de la requête");
 
 export function scopeClient(base: PrismaClient) {
-  const setHousehold = (client: Prisma.TransactionClient | PrismaClient, householdId: string) =>
-    client.$executeRaw`SELECT set_config('app.household_id', ${householdId}, true)`;
+  const setHousehold = (client: Prisma.TransactionClient | PrismaClient, ctx: { householdId: string; userId?: string }) =>
+    client.$executeRaw`SELECT set_config('app.household_id', ${ctx.householdId}, true), set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
   return base.$extends({
     query: {
       $allModels: {
@@ -31,7 +32,7 @@ export function scopeClient(base: PrismaClient) {
           const ctx = households.getStore();
           if (!ctx) throw noHousehold();
           // Lot transactionnel : le foyer n'existe que le temps de la requête (set_config local à la transaction).
-          const [, result] = await base.$transaction([setHousehold(base, ctx.householdId), query(args)]);
+          const [, result] = await base.$transaction([setHousehold(base, ctx), query(args)]);
           return result;
         },
       },
@@ -42,7 +43,7 @@ export function scopeClient(base: PrismaClient) {
         const ctx = households.getStore();
         if (!ctx) return Promise.reject(noHousehold());
         return base.$transaction(async (tx) => {
-          await setHousehold(tx, ctx.householdId);
+          await setHousehold(tx, ctx);
           return fn(tx);
         });
       },

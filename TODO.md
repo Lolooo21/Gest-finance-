@@ -113,7 +113,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### Spécifique à un foyer de 5
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Multi-membres avec rôles, comptes individuels/joints, vues par personne | P1 | Étend le modèle `User`/RLS : rôles OWNER / ADULTE / ENFANT (lecture seule) ; propriété d'un compte = individuel ou joint |
+| Multi-membres avec rôles, comptes individuels/joints, vues par personne | P1 · **Terminé (jalon 18)** ; reste : prévisionnel et budgets filtrés par vue, compte personnel visible aussi d'un second membre choisi | Étend le modèle `User`/RLS : rôles OWNER / ADULTE / ENFANT (lecture seule) ; propriété d'un compte = individuel ou joint |
 | Argent de poche et objectifs des enfants (mode lecture seule) | P2 | Sous-compte virtuel par enfant, versement récurrent, vue simplifiée sans autres données du foyer |
 | Suivi du coût par enfant (cantine, activités, santé) | P3 | Étiquette « bénéficiaire » sur les opérations plutôt qu'un modèle séparé |
 

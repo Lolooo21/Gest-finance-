@@ -410,6 +410,18 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### API
 - `User.tutorialSeenAt` (migration `tutoriel`) ; `GET /household/me` renvoie `tutorialDone` ; `POST /household/me/tutorial`. Tests (API : 208, +1).
 
+## Jalon 18 — Comptes personnels et joints, vue par personne
+### Base et API
+- Migration `comptes_personnels` : `BankAccount.ownerId` (vide = compte joint, sinon titulaire ; clé étrangère `NO ACTION`), fonction `app_user()` ; politiques RLS de `BankAccount` (joint ou titulaire) et de `Transaction`, `RecurringRule`, `PayslipImport` (compte visible), en lecture et en écriture. Comptes existants inchangés (joints).
+- `prisma/prisma.service.ts` : `runInHousehold(householdId, fn, userId?)` fixe aussi `app.user_id` ; `app.ts` le lit dans le jeton vérifié.
+- `accounts/accounts.controller.ts` : `personal` à la création et dans la liste ; `PATCH { personal }` : le titulaire partage son compte, seul le propriétaire du foyer rend personnel un compte joint (403 sinon) ; journal `account.created:personal`, `account.shared`, `account.made_personal`.
+- `summary/summary.controller.ts` : `scope=all|joint|personal` (`SummaryQuery`, `AccountScope` dans `packages/shared`).
+- Tests : `personal-accounts.int.test.ts` (visibilité par membre, opérations et récurrences invisibles, IDOR en écriture → 404, reste à vivre par vue, partage et droits, enfant) et `rls.int.test.ts` (politiques en base, sans utilisateur, création usurpée refusée). API : 215 tests.
+### Front
+- `pages/Operations.tsx` : case « Compte personnel » à la création, pastille `OwnershipBadge` (Joint / Personnel), boutons « Partager » (titulaire) et « Rendre personnel » (propriétaire du foyer) avec confirmation.
+- `pages/Home.tsx` : filtre Tout / Joint / Perso du reste à vivre (affiché dès qu'un compte personnel est visible). `ui.tsx` : confirmation au ton « neutral » (bouton non destructif). `pages/Household.tsx` : libellés du journal.
+- Tests : 91 (+4 : création personnelle et pastilles, rendre personnel par le propriétaire, filtre de l'accueil, filtre absent sans compte personnel).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

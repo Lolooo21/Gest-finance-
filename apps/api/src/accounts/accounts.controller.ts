@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from "@nestjs/common";
 import { occurrences } from "@gest-finance/finance-core";
 import { AccountDto, AccountPatch } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
@@ -20,7 +20,10 @@ export class AccountsController {
     private readonly audit: AuditService,
   ) {}
 
-  /** Renvoie les comptes avec le solde courant (solde initial + opérations) et l'IBAN masqué : l'IBAN complet ne quitte jamais l'API. */
+  /**
+   * Renvoie les comptes visibles (joints et personnels de l'utilisateur, filtrés par la RLS) avec le solde courant
+   * (solde initial + opérations) et l'IBAN masqué : l'IBAN complet ne quitte jamais l'API.
+   */
   @Get()
   async list(@CurrentUser() user: AuthUser) {
     const accounts = await this.prisma.bankAccount.findMany({ where: { householdId: user.householdId }, orderBy: { createdAt: "asc" } });
@@ -39,6 +42,7 @@ export class AccountsController {
       type: a.type,
       balanceCents: a.initialBalanceCents + (byAccount.get(a.id) ?? 0),
       ibanMasked: a.ibanEncrypted ? maskIban(this.crypto.decrypt(a.ibanEncrypted)) : null,
+      personal: a.ownerId !== null,
     }));
   }
 
@@ -48,26 +52,38 @@ export class AccountsController {
     const account = await this.prisma.bankAccount.create({
       data: {
         householdId: user.householdId,
+        ownerId: dto.personal ? user.userId : null,
         name: dto.name,
         type: dto.type,
         initialBalanceCents: dto.initialBalanceCents,
         ibanEncrypted: dto.iban ? this.crypto.encrypt(dto.iban) : null,
       },
     });
-    await this.audit.record(user.householdId, user.userId, "account.created");
-    return { id: account.id, name: account.name, type: account.type, balanceCents: account.initialBalanceCents, ibanMasked: dto.iban ? maskIban(dto.iban) : null };
+    await this.audit.record(user.householdId, user.userId, dto.personal ? "account.created:personal" : "account.created");
+    return {
+      id: account.id, name: account.name, type: account.type, balanceCents: account.initialBalanceCents,
+      ibanMasked: dto.iban ? maskIban(dto.iban) : null, personal: account.ownerId !== null,
+    };
   }
 
   @Patch(":id")
   @Roles("OWNER", "ADULT")
   async update(@CurrentUser() user: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(AccountPatch)) dto: AccountPatch) {
-    const { iban, ...fields } = dto;
+    const { iban, personal, ...fields } = dto;
+    const account = await this.prisma.bankAccount.findFirst({ where: { id, householdId: user.householdId }, select: { ownerId: true } });
+    if (!account) throw new NotFoundException();
+    // Rendre personnel un compte joint le retire à tout le foyer : réservé au propriétaire du foyer.
+    if (personal && account.ownerId === null && user.role !== "OWNER") {
+      throw new ForbiddenException("Seul le propriétaire du foyer peut rendre personnel un compte joint.");
+    }
+    const ownership = personal === undefined || personal === (account.ownerId !== null) ? {} : { ownerId: personal ? user.userId : null };
     const { count } = await this.prisma.bankAccount.updateMany({
       where: { id, householdId: user.householdId },
-      data: { ...fields, ...(iban ? { ibanEncrypted: this.crypto.encrypt(iban) } : {}) },
+      data: { ...fields, ...ownership, ...(iban ? { ibanEncrypted: this.crypto.encrypt(iban) } : {}) },
     });
     if (!count) throw new NotFoundException();
-    await this.audit.record(user.householdId, user.userId, "account.updated");
+    const action = "ownerId" in ownership ? (personal ? "account.made_personal" : "account.shared") : "account.updated";
+    await this.audit.record(user.householdId, user.userId, action);
     return { ok: true };
   }
 

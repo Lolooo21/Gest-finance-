@@ -57,6 +57,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   reminder      ReminderSetting?
   pushSubscriptions PushSubscription[]
+  personalAccounts BankAccount[]
 
   @@index([householdId])
 }
@@ -112,6 +113,9 @@ model BankAccount {
   id                  String   @id @default(uuid())
   householdId         String
   household           Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  /// Titulaire d'un compte personnel, visible par lui seul (RLS) ; null = compte joint, visible par tout le foyer
+  ownerId             String?
+  owner               User?    @relation(fields: [ownerId], references: [id], onDelete: NoAction)
   name                String
   type                AccountType
   initialBalanceCents Int
@@ -124,6 +128,7 @@ model BankAccount {
   savingsGoals        SavingsGoal[]
 
   @@index([householdId])
+  @@index([ownerId])
 }
 
 model Transaction {

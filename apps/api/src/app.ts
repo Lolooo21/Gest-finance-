@@ -50,18 +50,19 @@ export async function createApp(opts: AppOptions = {}): Promise<NestFastifyAppli
   await app.register(helmet, { contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } } });
   await app.register(cookie);
   // Foyer de la requête : lu dans le jeton d'accès (signature vérifiée) et conservé pendant toute la requête.
-  // La RLS PostgreSQL ne montre ensuite que les lignes de ce foyer ; sans jeton valide, aucun accès aux tables du foyer.
+  // La RLS PostgreSQL ne montre ensuite que les lignes de ce foyer, et parmi les comptes les joints et ceux de l'utilisateur ;
+  // sans jeton valide, aucun accès aux tables du foyer.
   // L'authentification et les rôles restent contrôlés par AuthGuard.
   const jwt = app.get(JwtService);
   app.getHttpAdapter().getInstance().addHook("onRequest", (req, _reply, done) => {
     const token = (req as { cookies?: Record<string, string | undefined> }).cookies?.access;
-    let householdId: string | undefined;
+    let claims: { householdId?: string; userId?: string } = {};
     try {
-      householdId = token ? jwt.verify<{ householdId?: string }>(token).householdId : undefined;
+      claims = token ? jwt.verify<{ householdId?: string; userId?: string }>(token) : {};
     } catch {
-      householdId = undefined;
+      claims = {};
     }
-    if (householdId) runInHousehold(householdId, done);
+    if (claims.householdId) runInHousehold(claims.householdId, done, claims.userId);
     else done();
   });
   // CSRF : avant toute autre lecture de la requête (voir csrfRejection).

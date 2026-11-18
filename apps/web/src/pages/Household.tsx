@@ -21,6 +21,7 @@ const ACTIONS: Record<string, string> = {
   "household.member_added": "Membre ajouté",
   "household.member_password_reset": "Mot de passe d'un membre réinitialisé",
   "account.created": "Compte créé", "account.updated": "Compte modifié", "account.deleted": "Compte supprimé",
+  "account.shared": "Compte personnel partagé avec le foyer", "account.made_personal": "Compte joint rendu personnel",
   "transaction.created": "Opération ajoutée", "transaction.updated": "Opération modifiée", "transaction.deleted": "Opération supprimée",
   "recurring_rule.created": "Récurrence ajoutée", "recurring_rule.updated": "Récurrence modifiée", "recurring_rule.deleted": "Récurrence supprimée",
   "statement.previewed": "Relevé analysé", "statement.imported": "Relevé importé",
@@ -39,7 +40,7 @@ const ALERTS = new Set(["auth.login_failed", "auth.locked", "auth.refresh_reuse_
 /** « household.member_added:CHILD » → code et détail. */
 const describe = (action: string) => {
   const [code, detail] = action.split(":") as [string, string | undefined];
-  const role = detail && detail in ROLE_LABEL ? ROLE_LABEL[detail as keyof typeof ROLE_LABEL] : detail;
+  const role = detail === "personal" ? "personnel" : detail && detail in ROLE_LABEL ? ROLE_LABEL[detail as keyof typeof ROLE_LABEL] : detail;
   return { code, label: `${ACTIONS[code] ?? code}${role ? ` (${role})` : ""}` };
 };
 const formatDateTime = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });

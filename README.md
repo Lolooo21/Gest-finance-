@@ -21,6 +21,7 @@ Monorepo pnpm, TypeScript partout.
 erDiagram
     Household ||--o{ User : "membres"
     Household ||--o{ BankAccount : "possède"
+    User |o--o{ BankAccount : "comptes personnels"
     Household ||--o{ Transaction : "possède"
     Household ||--o{ RecurringRule : "possède"
     Household ||--o{ AuditLog : "journal"
@@ -104,6 +105,7 @@ erDiagram
     BankAccount {
         uuid id PK
         uuid householdId FK
+        uuid ownerId FK "null = compte joint"
         string name
         enum type "CHECKING, SAVINGS"
         int initialBalanceCents
@@ -200,7 +202,7 @@ erDiagram
 
 **Lecture du schéma.**
 - Un **foyer** (`Household`) regroupe des **utilisateurs** (`User`, rôles `OWNER`, `ADULT`, `CHILD`) et toutes les données financières. Chaque table de données porte un `householdId` : toutes les requêtes de l'API sont filtrées par le foyer du jeton, jamais par un paramètre envoyé par le client.
-- Un **compte bancaire** (`BankAccount`) porte un solde initial et un IBAN chiffré. Son **solde courant** n'est pas stocké : il est calculé = solde initial + opérations + occurrences de règles récurrentes déjà échues.
+- Un **compte bancaire** (`BankAccount`) est **joint** (`ownerId` vide : visible par tout le foyer) ou **personnel** (`ownerId` = son titulaire : visible par lui seul, y compris pour le propriétaire du foyer). Ses opérations, récurrences et fiches de paie suivent la même visibilité. Un membre titulaire de comptes personnels ne peut pas être supprimé seul (la suppression du foyer emporte tout). Le compte porte un solde initial et un IBAN chiffré. Son **solde courant** n'est pas stocké : il est calculé = solde initial + opérations + occurrences de règles récurrentes déjà échues.
 - Une **opération** (`Transaction`) est ponctuelle, en centimes signés (entrée positive, sortie négative). Si elle vient d'un relevé importé, ou a été rapprochée d'une ligne de relevé, elle garde l'**empreinte** SHA-256 de cette ligne (`importHash`, unique par compte) : un même relevé n'est jamais importé deux fois. L'empreinte part de l'identifiant bancaire (OFX) ou, à défaut, de la date, du montant, du libellé normalisé et du rang parmi les lignes identiques du fichier.
 - Une **règle récurrente** (`RecurringRule`) décrit un salaire, un loyer, un abonnement… (hebdomadaire, mensuel, annuel, avec fin optionnelle). Les occurrences ne sont pas stockées : `finance-core` les génère à la demande.
 - `ReminderSetting` (une ligne par utilisateur) décrit son rappel hebdomadaire : jour, heure, fuseau. Le **créneau** du rappel est le dernier instant où tombent ce jour et cette heure ; le bilan est « dû » si ce créneau est postérieur à l'activation (`since`) et au dernier bilan fait (`lastDoneAt`). `lastReminderAt` garantit une seule notification par créneau.
@@ -220,6 +222,7 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 - **Trois rôles SQL** : `gest` (propriétaire des tables, utilisé **seulement** par les migrations et les tests, jamais par l'API), `gest_app` (requêtes des utilisateurs connectés, **soumis à la RLS**) et `gest_system` (inscription, connexion, journal d'audit, rappels, indicateurs : droits limités aux tables nécessaires, aucun accès aux comptes, opérations, règles ni fiches de paie). Les rôles sont créés par la migration `rls_foyer` ; leurs mots de passe viennent des URL de connexion (`pnpm db:roles`).
 - **Foyer courant** : un hook Fastify lit le foyer dans le jeton vérifié et le garde pour toute la requête ; chaque requête SQL s'exécute dans une transaction qui fixe `app.household_id` (`set_config(..., true)`, local à la transaction). Les politiques `foyer` de chaque table comparent `householdId` à ce réglage. **Sans foyer, l'accès est refusé** (erreur) plutôt que silencieusement vide.
 - **Tables** : `Household`, `User`, `AuditLog`, `BankAccount`, `Transaction`, `RecurringRule`, `PayslipImport`, `BehaviorGoal`, `SavingsGoal`, `SavingsContribution`, `Category`, `CategoryRule`, `SubscriptionDismissal` (par `householdId`) ; `RefreshToken`, `ReminderSetting`, `PushSubscription` (via l'utilisateur). `MarketSnapshot` (public) n'a pas de RLS. Le journal d'audit est en écriture seule pour l'application.
+- **Comptes personnels (jalon 18)** : l'API fixe aussi l'utilisateur du jeton (`app.user_id`, fonction `app_user()`). La politique de `BankAccount` n'ouvre que les comptes joints et ceux de cet utilisateur ; celles de `Transaction`, `RecurringRule` et `PayslipImport` exigent en plus que le compte soit visible. Personne ne peut créer un compte personnel au nom d'un autre ni écrire sur le compte personnel d'un autre, même avec un identifiant deviné.
 - **Garde-fous** : l'API refuse de démarrer si `DATABASE_URL` n'est pas le rôle `gest_app` (ou si ce rôle contourne la RLS) ; en production, `DATABASE_OWNER_URL` ne doit pas exister dans l'API ; un test échoue si une table est ajoutée sans RLS.
 - **Nouvelle table du foyer** : dans sa migration, `ENABLE ROW LEVEL SECURITY`, une politique `foyer`, et les `GRANT` strictement nécessaires aux deux rôles.
 
@@ -234,6 +237,7 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | 2FA | Activation TOTP depuis le tableau de bord ; code exigé à la connexion ensuite |
 | Foyer et rôles | Carte « Administration du foyer » réservée au propriétaire : membres et rôles, ajout d'un membre (adulte ou enfant en lecture seule), nouveau mot de passe pour un membre qui l'a oublié (mot de passe du propriétaire exigé, membre déverrouillé, ses sessions fermées), journal d'activité lisible (qui, quoi, quand ; sans montant ni libellé), paginé, filtre « sécurité uniquement », alertes en rouge ; `OWNER`/`ADULT` écrivent, `CHILD` en lecture seule |
 | Comptes | Création, liste (solde courant, IBAN masqué), modification, suppression ; IBAN chiffré AES-256-GCM |
+| Comptes personnels et joints (jalon 18) | Case « Compte personnel » à la création ; pastille « Joint » ou « Personnel » sur chaque compte ; un compte personnel, ses opérations et récurrences ne sont visibles que par son titulaire (garanti par la RLS) ; « Partager » rend joint son compte personnel ; seul le propriétaire du foyer peut « Rendre personnel » un compte joint (confirmation, inscrit au journal) ; chacun voit son propre reste à vivre (comptes joints + les siens), avec un filtre **Tout / Joint / Perso** sur l'accueil dès qu'il a un compte personnel (`GET /summary?scope=all\|joint\|personal`) |
 | Opérations | Création, liste, modification, suppression ; le compte doit appartenir au foyer |
 | Récurrences | Création, liste, modification (dont fin), suppression ; hebdo, mensuel, annuel |
 | Reste à vivre | Calcul du mois en cours, recalculé après chaque changement |
@@ -256,9 +260,9 @@ Le filtre `householdId` des requêtes est doublé par PostgreSQL lui-même : mê
 | État des sauvegardes | Carte « Sauvegardes » (date de la dernière sauvegarde chiffrée, copie distante, dernière tentative en échec) et alerte en haut du tableau de bord si la sauvegarde de la nuit manque (26 h), si deux nuits manquent (50 h), si la copie distante est absente ou en échec ; état lu sur un volume dédié en lecture seule (`GET /backups/status`), sans accès de l'API aux sauvegardes ; rien n'est affiché hors production |
 | Sécurité HTTP | Helmet (CSP stricte), limitation de débit (429), validation Zod de toutes les entrées, PWA sans cache des appels API |
 | CI/CD et production | Images Docker durcies (API, proxy, sauvegarde), pile `compose.prod.yml` sans port publié, secrets en fichiers, refus de démarrer en production avec une configuration d'exemple, sauvegardes chiffrées (age) + envoi S3 + restauration testée, CI : tests, audit des dépendances, Gitleaks, Semgrep, CodeQL (dépôt public), Trivy, hadolint, build des images avec démarrage de la pile et test de fumée, publication signée sur GHCR (tags `v*`), Dependabot |
-| Tests | `finance-core` (121 tests, ≥ 95 %), API sur PostgreSQL réel (208 tests, dont l'isolation par ligne, les droits des rôles, CSRF, force brute et sessions), front (87 tests) |
+| Tests | `finance-core` (121 tests, ≥ 95 %), API sur PostgreSQL réel (215 tests, dont l'isolation par ligne et par compte personnel, les droits des rôles, CSRF, force brute et sessions), front (91 tests) |
 
-À venir (voir `TODO.md`) : comptes individuels ou joints, export et suppression des données, passkeys, test d'intrusion automatisé (ZAP), OCR des scans.
+À venir (voir `TODO.md`) : export et suppression des données, argent de poche des enfants, passkeys, test d'intrusion automatisé (ZAP), OCR des scans.
 
 ## Démarrage (développement)
 Prérequis : Node 22+, pnpm 10, Docker. Mise en production : [`docs/deploiement.md`](docs/deploiement.md) et le guide pas à pas OVH [`docs/deploiement-ovh.md`](docs/deploiement-ovh.md).

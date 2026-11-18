@@ -173,3 +173,29 @@ describe("droits des rôles", () => {
     expect(owners.map((o) => o.owner)).not.toContain("gest_system");
   });
 });
+
+describe("RLS : comptes personnels en base", () => {
+  it("un compte personnel et ses opérations ne sont visibles que dans le contexte de son titulaire", async () => {
+    const sam = await admin.user.create({ data: { householdId: a, email: "sam@example.com", displayName: "Sam", passwordHash: "x", role: "ADULT" } });
+    const other = await admin.user.findFirstOrThrow({ where: { householdId: a, role: "OWNER" } });
+    const perso = await admin.bankAccount.create({ data: { householdId: a, ownerId: sam.id, name: "Perso Sam", type: "CHECKING", initialBalanceCents: 0 } });
+    await admin.transaction.create({ data: { householdId: a, accountId: perso.id, amountCents: -100, date: new Date("2026-11-10"), label: "secret" } });
+
+    const seen = (userId?: string) =>
+      runInHousehold(a, async () => ({
+        accounts: (await scoped.bankAccount.findMany({ select: { name: true }, orderBy: { name: "asc" } })).map((x) => x.name),
+        transactions: await scoped.transaction.count(),
+      }), userId);
+    expect(await seen(sam.id)).toEqual({ accounts: ["Compte a", "Perso Sam"], transactions: 1 });
+    expect(await seen(other.id)).toEqual({ accounts: ["Compte a"], transactions: 0 });
+    expect(await seen()).toEqual({ accounts: ["Compte a"], transactions: 0 });
+
+    // Écritures : impossible de créer un compte personnel pour un autre, ni d'écrire sur le compte personnel d'un autre.
+    await expect(
+      runInHousehold(a, async () => await scoped.bankAccount.create({ data: { householdId: a, ownerId: sam.id, name: "usurpé", type: "CHECKING", initialBalanceCents: 0 } }), other.id),
+    ).rejects.toThrow();
+    await expect(
+      runInHousehold(a, async () => await scoped.transaction.create({ data: { householdId: a, accountId: perso.id, amountCents: -1, date: new Date("2026-11-10"), label: "intrus" } }), other.id),
+    ).rejects.toThrow();
+  });
+});

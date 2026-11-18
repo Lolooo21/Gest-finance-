@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, type Account, type Forecast, type Reminder, type Summary, type SubscriptionsOverview } from "../api";
+import { useState } from "react";
+import { api, type Account, type AccountScope, type Forecast, type Reminder, type Summary, type SubscriptionsOverview } from "../api";
 import { formatDateFr, monthRange } from "../money";
 import { Money } from "../privacy";
 import { cardClass, Icon } from "../ui";
@@ -10,6 +11,8 @@ import type { Tab } from "./Shell";
 
 interface Todo { key: string; label: string; detail?: string; ariaLabel?: string; tone: "info" | "warning"; onClick: () => void }
 
+const SCOPE_LABEL = { all: "Tout", joint: "Joint", personal: "Perso" } as const;
+
 const BAR = { OK: "bg-brand-green", WARNING: "bg-brand-warning", EXCEEDED: "bg-brand-negative" } as const;
 
 /**
@@ -18,8 +21,14 @@ const BAR = { OK: "bg-brand-green", WARNING: "bg-brand-warning", EXCEEDED: "bg-b
  */
 export function Home({ onGo, reviewOpen, onReview }: { onGo: (tab: Tab) => void; reviewOpen: boolean; onReview: (open: boolean) => void }) {
   const range = monthRange();
-  const summary = useQuery({ queryKey: ["summary", range.from], queryFn: () => api<Summary>("GET", `/summary?from=${range.from}&to=${range.to}`) });
+  const [scope, setScope] = useState<AccountScope>("all");
+  const summary = useQuery({
+    queryKey: ["summary", range.from, scope],
+    queryFn: () => api<Summary>("GET", `/summary?from=${range.from}&to=${range.to}${scope === "all" ? "" : `&scope=${scope}`}`),
+  });
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<Account[]>("GET", "/accounts") });
+  // Le filtre n'a de sens qu'avec au moins un compte personnel parmi les comptes visibles.
+  const hasPersonal = accounts.data?.some((a) => a.personal) ?? false;
   const reminder = useQuery({ queryKey: ["reminder"], queryFn: () => api<Reminder>("GET", "/reminder"), refetchInterval: 5 * 60_000 });
   const subs = useQuery({ queryKey: ["subscriptions"], queryFn: () => api<SubscriptionsOverview>("GET", "/subscriptions") });
   const forecast = useQuery({ queryKey: ["forecast", 30], queryFn: () => api<Forecast>("GET", "/forecast?days=30") });
@@ -54,7 +63,19 @@ export function Home({ onGo, reviewOpen, onReview }: { onGo: (tab: Tab) => void;
       <BackupAlert />
 
       <section aria-label="Reste à vivre" className="space-y-3 rounded-3xl bg-brand-deep p-5 text-brand-cream">
-        <p className="text-sm opacity-90">Reste à vivre ce mois-ci</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm opacity-90">Reste à vivre ce mois-ci{scope === "joint" ? " · comptes joints" : scope === "personal" ? " · mes comptes" : ""}</p>
+          {hasPersonal && (
+            <div role="group" aria-label="Comptes pris en compte" className="flex rounded-full bg-white/15 p-0.5 text-xs">
+              {(["all", "joint", "personal"] as const).map((v) => (
+                <button key={v} type="button" aria-pressed={scope === v} onClick={() => setScope(v)}
+                  className={`min-h-8 rounded-full px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-mint ${scope === v ? "bg-brand-cream font-semibold text-brand-deep" : ""}`}>
+                  {SCOPE_LABEL[v]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <p className="text-4xl font-bold tracking-tight tabular-nums" data-testid="remaining">{s ? <Money cents={s.remainingCents} /> : "…"}</p>
         {s && (
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">

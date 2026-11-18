@@ -1536,3 +1536,93 @@ describe("tutoriel de première connexion", () => {
     expect(calls.some((c) => c.url === "/household/me/tutorial")).toBe(false);
   });
 });
+
+describe("comptes personnels et joints", () => {
+  const SUMMARY = (remaining: number) => ({ json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: remaining } });
+
+  it("crée un compte personnel et affiche les pastilles Joint / Personnel", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/household/me") return { json: { id: "u1", email: "a@example.com", displayName: "Sam", role: "ADULT", tutorialDone: true } };
+      if (u === "/accounts" && m === "GET") return { json: [
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+      ] };
+      if (u === "/accounts" && m === "POST") return { status: 201, json: {} };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return SUMMARY(0);
+    });
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    const list = (await screen.findByRole("heading", { name: "Comptes" })).parentElement!;
+    await waitFor(() => expect(within(list).getByText("Commun")).toBeInTheDocument());
+    expect(within(list).getByText("Joint")).toBeInTheDocument();
+    expect(within(list).getByText("Personnel")).toBeInTheDocument();
+    // Un adulte peut partager son compte personnel, mais pas rendre personnel un compte joint.
+    expect(screen.getByRole("button", { name: "Partager Perso avec le foyer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rendre Commun personnel" })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Nom du compte"), "Mon livret");
+    await user.click(screen.getByRole("checkbox", { name: /Compte personnel/ }));
+    await user.click(screen.getByRole("button", { name: "Ajouter le compte" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/accounts" && c.method === "POST")?.body).toMatchObject({ name: "Mon livret", personal: true }));
+  });
+
+  it("le propriétaire rend personnel un compte joint après confirmation", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/household/me") return { json: { id: "u1", email: "o@example.com", displayName: "Ada", role: "OWNER", tutorialDone: true } };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/accounts/a1" && m === "PATCH") return { json: { ok: true } };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return SUMMARY(0);
+    });
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Rendre Commun personnel" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Les autres membres ne verront plus ce compte");
+    await user.click(within(dialog).getByRole("button", { name: "Rendre personnel" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/accounts/a1" && c.method === "PATCH")?.body).toEqual({ personal: true }));
+  });
+
+  it("l'accueil filtre le reste à vivre : tout, joint ou mes comptes", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+      ] };
+      if (u.startsWith("/summary")) return SUMMARY(u.includes("scope=personal") ? 30_000 : u.includes("scope=joint") ? 120_000 : 150_000);
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return SUMMARY(0);
+    });
+    renderApp();
+    const user = userEvent.setup();
+    const remaining = () => screen.getByTestId("remaining").textContent?.replace(/\s/g, " ");
+    await waitFor(() => expect(remaining()).toContain("1 500,00"));
+    const group = await screen.findByRole("group", { name: "Comptes pris en compte" });
+    expect(within(group).getByRole("button", { name: "Tout" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(within(group).getByRole("button", { name: "Perso" }));
+    await waitFor(() => expect(remaining()).toContain("300,00"));
+    expect(screen.getByText(/mes comptes/)).toBeInTheDocument();
+    await user.click(within(group).getByRole("button", { name: "Joint" }));
+    await waitFor(() => expect(remaining()).toContain("1 200,00"));
+    expect(calls.some((c) => c.url.includes("scope=joint"))).toBe(true);
+  });
+
+  it("sans compte personnel, l'accueil n'affiche pas le filtre", async () => {
+    mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return SUMMARY(10_000);
+    });
+    renderApp();
+    await waitFor(() => expect(screen.getByTestId("remaining").textContent?.replace(/\s/g, " ")).toContain("100,00"));
+    expect(screen.queryByRole("group", { name: "Comptes pris en compte" })).not.toBeInTheDocument();
+  });
+});
