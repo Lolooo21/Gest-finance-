@@ -3,7 +3,7 @@ import { api, type Member, type Reminder } from "../api";
 import { Icon } from "../ui";
 import { useBackupStatus } from "./BackupStatus";
 
-export type MoreView = "bilan" | "news" | "2fa" | "password" | "backups" | "foyer" | "donnees";
+export type MoreView = "bilan" | "news" | "2fa" | "password" | "backups" | "foyer" | "donnees" | "passkeys";
 
 const WEEKDAYS = ["", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
@@ -50,6 +50,7 @@ export function More({ me, onOpen, onTutorial, onLogout }: { me?: Member; onOpen
       </Group>
 
       <Group title="Sécurité">
+        <Row label="Passkeys (connexion sans mot de passe)" onClick={() => onOpen("passkeys")} />
         <Row label="Double authentification" onClick={() => onOpen("2fa")} />
         <Row label="Changer le mot de passe" onClick={() => onOpen("password")} />
         {backup.data?.configured && (

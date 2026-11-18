@@ -58,6 +58,7 @@ model User {
   reminder      ReminderSetting?
   pushSubscriptions PushSubscription[]
   personalAccounts BankAccount[]
+  passkeys      Passkey[]
 
   @@index([householdId])
 }
@@ -75,6 +76,25 @@ model RefreshToken {
 }
 
 /// Lien de réinitialisation du mot de passe : seule l'empreinte SHA-256 est stockée ; usage unique, 30 minutes.
+/// Passkey (WebAuthn) d'un utilisateur : seule la clé publique est stockée ; visible et supprimable par son seul titulaire (RLS).
+model Passkey {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Identifiant de la clé (base64url), fourni par l'appareil
+  credentialId String    @unique
+  publicKey    Bytes
+  /// Compteur de signatures (0 pour les passkeys synchronisées)
+  counter      Int       @default(0)
+  transports   String[]
+  /// Nom choisi par l'utilisateur (« iPhone de Sam »)
+  name         String
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+}
+
 model PasswordResetToken {
   id        String   @id @default(uuid())
   userId    String

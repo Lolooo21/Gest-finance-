@@ -29,7 +29,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Récurrences (expansion des occurrences) | Terminé (jalon 1) |
 | Recalcul du reste à vivre à chaque entrée/sortie (`GET /summary`, recalculé à la lecture ; cache/événements à faire si besoin de perf) | Terminé (jalon 3) |
 | Auth foyer : users, Argon2id, 2FA TOTP, rôles OWNER/ADULT/CHILD | Terminé (jalon 2) |
-| Passkeys WebAuthn | À faire (reporté du jalon 2) |
+| Passkeys WebAuthn | Terminé (jalon 20) ; reste : essai réel sur iPhone, Android et ordinateur après le déploiement en https |
 | Afficher / masquer le mot de passe à la connexion et à l'inscription | Terminé (jalon 12) |
 | Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | Terminé (jalon 12) ; envoi réel à vérifier avec votre SMTP en production |
 | Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | Terminé (jalon 16) |
@@ -134,7 +134,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### Sécurité et confiance
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Passkeys WebAuthn (verrouillage biométrique) en plus ou à la place du TOTP | P1 | Intégré à l'auth dès le jalon 2 plutôt qu'en ajout tardif |
+| Passkeys WebAuthn (verrouillage biométrique) en plus ou à la place du TOTP | P1 · **Terminé (jalon 20)** | Intégré à l'auth dès le jalon 2 plutôt qu'en ajout tardif |
 | Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
 | Mode confidentialité (masquer les montants d'un geste) | P1 · **Terminé (jalon 3)** | Purement front, quasi gratuit, stocké par appareil |
 | Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 · **Terminé (jalon 19)** ; reste : export CSV des opérations pour un tableur | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
