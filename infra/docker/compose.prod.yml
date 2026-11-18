@@ -55,7 +55,8 @@ services:
         node_modules/.bin/prisma migrate deploy && node scripts/setup-roles.mjs && exec node --import @swc-node/register/esm-register scripts/encrypt-fields.ts
     command: []
     secrets: [database_owner_url, database_url, database_system_url, field_encryption_key]
-    tmpfs: ["/tmp"]
+    # Le script de chiffrement est en TypeScript (chargeur SWC) : même /tmp exécutable que l'API (voir le service api).
+    tmpfs: ["/tmp:rw,exec,nosuid,nodev,size=128m"]
     networks: [backend]
     depends_on:
       postgres: { condition: service_healthy }
