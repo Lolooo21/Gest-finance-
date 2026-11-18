@@ -1,10 +1,10 @@
 import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, UseGuards } from "@nestjs/common";
-import { occurrences } from "@gest-finance/finance-core";
+import { accountBalanceAt } from "@gest-finance/finance-core";
 import { AccountDto, AccountPatch } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
-import { toIso } from "../common/dates.js";
+import { toDate, toIso } from "../common/dates.js";
 import { ZodPipe } from "../common/zod.pipe.js";
 import { CryptoService } from "../crypto/crypto.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -21,26 +21,30 @@ export class AccountsController {
   ) {}
 
   /**
-   * Renvoie les comptes visibles (joints et personnels de l'utilisateur, filtrés par la RLS) avec le solde courant
-   * (solde initial + opérations) et l'IBAN masqué : l'IBAN complet ne quitte jamais l'API.
+   * Renvoie les comptes visibles (joints et personnels de l'utilisateur, filtrés par la RLS) avec le solde d'aujourd'hui
+   * (solde initial + opérations datées jusqu'à aujourd'hui + occurrences récurrentes échues), le solde prévu en fin de mois
+   * (mêmes éléments jusqu'au dernier jour du mois) et l'IBAN masqué : l'IBAN complet ne quitte jamais l'API.
    */
   @Get()
   async list(@CurrentUser() user: AuthUser) {
     const accounts = await this.prisma.bankAccount.findMany({ where: { householdId: user.householdId }, orderBy: { createdAt: "asc" } });
-    const sums = await this.prisma.transaction.groupBy({ by: ["accountId"], where: { householdId: user.householdId }, _sum: { amountCents: true } });
-    const byAccount = new Map(sums.map((s) => [s.accountId, s._sum.amountCents ?? 0]));
-    // Les occurrences de règles récurrentes déjà échues (jusqu'à aujourd'hui) comptent dans le solde.
+    // Solde d'aujourd'hui : les opérations datées dans le futur et les occurrences à venir n'y sont PAS ; elles s'ajoutent au solde de fin de mois.
     const today = toIso(new Date());
-    const rules = await this.prisma.recurringRule.findMany({ where: { householdId: user.householdId } });
-    for (const r of rules) {
-      const due = occurrences({ id: r.id, amountCents: r.amountCents, frequency: r.frequency, start: toIso(r.start), ...(r.end ? { end: toIso(r.end) } : {}) }, toIso(r.start), today).length;
-      byAccount.set(r.accountId, (byAccount.get(r.accountId) ?? 0) + due * r.amountCents);
-    }
+    const endOfMonth = toIso(new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)));
+    const sumsUntil = async (date: string) => new Map((await this.prisma.transaction.groupBy({
+      by: ["accountId"], where: { householdId: user.householdId, date: { lte: toDate(date) } }, _sum: { amountCents: true },
+    })).map((s) => [s.accountId, s._sum.amountCents ?? 0]));
+    const [untilToday, untilEndOfMonth] = await Promise.all([sumsUntil(today), sumsUntil(endOfMonth)]);
+    const rules = (await this.prisma.recurringRule.findMany({ where: { householdId: user.householdId } }))
+      .map((r) => ({ id: r.id, accountId: r.accountId, amountCents: r.amountCents, frequency: r.frequency, start: toIso(r.start), ...(r.end ? { end: toIso(r.end) } : {}) }));
+    const balanceAt = (accountId: string, initialCents: number, date: string, sums: Map<string, number>) =>
+      accountBalanceAt(date, initialCents + (sums.get(accountId) ?? 0), rules.filter((r) => r.accountId === accountId), []);
     return accounts.map((a) => ({
       id: a.id,
       name: a.name,
       type: a.type,
-      balanceCents: a.initialBalanceCents + (byAccount.get(a.id) ?? 0),
+      balanceCents: balanceAt(a.id, a.initialBalanceCents, today, untilToday),
+      endOfMonthCents: balanceAt(a.id, a.initialBalanceCents, endOfMonth, untilEndOfMonth),
       ibanMasked: a.ibanEncrypted ? maskIban(this.crypto.decrypt(a.ibanEncrypted)) : null,
       personal: a.ownerId !== null,
     }));
@@ -61,7 +65,7 @@ export class AccountsController {
     });
     await this.audit.record(user.householdId, user.userId, dto.personal ? "account.created:personal" : "account.created");
     return {
-      id: account.id, name: account.name, type: account.type, balanceCents: account.initialBalanceCents,
+      id: account.id, name: account.name, type: account.type, balanceCents: account.initialBalanceCents, endOfMonthCents: account.initialBalanceCents,
       ibanMasked: dto.iban ? maskIban(dto.iban) : null, personal: account.ownerId !== null,
     };
   }

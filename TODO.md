@@ -43,7 +43,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) |
 | Modification d'un compte, d'une opération ou d'une règle (PATCH + édition en ligne) | Terminé (jalon 4) |
 | Interface 2FA (activation TOTP depuis le tableau de bord) | Terminé (jalon 4) ; QR code à faire |
-| Solde des comptes incluant les occurrences récurrentes échues | Terminé (jalon 4) |
+| Solde des comptes incluant les occurrences récurrentes échues | Terminé (jalon 4) ; opérations futures exclues du solde du jour et solde de fin de mois (correctif novembre 2026) |
 | Occurrences récurrentes affichées dans l'historique des opérations | À faire |
 | UI PWA (React/Vite, installable) : connexion, inscription, tableau de bord | Terminé (jalon 3) ; lecture hors-ligne à faire |
 | Mode confidentialité (masquer les montants) | Terminé (jalon 3) |

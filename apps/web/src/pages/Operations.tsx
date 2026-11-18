@@ -93,7 +93,12 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
                   <span>{a.name} <span className="text-xs text-slate-600">{a.type === "SAVINGS" ? "épargne" : "courant"}{a.ibanMasked ? ` · ${a.ibanMasked}` : ""}</span>{" "}
                     <OwnershipBadge personal={a.personal} /></span>
                   <span className="flex flex-wrap items-center gap-2">
-                    <strong className="tabular-nums"><Money cents={a.balanceCents} /></strong>
+                    <span className="text-right">
+                      <strong className="tabular-nums" title="Solde aujourd'hui"><Money cents={a.balanceCents} /></strong>
+                      {a.endOfMonthCents !== a.balanceCents && (
+                        <span className="block text-xs text-slate-600">fin du mois : <span className="tabular-nums"><Money cents={a.endOfMonthCents} /></span></span>
+                      )}
+                    </span>
                     {(a.personal || me.data?.role === "OWNER") && (
                       <Button variant="ghost" onClick={() => void askOwnership(a)} aria-label={a.personal ? `Partager ${a.name} avec le foyer` : `Rendre ${a.name} personnel`}>
                         {a.personal ? "Partager" : "Rendre personnel"}
@@ -197,10 +202,12 @@ function AccountForm({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     const form = e.currentTarget;
     const f = new FormData(form);
-    const balance = String(f.get("balance") ?? "0").trim() || "0";
-    const negative = balance.startsWith("-");
-    const cents = balance === "0" ? 0 : parseEuros(negative ? balance.slice(1) : balance);
-    if (cents === null) return setError("Le solde initial est invalide. Saisissez un montant comme 1 250,00 (ou -50 pour un solde négatif).");
+    // Le signe moins est accepté sous ses deux formes ; la case « découvert » sert sur mobile, où le clavier numérique n'a pas de « - ».
+    const raw = String(f.get("balance") ?? "0").trim().replace(/^[−–]/, "-");
+    const balance = raw.replace(/^-/, "") || "0";
+    const negative = raw.startsWith("-") || f.get("overdrawn") === "on";
+    const cents = balance === "0" ? 0 : parseEuros(balance);
+    if (cents === null) return setError("Le solde initial est invalide. Saisissez un montant comme 1 250,00 (cochez « Découvert » pour un solde négatif).");
     setError("");
     const iban = String(f.get("iban") ?? "").trim();
     const personal = f.get("personal") === "on";
@@ -212,6 +219,10 @@ function AccountForm({ onDone }: { onDone: () => void }) {
       <input name="name" required maxLength={80} placeholder="Nom du compte" aria-label="Nom du compte" className={fieldClass} />
       <select name="type" aria-label="Type de compte" className={fieldClass}><option value="CHECKING">Compte courant</option><option value="SAVINGS">Épargne</option></select>
       <input name="balance" placeholder="Solde initial (€)" aria-label="Solde initial" inputMode="decimal" className={fieldClass} />
+      <label className="flex min-h-11 items-center gap-2 text-sm">
+        <input type="checkbox" name="overdrawn" className="h-4 w-4 accent-teal-600" />
+        <span>Découvert <span className="text-slate-600">— solde initial négatif</span></span>
+      </label>
       <input name="iban" placeholder="IBAN (optionnel, chiffré)" aria-label="IBAN" className={fieldClass} autoComplete="off" />
       <label className="flex min-h-11 items-start gap-2 text-sm sm:col-span-2">
         <input type="checkbox" name="personal" className="mt-1 h-4 w-4 accent-teal-600" />
