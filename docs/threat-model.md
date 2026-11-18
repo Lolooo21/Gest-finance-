@@ -38,6 +38,11 @@
 | Saturation du serveur par des images à lire (OCR, jalon 22) | Une seule lecture à la fois (429 sinon), 60 s au plus puis arrêt du thread, 3 pages au plus par PDF scanné, 10 Mo par fichier, signature vérifiée (PDF, JPEG, PNG), 10 envois par minute et par IP, réservé aux adultes connectés ; Tesseract en WebAssembly (pas de code natif), sans réseau ni écriture disque | Une image piégée visant Tesseract/Leptonica reste confinée au moteur WebAssembly du thread ; mettre à jour `tesseract.js` avec Dependabot |
 | Droits perdus à la restauration d'une sauvegarde | Les `GRANT` et politiques sont inclus dans la sauvegarde ; la restauration crée les rôles manquants ; test automatisé de comparaison des politiques et droits | Mots de passe des rôles à réappliquer (fait par le service de migration) |
 
+## Veille et mises à jour (jalons 23 à 25)
+| Menace | Mesure | Risque résiduel |
+|---|---|---|
+| Faille publiée après la dernière version, sans activité sur le dépôt | Veille hebdomadaire (`veille-securite.yml`) : Trivy sur les dépendances de `main`, sur les images publiées de la dernière version, sur PostgreSQL et Tailscale ; issue d'alerte ouverte, mise à jour ou fermée automatiquement | Jusqu'à une semaine de délai ; failles sans correctif publié seulement signalées |
+
 ## Production : réseau, secrets, sauvegardes (jalon 8a)
 | Menace | Mesure | Risque résiduel |
 |---|---|---|
