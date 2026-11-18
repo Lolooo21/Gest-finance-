@@ -99,6 +99,56 @@ describe("comptes personnels et joints", () => {
     expect(actions).toEqual(expect.arrayContaining(["account.created:personal", "account.shared", "account.made_personal"]));
   });
 
+  it("le prévisionnel se filtre par vue et ne montre jamais le compte personnel d'un autre", async () => {
+    const { o, a } = await household();
+    await account(o, "Joint");
+    const perso = await account(a, "Perso Sam", true);
+    await post(app, "/recurring-rules", { accountId: perso.id, label: "Salle de sport", amountCents: -3_000, frequency: "MONTHLY", start: "2020-01-15" }, { access: a });
+    const forecast = async (access: string, scope?: string) =>
+      (await get(app, `/forecast?days=30${scope ? `&scope=${scope}` : ""}`, { access })).json() as { scope: string; startCents: number; accounts: { name: string }[]; events: { label: string }[] };
+
+    const all = await forecast(a);
+    expect(all.accounts.map((x) => x.name).sort()).toEqual(["Joint", "Perso Sam"]);
+    expect(all.events.some((e) => e.label === "Salle de sport")).toBe(true);
+
+    const joint = await forecast(a, "joint");
+    expect(joint).toMatchObject({ scope: "joint", startCents: 10_000 });
+    expect(joint.accounts.map((x) => x.name)).toEqual(["Joint"]);
+    expect(joint.events.some((e) => e.label === "Salle de sport")).toBe(false);
+
+    const mine = await forecast(a, "personal");
+    expect(mine.accounts.map((x) => x.name)).toEqual(["Perso Sam"]);
+    expect(all.startCents).toBe(joint.startCents + mine.startCents);
+
+    const ownerView = await forecast(o);
+    expect(ownerView.accounts.map((x) => x.name)).toEqual(["Joint"]);
+    expect(JSON.stringify(ownerView)).not.toContain("Salle de sport");
+    expect((await forecast(o, "personal")).accounts).toEqual([]);
+  });
+
+  it("les budgets gardent les plafonds du foyer mais ne comptent que les dépenses de la vue", async () => {
+    const { o, a } = await household();
+    const joint = await account(o, "Joint");
+    const perso = await account(a, "Perso Sam", true);
+    const courses = (await post(app, "/categories", { name: "Courses", monthlyBudgetCents: 50_000 }, { access: o })).json().id as string;
+    const month = new Date().toISOString().slice(0, 7);
+    const day = `${month}-01`;
+    await post(app, "/transactions", { accountId: joint.id, amountCents: -20_000, date: day, label: "Marché", categoryId: courses }, { access: o });
+    await post(app, "/transactions", { accountId: perso.id, amountCents: -5_000, date: day, label: "Épicerie fine", categoryId: courses }, { access: a });
+    const spent = async (access: string, scope?: string) => {
+      const body = (await get(app, `/categories${scope ? `?scope=${scope}` : ""}`, { access })).json() as { scope: string; categories: { name: string; spentCents: number; budget: { limitCents: number } | null }[] };
+      const c = body.categories.find((x) => x.name === "Courses")!;
+      return { scope: body.scope, spent: c.spentCents, limit: c.budget?.limitCents };
+    };
+
+    expect(await spent(a)).toEqual({ scope: "all", spent: 25_000, limit: 50_000 });
+    expect(await spent(a, "joint")).toEqual({ scope: "joint", spent: 20_000, limit: 50_000 });
+    expect(await spent(a, "personal")).toEqual({ scope: "personal", spent: 5_000, limit: 50_000 });
+    // Le propriétaire du foyer ne voit pas la dépense personnelle de Sam.
+    expect(await spent(o)).toEqual({ scope: "all", spent: 20_000, limit: 50_000 });
+    expect((await get(app, "/categories?scope=autre", { access: o })).statusCode).toBe(400);
+  });
+
   it("un enfant ne crée pas de compte, même personnel", async () => {
     const { c } = await household();
     expect((await post(app, "/accounts", { name: "Tirelire", type: "SAVINGS", initialBalanceCents: 0, personal: true }, { access: c })).statusCode).toBe(403);

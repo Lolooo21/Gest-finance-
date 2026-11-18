@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { ScopeFilter, scopeParam, useAccountScope } from "../scope";
 import { useState } from "react";
 import { api, type Forecast } from "../api";
 import { formatCents, formatDateFr } from "../money";
@@ -37,13 +38,15 @@ function Chart({ forecast, hidden }: { forecast: Forecast; hidden: boolean }) {
 export function ForecastPanel() {
   const { hidden } = usePrivacy();
   const [days, setDays] = useState<(typeof HORIZONS)[number]>(30);
-  const q = useQuery({ queryKey: ["forecast", days], queryFn: () => api<Forecast>("GET", `/forecast?days=${days}`) });
+  const [scope] = useAccountScope();
+  const q = useQuery({ queryKey: ["forecast", days, scope], queryFn: () => api<Forecast>("GET", `/forecast?days=${days}${scopeParam(scope, "&")}`) });
   const f = q.data;
   const next = f?.events.slice(0, 5) ?? [];
   return (
     <section className={cardClass} aria-label="Prévisionnel">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Prévisionnel</h2>
+        <ScopeFilter />
         <div role="group" aria-label="Horizon du prévisionnel" className="flex gap-1">
           {HORIZONS.map((d) => (
             <Button key={d} variant={d === days ? "primary" : "secondary"} aria-pressed={d === days} onClick={() => setDays(d)}>{d} jours</Button>

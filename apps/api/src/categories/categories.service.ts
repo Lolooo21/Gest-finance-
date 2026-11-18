@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
+import type { AccountScope } from "@gest-finance/shared";
 import { categorySpent, evaluateBudget, type CategorizedOneOff, type CategorizedRule } from "@gest-finance/finance-core";
 import { toIso } from "../common/dates.js";
+import { accountFilter } from "../common/finance-data.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 /** Catégories et budgets du foyer, partagés par la page des budgets et le bilan de la semaine. */
@@ -15,12 +17,16 @@ export class CategoriesService {
     }
   }
 
-  /** Dépenses du mois par catégorie, état de chaque budget (avec reliquat reporté) et dépenses sans catégorie. */
-  async budgets(householdId: string, month: string) {
+  /**
+   * Dépenses du mois par catégorie, état de chaque budget (avec reliquat reporté) et dépenses sans catégorie.
+   * Les plafonds sont ceux du foyer ; `view` ne compte que les dépenses des comptes joints ou de mes comptes personnels.
+   */
+  async budgets(householdId: string, month: string, view?: { scope: AccountScope; userId: string }) {
+    const byAccount = view ? accountFilter(view.scope, view.userId) : {};
     const [categories, ruleRows, txRows] = await Promise.all([
       this.prisma.category.findMany({ where: { householdId }, orderBy: { name: "asc" } }),
-      this.prisma.recurringRule.findMany({ where: { householdId } }),
-      this.prisma.transaction.findMany({ where: { householdId }, select: { date: true, amountCents: true, categoryId: true } }),
+      this.prisma.recurringRule.findMany({ where: { householdId, ...byAccount } }),
+      this.prisma.transaction.findMany({ where: { householdId, ...byAccount }, select: { date: true, amountCents: true, categoryId: true } }),
     ]);
     const rules: CategorizedRule[] = ruleRows.map((r) => ({
       id: r.id, amountCents: r.amountCents, frequency: r.frequency, start: toIso(r.start), ...(r.end ? { end: toIso(r.end) } : {}), categoryId: r.categoryId,
@@ -41,6 +47,7 @@ export class CategoriesService {
     const budgeted = views.flatMap((v) => (v.budget ? [v.budget] : []));
     return {
       month,
+      scope: view?.scope ?? "all",
       categories: views,
       uncategorizedSpentCents: categorySpent(null, month, rules, oneOffs),
       totals: {

@@ -4,6 +4,7 @@ import { SummaryQuery } from "@gest-finance/shared";
 import { AuthGuard, type AuthUser } from "../common/auth.guard.js";
 import { CurrentUser } from "../common/current-user.js";
 import { toDate, toIso } from "../common/dates.js";
+import { accountFilter } from "../common/finance-data.js";
 import { ZodPipe } from "../common/zod.pipe.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
@@ -18,7 +19,7 @@ export class SummaryController {
    */
   @Get()
   async summary(@CurrentUser() user: AuthUser, @Query(new ZodPipe(SummaryQuery)) q: SummaryQuery) {
-    const account = q.scope === "joint" ? { account: { ownerId: null } } : q.scope === "personal" ? { account: { ownerId: user.userId } } : {};
+    const account = accountFilter(q.scope, user.userId);
     const [ruleRows, transactions] = await Promise.all([
       this.prisma.recurringRule.findMany({ where: { householdId: user.householdId, ...account } }),
       this.prisma.transaction.findMany({ where: { householdId: user.householdId, date: { gte: toDate(q.from), lte: toDate(q.to) }, ...account } }),

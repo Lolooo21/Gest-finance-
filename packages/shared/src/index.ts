@@ -124,6 +124,7 @@ export type SummaryQuery = z.infer<typeof SummaryQuery>;
 export const FORECAST_HORIZONS = [30, 60, 90] as const;
 export const ForecastQuery = z.object({
   days: z.coerce.number().int().refine((d) => (FORECAST_HORIZONS as readonly number[]).includes(d), "Horizon : 30, 60 ou 90 jours").default(30),
+  scope: AccountScope.default("all"),
 });
 export type ForecastQuery = z.infer<typeof ForecastQuery>;
 
@@ -172,7 +173,7 @@ export type CategoryRuleDto = z.infer<typeof CategoryRuleDto>;
 /** Abonnement détecté ou écart de prix à ignorer (clé renvoyée par GET /subscriptions). */
 export const SubscriptionDismissDto = z.object({ key: z.string().min(3).max(300) });
 export type SubscriptionDismissDto = z.infer<typeof SubscriptionDismissDto>;
-export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional() });
+export const BudgetQuery = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "mois AAAA-MM").optional(), scope: AccountScope.default("all") });
 export type BudgetQuery = z.infer<typeof BudgetQuery>;
 
 /** Import de relevés : lignes cochées dans l'aperçu (à créer, ou à rapprocher d'une opération déjà saisie). */

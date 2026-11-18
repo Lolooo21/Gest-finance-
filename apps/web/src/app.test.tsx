@@ -1626,3 +1626,49 @@ describe("comptes personnels et joints", () => {
     expect(screen.queryByRole("group", { name: "Comptes pris en compte" })).not.toBeInTheDocument();
   });
 });
+
+describe("vue partagée par l'accueil, les budgets et le prévisionnel", () => {
+  it("choisir « Perso » dans les budgets filtre aussi le prévisionnel et l'accueil, et reste mémorisé", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [
+        { id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false },
+        { id: "a2", name: "Perso", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: true },
+      ] };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    startAt("#budgets");
+    renderApp();
+    const user = userEvent.setup();
+    const budgets = await screen.findByRole("region", { name: "Budgets du mois" });
+    await user.click(within(await within(budgets).findByRole("group", { name: "Comptes pris en compte" })).getByRole("button", { name: "Perso" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/categories?scope=personal")).toBe(true));
+    expect(localStorage.getItem("gest.accountScope")).toBe("personal");
+
+    await openTab(user, "Opérations");
+    await waitFor(() => expect(calls.some((c) => c.url === "/forecast?days=30&scope=personal")).toBe(true));
+    const forecast = await screen.findByRole("region", { name: "Prévisionnel" });
+    expect(within(await within(forecast).findByRole("group", { name: "Comptes pris en compte" })).getByRole("button", { name: "Perso" })).toHaveAttribute("aria-pressed", "true");
+
+    await openTab(user, "Accueil");
+    await waitFor(() => expect(calls.some((c) => c.url.startsWith("/summary") && c.url.endsWith("&scope=personal"))).toBe(true));
+    expect(screen.getByText(/mes comptes/)).toBeInTheDocument();
+  });
+
+  it("sans compte personnel, une vue mémorisée est ignorée : tout est compté", async () => {
+    localStorage.setItem("gest.accountScope", "joint");
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Commun", type: "CHECKING", balanceCents: 0, ibanMasked: null, personal: false }] };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    startAt("#budgets");
+    renderApp();
+    await screen.findByRole("region", { name: "Budgets du mois" });
+    await waitFor(() => expect(calls.some((c) => c.url === "/categories")).toBe(true));
+    expect(calls.some((c) => c.url.includes("scope="))).toBe(false);
+    expect(screen.queryByRole("group", { name: "Comptes pris en compte" })).not.toBeInTheDocument();
+  });
+});

@@ -16,11 +16,12 @@ export class ForecastController {
   /**
    * Solde projeté à 30, 60 ou 90 jours. Départ : solde à la fin d'aujourd'hui (solde initial + opérations jusqu'à aujourd'hui + occurrences
    * échues) ; ensuite, règles récurrentes à venir et opérations déjà saisies avec une date future. Recalculé à chaque appel.
+   * `scope` restreint aux comptes joints ou à mes comptes personnels.
    */
   @Get()
   async forecast(@CurrentUser() user: AuthUser, @Query(new ZodPipe(ForecastQuery)) q: ForecastQuery) {
     const today = toIso(new Date());
-    const data = await loadHouseholdFinance(this.prisma, user.householdId);
+    const data = await loadHouseholdFinance(this.prisma, user.householdId, { scope: q.scope, userId: user.userId });
     const accounts = data.accounts.map((a) => ({
       id: a.id,
       type: a.type,
@@ -31,6 +32,7 @@ export class ForecastController {
     return {
       ...forecast,
       days: q.days,
+      scope: q.scope,
       accounts: forecast.accounts.map((a) => ({ ...a, name: names.get(a.id)?.name ?? "", type: names.get(a.id)?.type ?? "CHECKING" })),
       events: forecast.events.map((e) => ({ ...e, account: names.get(e.accountId)?.name ?? "" })),
     };
