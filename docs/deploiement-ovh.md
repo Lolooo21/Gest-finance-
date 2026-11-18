@@ -236,15 +236,14 @@ l'écran de connexion, « Mot de passe oublié ? » avec votre adresse ; l'e-mai
 2. *Settings → Actions → General → Workflow permissions* : cochez **« Allow GitHub Actions to create and approve pull requests »**.
    La publication automatique ouvre la PR `develop` → `main`.
 3. *Settings → Notifications* (ou *Watch → Custom → Issues* sur le dépôt) : recevez par e-mail les issues « Veille de sécurité ».
-4. **Première version, à la main** (rien n'est publié automatiquement avant), depuis votre PC, une fois `develop` fusionné dans `main` :
-    ```
-    git checkout main && git pull
-    git tag v0.1.0 && git push origin v0.1.0
-    ```
-    Le workflow « Publication des images » construit, signe et publie les trois images sur GHCR (≈ 10 minutes, onglet *Actions*).
-5. *Profil → Packages* : pour chacun des paquets `gest-finance-api`, `-proxy`, `-backup` → *Package settings* → **Change visibility →
-   Public**. Ils ne contiennent aucun secret, et le serveur peut les télécharger sans identifiant. Sinon, faites sur le serveur
-   `docker login ghcr.io` avec un jeton GitHub limité à `read:packages`.
+4. **Première version** : ✅ déjà faite, **`v0.1.1`** est publiée et signée (le 18 novembre 2026). Pour mémoire, une version se publie
+   depuis votre PC avec `git checkout main && git pull && git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z`. Le workflow
+   « Publication des images » construit, signe et publie alors les trois images sur GHCR (≈ 10 minutes, onglet *Actions*).
+   La `v0.1.0` n'est **pas signée** (défaut de publication corrigé en `v0.1.1`) : ne l'installez pas.
+5. **Accès aux images** : elles sont lisibles sans identifiant (la vérification des signatures fonctionne déjà anonymement). Si un jour
+   `docker compose pull` répond « unauthorized », rendez les paquets publics (*Profil → Packages* → `gest-finance-api`, `-proxy`,
+   `-backup` → *Package settings* → **Change visibility → Public** ; aucun secret dedans) ou faites `docker login ghcr.io` sur le
+   serveur avec un jeton GitHub limité à `read:packages`.
 
 ## Installer Gest-finance
 
@@ -259,11 +258,11 @@ L'installation tient en quelques commandes une fois les comptes prêts ; prévoy
     ```
     Le script demande la clé publique age, la clé Tailscale, le stockage S3 (section « Sauvegardes ») et le SMTP (section « SMTP »). Il ne
     régénère jamais un secret existant.
-3. Complétez `infra/docker/.env` : `MAIL_FROM`, `APP_URL`, et **`GEST_VERSION=0.1.0`** (la version publiée, sans le `v`). Le serveur
+3. Complétez `infra/docker/.env` : `MAIL_FROM`, `APP_URL`, et **`GEST_VERSION=0.1.1`** (la version publiée, sans le `v`). Le serveur
    installe alors les images signées au lieu de les construire.
 4. Placez le dépôt sur la même version, puis démarrez :
     ```
-    git checkout v0.1.0
+    git checkout v0.1.1
     docker compose -f infra/docker/compose.prod.yml --profile prod pull
     docker compose -f infra/docker/compose.prod.yml --profile prod up -d
     docker compose -f infra/docker/compose.prod.yml ps
@@ -278,7 +277,7 @@ L'installation tient en quelques commandes une fois les comptes prêts ; prévoy
     Comptes rendus sur votre téléphone (facultatif, recommandé) : installez l'application **ntfy**, abonnez-vous à un sujet au nom long
     et imprévisible (ex. `gest-finance-7f3k9q2m…`), puis créez `infra/deploy/auto-update.env` contenant
     `NOTIFY_URL=https://ntfy.sh/<ce-sujet>`. Essai : `sudo systemctl start gest-finance-maj.service`, puis
-    `journalctl -u gest-finance-maj.service` doit afficher « Déjà à jour (0.1.0) ».
+    `journalctl -u gest-finance-maj.service` doit afficher « Déjà à jour (0.1.1) » (ou installer une version plus récente si elle existe).
 7. **Sauvegardez le dossier `secrets/`** dans votre gestionnaire de mots de passe, surtout `field_encryption_key` (chiffre les IBAN, les libellés des opérations, les employeurs et les notes) et
    `jwt_secret` : sans eux, une sauvegarde restaurée sur un nouveau serveur serait en partie illisible.
 
@@ -309,6 +308,9 @@ stockage S3. **Une sauvegarde jamais restaurée n'est pas une sauvegarde** : tes
 3. fait une sauvegarde chiffrée et une copie locale de la base ;
 4. installe la version et vérifie que l'application répond ;
 5. en cas d'échec, **revient seul à la version précédente**, base comprise si une migration avait été appliquée.
+
+Après une mise à jour réussie, les images des versions plus anciennes sont supprimées : seules la version installée et la précédente
+restent, ce qui suffit largement aux 40 Go du VPS.
 
 Vous recevez un compte rendu (ntfy) dans tous les cas où quelque chose a changé.
 
@@ -348,12 +350,12 @@ Ou simplement `AUTO_MAJOR=1 sh infra/deploy/auto-update.sh` : sauvegarde, contr�
 - [ ] Version de `main` contenant le jalon 25 (mises à jour automatiques)
 - [ ] Double authentification active sur OVHcloud, Tailscale (ou son fournisseur d'identité), Brevo, GitHub (clé de sécurité de préférence)
 - [ ] GitHub : « Allow GitHub Actions to create and approve pull requests » coché, notifications des issues activées
-- [ ] Première version `v0.1.0` publiée (images signées visibles dans *Packages*), paquets publics ou `docker login ghcr.io` sur le serveur
+- [x] Première version signée publiée : `v0.1.1`
 - [ ] VPS commandé en France, SSH par clé uniquement, `ufw` actif, mises à jour automatiques
 - [ ] Tailscale sur le VPS et vos appareils ; SSH fermé côté Internet
 - [ ] Domaine avec SPF, DKIM et DMARC ; aucun enregistrement A vers le VPS
 - [ ] Portainer accessible seulement via `https://vps-ovh.<réseau>.ts.net`, administrateur créé
-- [ ] `GEST_VERSION=0.1.0` dans `infra/docker/.env`, dépôt sur `v0.1.0`, pile démarrée, tous les conteneurs *healthy*
+- [ ] `GEST_VERSION=0.1.1` (ou plus récente) dans `infra/docker/.env`, dépôt sur le tag correspondant, pile démarrée, tous les conteneurs *healthy*
 - [ ] Mise à jour automatique installée (`systemctl list-timers gest-finance-maj.timer`), premier passage « Déjà à jour », notification ntfy reçue
 - [ ] Foyer créé, double authentification activée dans l'application, membres ajoutés
 - [ ] E-mail « mot de passe oublié » reçu (et pas dans les indésirables)

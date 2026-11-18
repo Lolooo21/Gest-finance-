@@ -5,7 +5,8 @@
 #
 # Étapes : dernière version du même numéro majeur → signature des images vérifiée (cosign, identité du workflow de publication)
 # → sauvegarde chiffrée + copie locale temporaire de la base → bascule (fichiers du tag, images, migrations) → contrôle de santé
-# → succès, ou retour à la version précédente (et à la base d'avant si une migration a été appliquée) → notification.
+# → succès (anciennes images de l'application supprimées, la précédente gardée pour un retour arrière manuel), ou retour à la
+# version précédente (et à la base d'avant si une migration a été appliquée) → notification.
 #
 # Réglages (fichier infra/deploy/auto-update.env, facultatif) :
 #   NOTIFY_URL       adresse qui reçoit le compte rendu en POST (ex. https://ntfy.sh/<sujet-secret>) ; vide = journal seulement
@@ -125,8 +126,23 @@ deploy() { # version
 
 # 6. Bascule.
 [ "${AUTO_UPDATE_SKIP_GIT:-0}" = "1" ] || git -c advice.detachedHead=false checkout -q "v$TARGET"
+# Supprime les images de l'application des versions ANTÉRIEURES à la précédente : le disque ne se remplit pas au fil des versions,
+# la version installée et la précédente (retour arrière manuel) restent, une version plus récente déjà téléchargée aussi.
+# Seuls les tags de version (X.Y.Z) sont concernés ; les images tierces (PostgreSQL, Tailscale) ne sont pas touchées.
+prune_images() { # version précédente
+  for name in $IMAGES; do
+    docker image ls "ghcr.io/lolooo21/gest-finance-$name" --format '{{.Tag}}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | while read -r tag; do
+      if [ "$tag" != "$1" ] && [ "$(printf '%s\n%s\n' "$tag" "$1" | sort -V | head -n1)" = "$tag" ]; then
+        docker image rm "ghcr.io/lolooo21/gest-finance-$name:$tag" > /dev/null 2>&1 || true
+      fi
+    done
+  done
+  docker image prune -f > /dev/null 2>&1 || true
+}
+
 if deploy "$TARGET"; then
   rm -f "$DUMP"
+  prune_images "$CURRENT"
   notify "version $TARGET installée" "Mise à jour $CURRENT → $TARGET réussie (sauvegarde faite avant, contrôle de santé vert)."
   exit 0
 fi

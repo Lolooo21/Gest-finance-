@@ -127,7 +127,8 @@ Sans intervention de votre part :
   `develop` → `main`).
 - Si vous protégez `main` ou `develop` (*Branches*), n'exigez pas de relecture humaine pour ces fusions, sinon la publication automatique
   s'arrêtera en attendant votre validation (ce qui reste un choix possible).
-- La **première version** (`git tag v0.1.0 && git push origin v0.1.0`) se fait à la main : rien n'est publié automatiquement avant.
+- La **première version** se fait à la main (`git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z`) : rien n'est publié automatiquement
+  avant. C'est fait : `v0.1.1` est publiée et signée (`v0.1.0`, non signée, ne doit pas être installée).
 
 À savoir : la publication emporte tout ce qui est sur `develop` (fonctionnalités déjà fusionnées et testées comprises).
 
@@ -138,11 +139,12 @@ votre serveur. Le script `infra/deploy/auto-update.sh` :
 2. **vérifie la signature** des trois images (cosign : publiées par `release.yml` de ce dépôt, sur un tag) ; sinon, rien ne change ;
 3. télécharge les images, puis fait une **sauvegarde chiffrée** et une copie locale temporaire de la base (droits 700) ;
 4. bascule (fichiers du tag, images, migrations) et attend le **contrôle de santé** (migrations réussies, API et proxy « healthy ») ;
-5. en cas d'échec : **retour à la version précédente**, avec la base d'avant si une migration a été appliquée ;
+5. en cas d'échec : **retour à la version précédente**, avec la base d'avant si une migration a été appliquée ; en cas de succès,
+   suppression des images plus anciennes que la version précédente ;
 6. vous envoie un **compte rendu** si `NOTIFY_URL` est renseigné.
 
 Prérequis :
-- l'application tourne depuis les **images publiées** : `GEST_VERSION=0.1.0` (par exemple) dans `infra/docker/.env`, sans `--build`.
+- l'application tourne depuis les **images publiées** : `GEST_VERSION=0.1.1` (par exemple) dans `infra/docker/.env`, sans `--build`.
   Avec `GEST_VERSION=local`, le script ne fait rien ;
 - si les images GHCR sont privées : `docker login ghcr.io` une fois, avec un jeton GitHub limité à `read:packages`. Plus simple : rendez
   les paquets publics dans GitHub (Packages → Package settings), ils ne contiennent aucun secret ;
