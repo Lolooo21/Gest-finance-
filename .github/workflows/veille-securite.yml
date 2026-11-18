@@ -6,6 +6,9 @@ on:
   schedule:
     - cron: "23 5 * * 1"
   workflow_dispatch:
+  # Essai sur la pull request qui modifie la veille elle-même (l'issue n'est alors ni ouverte ni fermée).
+  pull_request:
+    paths: [".github/workflows/veille-securite.yml", "infra/scripts/veille-rapport.sh"]
 permissions:
   contents: read
 concurrency:
@@ -24,7 +27,9 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v4
-        with: { ref: main, fetch-depth: 0 }
+        with: { fetch-depth: 0 }
+      - name: Analyser main (la version qui part en production)
+        run: git checkout -q origin/main -- pnpm-lock.yaml infra/docker/compose.prod.yml
       - name: Dernière version publiée
         id: version
         run: |
@@ -54,6 +59,7 @@ jobs:
           if sh infra/scripts/veille-rapport.sh veille/rapport.md veille/*.json; then echo "findings=0" >> "$GITHUB_OUTPUT"; else echo "findings=1" >> "$GITHUB_OUTPUT"; fi
           cat veille/rapport.md >> "$GITHUB_STEP_SUMMARY"
       - name: Ouvrir, mettre à jour ou fermer l'issue de veille
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FINDINGS: ${{ steps.scan.outputs.findings }}
