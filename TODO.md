@@ -18,7 +18,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Publication des images GHCR signées (tags `v*`) | Terminé (jalon 8a), non exécutée |
 | Circuit Git : branche `develop`, workflows déclenchés sur develop/main/PR | Terminé |
 | GitHub : définir `develop` par défaut et protéger `develop`/`main` (PR obligatoire, contrôles requis) | À faire (réglage utilisateur) |
-| CD : déploiement automatique via Tailscale, rollback | À faire |
+| CD : déploiement automatique via Tailscale, rollback | Terminé autrement (jalon 25) : le VPS tire les versions signées chaque nuit, sans accès de GitHub au serveur ; sauvegarde, contrôle de santé et retour arrière testés par la CI ; reste : premier essai réel sur le VPS |
 | Veille de sécurité planifiée (dépendances et images publiées, issue d'alerte) | Terminé (jalon 23) ; à confirmer au premier lundi après fusion (ou lancement manuel) |
 | Mises à jour de sécurité automatiques (fusion Dependabot, publication si failles corrigées) | Terminé (jalon 24) ; à confirmer à la première pull request Dependabot après fusion ; réglage GitHub « Allow GitHub Actions to create and approve pull requests » à cocher |
 | Production : désactiver l'inscription publique une fois le foyer créé | Terminé (jalon 14) |
