@@ -60,9 +60,11 @@ ACCOUNT="$(curl -s -m 10 -b "$JAR" -H 'Content-Type: application/json' -X POST "
 echo "$ACCOUNT" | grep -q '"ibanMasked":"FR76' && ok "compte créé, IBAN masqué" || fail "création de compte : $ACCOUNT"
 echo "$ACCOUNT" | grep -q '1234567890' && fail "l'IBAN complet est exposé" || ok "IBAN complet jamais renvoyé"
 curl -s -m 10 -b "$JAR" "$BASE/summary?from=2026-10-01&to=2026-10-31" | grep -q '"remainingCents"' && ok "reste à vivre calculé" || fail "résumé indisponible"
-ACCOUNT_ID="$(echo "$ACCOUNT" | sed -n 's/.*"id":"\([^"]*\)".*//p')"
-curl -s -m 10 -b "$JAR" -H 'Content-Type: application/json' -X POST "$BASE/transactions"   -d "{\"accountId\":\"$ACCOUNT_ID\",\"amountCents\":-1250,\"date\":\"2026-10-05\",\"label\":\"Libelle de fumee\"}" > /dev/null
-curl -s -m 10 -b "$JAR" "$BASE/transactions" | grep -q '"label":"Libelle de fumee"' && ok "libellé chiffré en base, relu en clair" || fail "libellé illisible (chiffrement des champs)"
+ACCOUNT_ID="$(echo "$ACCOUNT" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
+curl -s -m 10 -b "$JAR" -H 'Content-Type: application/json' -X POST "$BASE/transactions" \
+  -d "{\"accountId\":\"$ACCOUNT_ID\",\"amountCents\":-1250,\"date\":\"2026-10-05\",\"label\":\"Libelle de fumee\"}" > /dev/null
+TXS="$(curl -s -m 10 -b "$JAR" "$BASE/transactions")"
+echo "$TXS" | grep -q '"label":"Libelle de fumee"' && ok "libellé chiffré en base, relu en clair" || fail "libellé illisible (chiffrement des champs) : compte « $ACCOUNT_ID », opérations $TXS"
 # OCR dans l'image (système de fichiers en lecture seule) : fiche de paie SYNTHÉTIQUE, aucune donnée réelle.
 OCR="$(curl -s -m 90 -b "$JAR" -F "file=@$ROOT/apps/api/test/fixtures/fiche-paie-synthetique.png;type=image/png" "$BASE/payslips/parse")"
 echo "$OCR" | grep -q '"netToPayCents":228540' && ok "photo de fiche de paie lue par OCR" || fail "OCR : $OCR"
