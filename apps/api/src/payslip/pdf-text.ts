@@ -34,11 +34,14 @@ export function rebuildLines(items: Pick<TextItem, "str" | "transform" | "width"
 
 export const looksLikePdf = (buf: Uint8Array) => buf.length > 5 && String.fromCharCode(...buf.subarray(0, 5)) === "%PDF-";
 
+/** Assez de texte pour une lecture : sinon, le PDF est un scan (des images de pages) et passe par l'OCR. */
+export const hasUsableText = (text: string) => text.replace(/\s/g, "").length >= MIN_TEXT;
+
 /**
- * Extrait le texte d'un PDF numérique, en mémoire. Aucun script ni police système n'est exécuté ou chargé,
+ * Texte d'un PDF, en mémoire, éventuellement vide (scan). Aucun script ni police système n'est exécuté ou chargé,
  * seules les premières pages sont lues, et le texte extrait n'est jamais journalisé.
  */
-export async function extractPdfText(data: Uint8Array): Promise<string> {
+export async function readPdfText(data: Uint8Array): Promise<string> {
   if (!looksLikePdf(data)) throw new BadRequestException("Le fichier n'est pas un PDF");
   let text = "";
   try {
@@ -53,8 +56,12 @@ export async function extractPdfText(data: Uint8Array): Promise<string> {
   } catch {
     throw new BadRequestException("PDF illisible ou corrompu");
   }
-  if (text.replace(/\s/g, "").length < MIN_TEXT) {
-    throw new UnprocessableEntityException("Aucun texte exploitable : ce PDF est probablement un scan. La lecture des scans (OCR) n'est pas encore disponible.");
-  }
+  return text;
+}
+
+/** Texte d'un PDF numérique (diagnostic `pnpm payslip:debug`) ; un scan est refusé. */
+export async function extractPdfText(data: Uint8Array): Promise<string> {
+  const text = await readPdfText(data);
+  if (!hasUsableText(text)) throw new UnprocessableEntityException("Aucun texte exploitable : ce PDF est probablement un scan.");
   return text;
 }

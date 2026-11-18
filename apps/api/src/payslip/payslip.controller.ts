@@ -1,5 +1,5 @@
 import "@fastify/multipart";
-import { BadRequestException, Body, ConflictException, Controller, HttpCode, NotFoundException, PayloadTooLargeException, Post, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, ConflictException, Controller, HttpCode, NotFoundException, PayloadTooLargeException, Post, Req, UnprocessableEntityException, UseGuards } from "@nestjs/common";
 import { parsePayslip } from "@gest-finance/finance-core";
 import { PayslipConfirmDto } from "@gest-finance/shared";
 import type { FastifyRequest } from "fastify";
@@ -9,9 +9,12 @@ import { CurrentUser } from "../common/current-user.js";
 import { toDate, toIso } from "../common/dates.js";
 import { ZodPipe } from "../common/zod.pipe.js";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { extractPdfText } from "./pdf-text.js";
+import { extractScanImages, looksLikeJpeg, looksLikePng, ocrImages } from "./ocr.js";
+import { hasUsableText, looksLikePdf, readPdfText } from "./pdf-text.js";
 
-export const MAX_PDF_BYTES = 5 * 1024 * 1024;
+/** PDF numérique, PDF scanné ou photo : 10 Mo au plus (une photo de téléphone en fait souvent 3 à 6). */
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const OCR_WARNING = "Lu sur une image (scan ou photo) : vérifiez chaque montant, la reconnaissance de caractères peut se tromper.";
 
 /** Même jour du mois suivant (ramené au dernier jour si besoin) : évite de compter deux fois le mois déjà saisi. */
 function nextMonthSameDay(iso: string): string {
@@ -28,23 +31,45 @@ export class PayslipController {
     private readonly audit: AuditService,
   ) {}
 
-  /** Lit le PDF en mémoire et PROPOSE des valeurs. Rien n'est enregistré ni conservé : la validation humaine vient ensuite. */
+  /**
+   * Lit la fiche de paie en mémoire et PROPOSE des valeurs. Rien n'est enregistré ni conservé : la validation humaine vient ensuite.
+   * PDF numérique : texte du fichier. PDF scanné ou photo (JPEG, PNG) : reconnaissance de caractères locale (OCR).
+   */
   @Post("parse")
   @HttpCode(200)
   @Roles("OWNER", "ADULT")
   async parse(@CurrentUser() user: AuthUser, @Req() req: FastifyRequest) {
-    if (!req.isMultipart()) throw new BadRequestException("Envoyez le PDF en multipart/form-data");
-    const part = await req.file({ limits: { fileSize: MAX_PDF_BYTES, files: 1, fields: 0 } });
+    if (!req.isMultipart()) throw new BadRequestException("Envoyez le fichier en multipart/form-data");
+    const part = await req.file({ limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0 } });
     if (!part) throw new BadRequestException("Aucun fichier reçu");
     let buffer: Buffer;
     try {
       buffer = await part.toBuffer();
     } catch {
-      throw new PayloadTooLargeException("Fichier trop volumineux (5 Mo maximum)");
+      throw new PayloadTooLargeException("Fichier trop volumineux (10 Mo maximum)");
     }
-    const text = await extractPdfText(buffer);
-    await this.audit.record(user.householdId, user.userId, "payslip.parsed");
-    return parsePayslip(text);
+    let text: string;
+    let ocr = false;
+    if (looksLikePdf(buffer)) {
+      text = await readPdfText(buffer);
+      if (!hasUsableText(text)) {
+        const pages = await extractScanImages(buffer);
+        if (pages.length === 0) {
+          throw new UnprocessableEntityException("Ce PDF ne contient ni texte ni page scannée lisible. Prenez plutôt la fiche en photo (JPEG ou PNG).");
+        }
+        text = await ocrImages(pages);
+        ocr = true;
+      }
+    } else if (looksLikeJpeg(buffer) || looksLikePng(buffer)) {
+      text = await ocrImages([buffer]);
+      ocr = true;
+    } else {
+      throw new BadRequestException("Envoyez un PDF ou une photo de la fiche de paie (JPEG ou PNG)");
+    }
+    if (ocr && !hasUsableText(text)) throw new UnprocessableEntityException("Aucun texte reconnu : envoyez une photo plus nette, bien éclairée, prise bien droite.");
+    await this.audit.record(user.householdId, user.userId, ocr ? "payslip.parsed:ocr" : "payslip.parsed");
+    const result = parsePayslip(text);
+    return ocr ? { ...result, ocr, warnings: [OCR_WARNING, ...result.warnings] } : { ...result, ocr };
   }
 
   @Post("confirm")

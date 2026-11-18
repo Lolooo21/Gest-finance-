@@ -81,7 +81,8 @@ export async function createApp(opts: AppOptions = {}): Promise<NestFastifyAppli
     void reply.header("Cache-Control", "no-store");
     done(null, payload);
   });
-  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 } });
+  // Plafond global : chaque route fixe le sien (relevés 2 Mo, fiches de paie 10 Mo pour les photos).
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 0 } });
   // L'import de PDF (coûteux) a son propre plafond et son propre compteur, par IP.
   const isUpload = (url: string) => url.startsWith("/payslips/parse");
   // Plafonds dédiés, chacun avec son compteur par IP : demandes de lien de réinitialisation (5/min), tentatives

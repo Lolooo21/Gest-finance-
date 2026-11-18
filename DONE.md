@@ -460,6 +460,18 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 ### Documentation
 - README (schéma et fonctionnalités), `docs/deploiement.md`, `docs/deploiement-ovh.md` (la clé protège désormais aussi les libellés), `docs/threat-model.md` (ce qui reste en clair et pourquoi).
 
+## Jalon 22 — Lecture des fiches de paie scannées ou photographiées (OCR)
+### API
+- `payslip/ocr.ts` : `ocrImages` (`tesseract.js` 6.0.1 en WebAssembly, français « best_int » embarqué par `@tesseract.js-data/fra`, `cacheMethod: none` pour le système de fichiers en lecture seule ; une lecture à la fois (429), 60 s au plus puis arrêt du thread, erreurs du moteur converties en message clair) ; `extractScanImages` (`pdf-lib` : pages JPEG/DCTDecode d'un PDF scanné, 3 au plus, logos ignorés) ; `looksLikeJpeg`, `looksLikePng`.
+- `payslip/pdf-text.ts` : `readPdfText` (texte éventuellement vide) et `hasUsableText` ; `extractPdfText` garde le refus des scans pour `pnpm payslip:debug`.
+- `payslip/payslip.controller.ts` : PDF numérique → texte ; PDF scanné → OCR de ses pages ; photo JPEG ou PNG → OCR ; autre format → 400 ; rien de lisible → 422 explicite ; résultat `ocr: true` et avertissement « vérifiez chaque montant » ; journal `payslip.parsed:ocr`. Taille maximale portée à 10 Mo (photos de téléphone), plafond multipart global aligné.
+- Tests : `payslip-ocr.int.test.ts` avec une fiche de paie **synthétique** rendue en PNG et JPEG (`test/fixtures`) : vraie reconnaissance d'une photo et d'un PDF scanné, format refusé, page blanche, image dégénérée, délai dépassé, une lecture à la fois. API : 243 tests.
+### Front
+- `pages/Payslip.tsx` : PDF ou photo (JPEG, PNG), 10 Mo, contrôle avant envoi (`checkPayslipFile`), mention « lue sur une image », attente annoncée. `errors.ts` : messages du serveur repris pour 413 et 429 (taille exacte, lecture déjà en cours), messages anglais filtrés.
+- Tests : 100 (+1 : photo envoyée et lecture sur image signalée ; tests existants adaptés).
+### Infra
+- `infra/scripts/smoke.sh` : la CI vérifie dans l'image Docker (lecture seule) qu'un libellé chiffré est relu en clair et qu'une photo de fiche synthétique est lue par OCR.
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

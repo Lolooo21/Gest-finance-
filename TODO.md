@@ -55,10 +55,10 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Rappel : écarts vs budget dans le bilan (dépend des enveloppes) | Terminé (jalon 10) |
 | Documents : upload, antivirus, chiffrement | À faire |
 | Lecture des fiches de paie (PDF numérique, parseur générique, validation humaine, anti-doublon, sans conservation) | Terminé (jalon 6) ; à confronter à de vraies fiches |
-| Fiches de paie : OCR des scans et photos (Tesseract) | À faire |
+| Fiches de paie : OCR des scans et photos (Tesseract) | Terminé (jalon 22) ; reste : à confronter à vos vraies photos, redressement automatique d'une photo de travers, PDF scannés hors JPEG (fax, JBIG2) |
 | Fiches de paie : lecture robuste (espaces insécables, position des fragments, libellés élargis, plage de dates, employeur par forme juridique) | Terminé |
 | Fiches de paie : parseurs par employeur / logiciel de paie selon vos vrais PDF | En cours : dépend de vos vrais PDF (utiliser `pnpm payslip:debug --anonymize`) |
-| Fiches de paie : isoler l'extraction PDF dans un processus ou worker avec délai maximal | À faire |
+| Fiches de paie : isoler l'extraction PDF dans un processus ou worker avec délai maximal | OCR : Terminé (jalon 22, thread dédié, 60 s, une lecture à la fois) ; reste : extraction du texte des PDF numériques |
 | Fiches de paie : conservation chiffrée du PDF dans le coffre-fort | À faire |
 | Page actualités financières : taux réglementés, indicateurs de marché automatiques, fiches d'épargne, simulateur d'intérêts | Terminé (jalon 7) ; appels réels BCE/Eurostat à vérifier chez vous (`pnpm market:check`) |
 | Actualités : confirmer chez vous les 3 indicateurs avec `pnpm market:check` (taux de dépôt BCE vérifié ; OAT et inflation corrigés, à confirmer) | En test |
@@ -143,7 +143,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 ### IA locale
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
-| Extraction fiches de paie et catégorisation en local (Tesseract + règles ; petit modèle auto-hébergé en option) | P1 | Conteneur worker sans accès réseau sortant ; modèle LLM local seulement si les règles sont insuffisantes |
+| Extraction fiches de paie et catégorisation en local (Tesseract + règles ; petit modèle auto-hébergé en option) | P1 · **Terminé (jalons 6, 11b et 22)** | Conteneur worker sans accès réseau sortant ; modèle LLM local seulement si les règles sont insuffisantes |
 
 ### Simulateurs bancaires (ajout)
 | Idée | Prio | Notes / faisabilité des données |

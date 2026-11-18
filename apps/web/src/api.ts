@@ -127,6 +127,8 @@ export interface WeeklyReview {
 
 export interface PayslipExtraction {
   netToPayCents: number | null; grossCents: number | null; periodMonth: string | null; employer: string | null; confidence: number; warnings: string[];
+  /** Lu par reconnaissance de caractères (scan ou photo) plutôt que dans le texte d'un PDF numérique. */
+  ocr?: boolean;
 }
 
 /** Envoi d'un fichier (multipart) : le navigateur fixe lui-même le Content-Type et sa frontière. */
