@@ -20,6 +20,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | GitHub : définir `develop` par défaut et protéger `develop`/`main` (PR obligatoire, contrôles requis) | À faire (réglage utilisateur) |
 | CD : déploiement automatique via Tailscale, rollback | À faire |
 | Veille de sécurité planifiée (dépendances et images publiées, issue d'alerte) | Terminé (jalon 23) ; à confirmer au premier lundi après fusion (ou lancement manuel) |
+| Mises à jour de sécurité automatiques (fusion Dependabot, publication si failles corrigées) | Terminé (jalon 24) ; à confirmer à la première pull request Dependabot après fusion ; réglage GitHub « Allow GitHub Actions to create and approve pull requests » à cocher |
 | Production : désactiver l'inscription publique une fois le foyer créé | Terminé (jalon 14) |
 | Production : rotation des secrets, épinglage des images par empreinte, compilation de l'API (sans chargeur swc) | À faire |
 

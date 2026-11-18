@@ -1,0 +1,124 @@
+name: Publication automatique
+# Sort une nouvelle version (correctif) SEULEMENT si elle corrige des failles présentes dans la version publiée :
+#  - motif « dependances » (après une mise à jour Dependabot fusionnée) : develop a moins de failles corrigeables que la
+#    dernière version → fusion de develop dans main par pull request, puis tag ;
+#  - motif « reconstruction » (veille hebdomadaire) : des images reconstruites depuis main ont moins de failles que les images
+#    publiées (paquets système corrigés) → tag sur main.
+# Le tag déclenche la publication signée des images (release.yml), que le VPS installe ensuite tout seul.
+# Il faut une première version publiée à la main (tag v*) : rien n'est jamais publié automatiquement avant.
+on:
+  workflow_call:
+    inputs:
+      motif: { type: string, required: true }
+  workflow_dispatch:
+    inputs:
+      motif:
+        type: choice
+        options: [dependances, reconstruction]
+        default: dependances
+      forcer:
+        description: "Publier même si aucune faille n'est corrigée"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: publication-auto
+  cancel-in-progress: false
+env:
+  TRIVY: aquasec/trivy:0.58.1
+jobs:
+  publier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main, fetch-depth: 0 }
+      - name: Dernière version
+        id: version
+        run: |
+          tag="$(git tag --list 'v*' --sort=-v:refname | head -n1)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ -z "$tag" ]; then echo "::notice::Aucune version publiée : la première (tag v*) se fait à la main. Rien à faire."; fi
+      - name: Comparer les failles
+        id: decision
+        if: steps.version.outputs.tag != ''
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          MOTIF: ${{ inputs.motif }}
+          FORCER: ${{ inputs.forcer }}
+        run: |
+          set -eu
+          trivy() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" -w /src "$TRIVY" "$@"; }
+          opts="--scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --format json --quiet"
+          # shellcheck disable=SC2086 # $opts : options volontairement découpées
+          if [ "$MOTIF" = "dependances" ]; then
+            # Les deux lockfiles côte à côte : celui de la version publiée et celui de develop.
+            mkdir -p .pub/publiee .pub/develop
+            git show "$TAG:pnpm-lock.yaml" > .pub/publiee/pnpm-lock.yaml
+            git show "origin/develop:pnpm-lock.yaml" > .pub/develop/pnpm-lock.yaml
+            trivy fs $opts --output .pub/publiee.json .pub/publiee
+            trivy fs $opts --output .pub/develop.json .pub/develop
+            avant="$(sh infra/scripts/compter-failles.sh .pub/publiee.json)"
+            apres="$(sh infra/scripts/compter-failles.sh .pub/develop.json)"
+            libelle="dépendances de $TAG → develop"
+          else
+            sh infra/scripts/init-secrets.sh --ci > /dev/null
+            mkdir -p .pub
+            for name in api proxy backup; do
+              docker pull -q "ghcr.io/lolooo21/gest-finance-$name:${TAG#v}" > /dev/null
+              trivy image $opts --output ".pub/publiee-$name.json" "ghcr.io/lolooo21/gest-finance-$name:${TAG#v}"
+            done
+            docker compose -f infra/docker/compose.prod.yml -f infra/docker/compose.ci.yml build --pull --no-cache
+            for name in api proxy backup; do
+              trivy image $opts --output ".pub/neuve-$name.json" "ghcr.io/lolooo21/gest-finance-$name:local"
+            done
+            avant="$(sh infra/scripts/compter-failles.sh .pub/publiee-*.json)"
+            apres="$(sh infra/scripts/compter-failles.sh .pub/neuve-*.json)"
+            libelle="images publiées de $TAG → images reconstruites depuis main"
+          fi
+          echo "Failles hautes ou critiques corrigeables ($libelle) : $avant → $apres" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$apres" -lt "$avant" ] || [ "$FORCER" = "true" ]; then
+            echo "publier=true" >> "$GITHUB_OUTPUT"
+            echo "detail=$libelle : $avant → $apres faille(s)" >> "$GITHUB_OUTPUT"
+          else
+            echo "publier=false" >> "$GITHUB_OUTPUT"
+            echo "Aucune faille corrigée : pas de nouvelle version." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Fusionner develop dans main (pull request)
+        if: steps.decision.outputs.publier == 'true' && inputs.motif == 'dependances'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DETAIL: ${{ steps.decision.outputs.detail }}
+        run: |
+          set -eu
+          git fetch -q origin develop main
+          if git merge-base --is-ancestor origin/develop origin/main; then echo "main contient déjà develop."; exit 0; fi
+          pr="$(gh pr list --base main --head develop --state open --json number --jq '.[0].number')"
+          if [ -z "$pr" ]; then
+            pr="$(gh pr create --base main --head develop --title "release: correctif de sécurité automatique" \
+              --body "Publication automatique : $DETAIL. Fusionnée par le workflow « Publication automatique » après contrôles verts sur develop." | sed 's|.*/||')"
+          fi
+          gh pr merge "$pr" --merge
+      - name: Tag et publication des images
+        if: steps.decision.outputs.publier == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          DETAIL: ${{ steps.decision.outputs.detail }}
+        run: |
+          set -eu
+          git fetch -q origin main
+          next="$(echo "${TAG#v}" | awk -F. '{ printf "v%d.%d.%d", $1, $2, $3 + 1 }')"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$next" origin/main -m "Correctif de sécurité automatique : $DETAIL"
+          git push -q origin "$next"
+          # Un tag poussé par le jeton du workflow ne déclenche pas release.yml : on la lance explicitement.
+          gh workflow run release.yml --ref "$next"
+          echo "Version $next publiée ($DETAIL)." | tee -a "$GITHUB_STEP_SUMMARY"

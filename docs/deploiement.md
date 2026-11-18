@@ -112,6 +112,25 @@ Les migrations s'appliquent automatiquement. Après une mise à jour qui ajoute 
 `sh infra/scripts/init-secrets.sh` : il ne crée que les secrets manquants. **Retour arrière** : `git checkout <version précédente>` puis la même commande. Une migration
 de base n'est pas annulable automatiquement : en cas de problème de données, restaurez la dernière sauvegarde (§ 8).
 
+### Mises à jour de sécurité automatiques (côté GitHub, jalon 24)
+Sans intervention de votre part :
+1. **Dependabot** ouvre des pull requests vers `develop` (dépendances npm, images Docker, actions GitHub), dès qu'une faille est publiée
+   et chaque semaine sinon.
+2. **Fusion automatique** (`maj-auto.yml`) des mises à jour correctives et mineures quand *tous* les contrôles sont verts (tests, test de
+   fumée des images, CodeQL, Semgrep, Trivy). Une mise à jour **majeure** reçoit un commentaire et attend votre validation.
+3. **Publication automatique** (`publication-auto.yml`) seulement si la mise à jour **corrige des failles** de la version publiée
+   (comparaison Trivy) : pull request `develop` → `main` fusionnée, tag `vX.Y.Z+1`, images signées publiées. La veille du lundi fait de
+   même quand une simple reconstruction des images corrige des paquets système.
+
+**Réglages GitHub à faire une fois** (Settings) :
+- *Actions → General → Workflow permissions* : cochez **« Allow GitHub Actions to create and approve pull requests »** (pull request
+  `develop` → `main`).
+- Si vous protégez `main` ou `develop` (*Branches*), n'exigez pas de relecture humaine pour ces fusions, sinon la publication automatique
+  s'arrêtera en attendant votre validation (ce qui reste un choix possible).
+- La **première version** (`git tag v0.1.0 && git push origin v0.1.0`) se fait à la main : rien n'est publié automatiquement avant.
+
+À savoir : la publication emporte tout ce qui est sur `develop` (fonctionnalités déjà fusionnées et testées comprises).
+
 ## 7. Sauvegardes
 - Chaque jour à **03:30 UTC** : copie de la base, chiffrement avec votre clé publique, conservation de 7 copies sur le serveur, envoi vers le S3
   (35 jours de sauvegardes quotidiennes, 12 mensuelles).

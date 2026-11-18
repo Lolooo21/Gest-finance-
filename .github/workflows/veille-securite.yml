@@ -25,6 +25,8 @@ jobs:
       contents: read
       issues: write
       packages: read
+    outputs:
+      failles: ${{ steps.scan.outputs.findings }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -54,7 +56,7 @@ jobs:
           fi
           for image in $images; do
             docker pull -q "$image" > /dev/null
-            trivy image --severity HIGH,CRITICAL --ignore-unfixed --format json --output "veille/Image $(echo "$image" | sed 's|.*/||').json" "$image"
+            trivy image --severity HIGH,CRITICAL --ignore-unfixed --format json --output "veille/Image ${image##*/}.json" "$image"
           done
           if sh infra/scripts/veille-rapport.sh veille/rapport.md veille/*.json; then echo "findings=0" >> "$GITHUB_OUTPUT"; else echo "findings=1" >> "$GITHUB_OUTPUT"; fi
           cat veille/rapport.md >> "$GITHUB_STEP_SUMMARY"
@@ -84,3 +86,17 @@ jobs:
           elif [ -n "$number" ]; then
             gh issue close "$number" --comment "Plus aucune faille haute ou critique corrigeable au $(date -u '+%Y-%m-%d') : $RUN_URL"
           fi
+
+  # Des failles dans les images publiées disparaissent souvent en reconstruisant (paquets système corrigés) :
+  # la publication automatique compare images publiées et reconstruites, et sort une version si c'est mieux.
+  reconstruction:
+    needs: veille
+    if: needs.veille.outputs.failles == '1' && github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      packages: read
+    uses: ./.github/workflows/publication-auto.yml
+    with:
+      motif: reconstruction

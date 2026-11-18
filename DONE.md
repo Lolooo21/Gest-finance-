@@ -476,6 +476,14 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `.github/workflows/veille-securite.yml` : chaque lundi (et à la demande), Trivy 0.58.1 analyse le lockfile de `main`, les images publiées de la dernière version `v*` (api, proxy, backup) et les images tierces du compose (PostgreSQL, Tailscale) ; failles hautes ou critiques corrigeables seulement ; rapport dans le résumé du workflow ; issue « Veille de sécurité : failles à corriger » (étiquette `securite`) ouverte, mise à jour avec un commentaire, ou fermée quand tout est propre.
 - `infra/scripts/veille-rapport.sh` : résultats JSON de Trivy → tableau Markdown par cible (gravité, faille, paquet, version installée et corrigée), code de sortie 1 s'il reste quelque chose à corriger. Vérifié dans un conteneur Alpine (cas avec faille, cas propre).
 
+## Jalon 24 — Mises à jour de sécurité et publication automatiques
+- `.github/dependabot.yml` : toutes les mises à jour visent `develop` ; images du compose (PostgreSQL, Tailscale) suivies (`docker-compose`).
+- `.github/workflows/maj-auto.yml` : sur une pull request Dependabot, fusion dans `develop` des versions correctives et mineures quand tous les contrôles sont verts ; commentaire et validation humaine pour une majeure ; puis appel de la publication automatique. Valeurs de Dependabot passées par variables d'environnement (pas d'injection dans les commandes).
+- `.github/workflows/publication-auto.yml` (appelable, ou manuelle avec « forcer ») : rien sans première version publiée ; motif `dependances` (Trivy sur le lockfile de la dernière version et de `develop`) ou `reconstruction` (images publiées contre images reconstruites depuis `main`) ; si moins de failles : pull request `develop` → `main` fusionnée, tag correctif annoté, lancement de `release.yml`.
+- `.github/workflows/release.yml` : lançable sur un tag (`workflow_dispatch`), un tag poussé par un workflow ne déclenchant pas `push`. `veille-securite.yml` : appelle la reconstruction quand des failles sont trouvées.
+- `infra/scripts/attendre-controles.sh` (attend que tous les contrôles d'un commit soient verts, contrôles obligatoires, workflows en retard, délai maximal) et `infra/scripts/compter-failles.sh` : testés dans un conteneur avec un faux `gh` (6 scénarios) et des résultats Trivy. Workflows vérifiés par actionlint et shellcheck.
+- `docs/deploiement.md` : fonctionnement et réglage GitHub à faire une fois.
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.
