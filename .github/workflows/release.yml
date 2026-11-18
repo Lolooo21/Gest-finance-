@@ -18,6 +18,8 @@ jobs:
       id-token: write # signature cosign « sans clé » (OIDC)
       attestations: write
     strategy:
+      # Une image en échec n'annule pas la publication des autres.
+      fail-fast: false
       matrix:
         include:
           - { name: api, dockerfile: infra/docker/api.Dockerfile, context: . }
@@ -45,4 +47,9 @@ jobs:
           sbom: true
       - uses: sigstore/cosign-installer@v3
       - name: Signer l'image (sans clé, identité GitHub)
-        run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/gest-finance-${{ matrix.name }}@${{ steps.build.outputs.digest }}"
+        env:
+          OWNER: ${{ github.repository_owner }}
+          NAME: ${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        # Une référence d'image est en minuscules ; le propriétaire du dépôt (« Lolooo21 ») ne l'est pas.
+        run: cosign sign --yes "ghcr.io/${OWNER,,}/gest-finance-${NAME}@${DIGEST}"
