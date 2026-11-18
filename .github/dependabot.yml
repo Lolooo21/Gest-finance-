@@ -1,7 +1,10 @@
 version: 2
+# Toutes les mises à jour visent develop (circuit Git) ; les correctives et mineures sont fusionnées automatiquement quand la CI
+# est verte (.github/workflows/maj-auto.yml). Les correctifs de sécurité sont ouverts dès la publication de l'alerte.
 updates:
   - package-ecosystem: npm
     directory: "/"
+    target-branch: develop
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
     groups:
@@ -9,10 +12,18 @@ updates:
         update-types: [minor, patch]
   - package-ecosystem: docker
     directory: "/infra/docker"
+    target-branch: develop
     schedule: { interval: weekly }
   - package-ecosystem: docker
     directory: "/infra/backup"
+    target-branch: develop
+    schedule: { interval: weekly }
+  # Images utilisées telles quelles dans le compose (PostgreSQL, Tailscale).
+  - package-ecosystem: docker-compose
+    directory: "/infra/docker"
+    target-branch: develop
     schedule: { interval: weekly }
   - package-ecosystem: github-actions
     directory: "/"
+    target-branch: develop
     schedule: { interval: weekly }

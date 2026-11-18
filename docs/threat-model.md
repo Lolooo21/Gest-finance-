@@ -41,6 +41,7 @@
 ## Veille et mises à jour (jalons 23 à 25)
 | Menace | Mesure | Risque résiduel |
 |---|---|---|
+| Mise à jour défectueuse ou malveillante publiée automatiquement (jalon 24) | Fusion automatique limitée aux versions correctives et mineures de Dependabot, après TOUS les contrôles verts (tests, test de fumée des images, CodeQL, Semgrep, Trivy) ; majeures à valider à la main ; publication seulement si des failles de la version publiée sont corrigées ; images signées (cosign) et vérifiées par le VPS avant installation | Paquet compromis dans une version mineure qui passe tous les tests (attaque de chaîne d'approvisionnement) : réduit par le lockfile, l'audit et la signature, pas éliminé |
 | Faille publiée après la dernière version, sans activité sur le dépôt | Veille hebdomadaire (`veille-securite.yml`) : Trivy sur les dépendances de `main`, sur les images publiées de la dernière version, sur PostgreSQL et Tailscale ; issue d'alerte ouverte, mise à jour ou fermée automatiquement | Jusqu'à une semaine de délai ; failles sans correctif publié seulement signalées |
 
 ## Production : réseau, secrets, sauvegardes (jalon 8a)

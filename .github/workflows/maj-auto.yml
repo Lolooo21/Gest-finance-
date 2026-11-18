@@ -1,0 +1,60 @@
+name: Mise à jour automatique
+# Pull requests de Dependabot (vers develop) : fusion automatique des mises à jour correctives et mineures quand TOUS les
+# contrôles sont verts (tests, test de fumée des images, CodeQL, Semgrep, Trivy…). Les mises à jour majeures restent à valider
+# à la main. Après fusion, la publication automatique décide s'il faut sortir une version (faille corrigée).
+on:
+  pull_request:
+    branches: [develop]
+permissions:
+  contents: read
+jobs:
+  fusion:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+    outputs:
+      fusionnee: ${{ steps.merge.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+      - name: "Mise à jour majeure : validation humaine"
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          DEPS: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          gh pr comment "$PR" --body "Mise à jour **majeure** ($DEPS) : pas de fusion automatique, relisez les notes de version avant de fusionner."
+      - name: Attendre que tous les contrôles soient verts
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: sh infra/scripts/attendre-controles.sh "$SHA" fusion build-test
+      - name: Fusionner dans develop
+        id: merge
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          DEPS: ${{ steps.meta.outputs.dependency-names }}
+          TYPE: ${{ steps.meta.outputs.update-type }}
+        run: |
+          gh pr merge "$PR" --merge --subject "chore: mise à jour automatique de $DEPS ($TYPE)"
+
+  publication:
+    needs: fusion
+    if: needs.fusion.outputs.fusionnee == 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      packages: read
+    uses: ./.github/workflows/publication-auto.yml
+    with:
+      motif: dependances
