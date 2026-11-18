@@ -38,6 +38,20 @@ describe("comptes", () => {
     await post(app, "/transactions", { accountId, amountCents: 1_000, date: "2026-10-06", label: "Remboursement" }, c);
     expect((await get(app, "/accounts", c)).json()[0].balanceCents).toBe(98_500);
   });
+
+  it("ne compte pas d'avance les opérations futures : solde d'aujourd'hui, puis solde de fin de mois", async () => {
+    const c = await register();
+    const accountId = (await post(app, "/accounts", { name: "Joint", type: "CHECKING", initialBalanceCents: -5_000 }, c)).json().id as string;
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const endOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+    await post(app, "/transactions", { accountId, amountCents: -1_000, date: today, label: "Courses" }, c);
+    await post(app, "/transactions", { accountId, amountCents: -2_000, date: endOfMonth, label: "Fin de mois" }, c);
+    await post(app, "/transactions", { accountId, amountCents: 99_000, date: "2099-01-01", label: "Lointain" }, c);
+    const [account] = (await get(app, "/accounts", c)).json();
+    expect(account.balanceCents).toBe(today === endOfMonth ? -8_000 : -6_000);
+    expect(account.endOfMonthCents).toBe(-8_000);
+  });
 });
 
 describe("opérations", () => {
