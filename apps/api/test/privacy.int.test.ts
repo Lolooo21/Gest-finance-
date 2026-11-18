@@ -1,6 +1,6 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { admin, get, owner, post, resetDb, sessionCookies, startApp } from "./helpers.js";
+import { admin, get, owner, plainLabels, post, resetDb, sessionCookies, startApp } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -91,8 +91,7 @@ describe("effacement des données", () => {
 
     expect(await admin.user.count({ where: { email: adult.email } })).toBe(0);
     expect(await admin.bankAccount.count({ where: { id: perso.id } })).toBe(0);
-    expect(await admin.transaction.count({ where: { label: "Cadeau secret" } })).toBe(0);
-    expect(await admin.transaction.count({ where: { label: "Saisie de Sam" } })).toBe(1);
+    expect(await plainLabels()).toEqual(["Saisie de Sam"]);
     // Le jeton encore valide ne donne plus accès à rien.
     expect((await get(app, "/accounts", { access: a })).statusCode).toBe(401);
     expect((await post(app, "/auth/login", { email: adult.email, password: adult.password })).statusCode).toBe(401);

@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { FieldCipher } from "../crypto/field-cipher.js";
 
 /**
  * Accès à la base à deux niveaux (voir la migration `rls_foyer`) :
@@ -22,18 +23,22 @@ export const runInHousehold = <T>(householdId: string, fn: () => T, userId?: str
 
 const noHousehold = () => new Error("Accès à la base refusé : aucun foyer dans le contexte de la requête");
 
-export function scopeClient(base: PrismaClient) {
+/**
+ * Client soumis à la RLS (foyer et utilisateur courants) qui chiffre aussi les champs texte sensibles à l'écriture et les
+ * déchiffre à la lecture (voir crypto/field-cipher.ts), y compris dans les transactions interactives.
+ */
+export function scopeClient(base: PrismaClient, cipher: FieldCipher = new FieldCipher()) {
   const setHousehold = (client: Prisma.TransactionClient | PrismaClient, ctx: { householdId: string; userId?: string }) =>
     client.$executeRaw`SELECT set_config('app.household_id', ${ctx.householdId}, true), set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
   return base.$extends({
     query: {
       $allModels: {
-        async $allOperations({ args, query }) {
+        async $allOperations({ operation, args, query }) {
           const ctx = households.getStore();
           if (!ctx) throw noHousehold();
           // Lot transactionnel : le foyer n'existe que le temps de la requête (set_config local à la transaction).
-          const [, result] = await base.$transaction([setHousehold(base, ctx), query(args)]);
-          return result;
+          const [, result] = await base.$transaction([setHousehold(base, ctx), query(cipher.encryptArgs(operation, args))]);
+          return cipher.decryptResult(result);
         },
       },
     },
@@ -44,7 +49,7 @@ export function scopeClient(base: PrismaClient) {
         if (!ctx) return Promise.reject(noHousehold());
         return base.$transaction(async (tx) => {
           await setHousehold(tx, ctx);
-          return fn(tx);
+          return fn(cipher.wrap(tx));
         });
       },
     },

@@ -96,13 +96,15 @@ describe("pile de production (compose.prod.yml)", () => {
     for (const name of ["postgres", "api", "proxy", "tailscale", "backup"]) expect(services[name].restart).toBe("unless-stopped");
   });
 
-  it("autorise l'exécution sur le tmpfs de l'API seulement (module natif de SWC), avec nosuid/nodev et une taille bornée", () => {
-    const apiTmp = String(services.api.tmpfs[0]);
-    expect(apiTmp).toMatch(/\bexec\b/);
-    expect(apiTmp).toMatch(/nosuid/);
-    expect(apiTmp).toMatch(/nodev/);
-    expect(apiTmp).toMatch(/size=\d+m/);
-    for (const name of ["postgres", "migrate", "proxy", "tailscale", "backup"]) {
+  it("autorise l'exécution sur le tmpfs de l'API et de migrate seulement (module natif de SWC), avec nosuid/nodev et une taille bornée", () => {
+    for (const name of ["api", "migrate"]) {
+      const tmp = String(services[name].tmpfs[0]);
+      expect(tmp, name).toMatch(/\bexec\b/);
+      expect(tmp, name).toMatch(/nosuid/);
+      expect(tmp, name).toMatch(/nodev/);
+      expect(tmp, name).toMatch(/size=\d+m/);
+    }
+    for (const name of ["postgres", "proxy", "tailscale", "backup"]) {
       expect(JSON.stringify(services[name].tmpfs), `${name} : tmpfs sans exécution`).not.toMatch(/exec/);
     }
   });

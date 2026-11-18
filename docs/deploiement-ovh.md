@@ -232,7 +232,7 @@ L'installation tient en trois commandes une fois les comptes prêts ; prévoyez 
     Tous les services doivent passer « healthy » (aussi visible dans Portainer).
 5. Depuis un appareil du réseau Tailscale, ouvrez `https://gest-finance.<votre-réseau>.ts.net`, **créez votre foyer** puis activez la
    **double authentification**. Ajoutez ensuite les membres du foyer depuis l'application.
-6. **Sauvegardez le dossier `secrets/`** dans votre gestionnaire de mots de passe, surtout `field_encryption_key` (chiffre les IBAN) et
+6. **Sauvegardez le dossier `secrets/`** dans votre gestionnaire de mots de passe, surtout `field_encryption_key` (chiffre les IBAN, les libellés des opérations, les employeurs et les notes) et
    `jwt_secret` : sans eux, une sauvegarde restaurée sur un nouveau serveur serait en partie illisible.
 
 ## Sauvegardes

@@ -451,6 +451,15 @@ Hash Argon2id et cookies, validation d'entrée, non-énumération des comptes, v
 - `pages/AuthPage.tsx` : bouton « Se connecter avec une passkey » si le navigateur les gère. `pages/Passkeys.tsx` (Plus → Sécurité → Passkeys, `#plus:passkeys`) : liste, ajout, suppression avec confirmation. Libellés du journal.
 - Tests : 99 (+3 : connexion par passkey, annulation et navigateur sans prise en charge, ajout, liste et suppression).
 
+## Jalon 21 — Chiffrement des champs sensibles
+### API
+- `crypto/field-cipher.ts` : `FieldCipher` (AES-256-GCM, IV aléatoire, préfixe `enc1:`, valeurs d'avant lues telles quelles) ; `encryptArgs` (écritures seulement : `data`, `create`, `update`, à toute profondeur, listes et `{ set }`), `decryptResult` (résultats, relations comprises), `wrap` (transactions interactives). Champs : `label` (opérations, récurrences), `employer` (fiches de paie), `note` (versements d'épargne). `CryptoService` (IBAN) réutilise les mêmes fonctions.
+- `prisma/prisma.service.ts` : le client soumis à la RLS chiffre et déchiffre dans chaque requête et dans `$householdTransaction` (imports, fiches de paie, abonnements, versements).
+- `scripts/encrypt-fields.ts` (`pnpm db:encrypt`, lancé par `predev` et par le service `migrate`, avec le secret `field_encryption_key`) : chiffre par lots les valeurs encore en clair, requêtes paramétrées, relançable sans effet.
+- Tests : `field-cipher.test.ts` (aller-retour, IV aléatoire, altération et mauvaise clé refusées, écritures imbriquées, filtres intacts, résultats imbriqués, clé de 32 octets) ; `field-encryption.int.test.ts` (valeurs chiffrées en base et lues en clair par l'API et l'export, modification rechiffrée, script de reprise idempotent) ; fiche de paie écrite dans une transaction chiffrée ; tests existants adaptés (`plainLabels`). API : 238 tests.
+### Documentation
+- README (schéma et fonctionnalités), `docs/deploiement.md`, `docs/deploiement-ovh.md` (la clé protège désormais aussi les libellés), `docs/threat-model.md` (ce qui reste en clair et pourquoi).
+
 ## Correctifs de sécurité des dépendances (novembre 2026)
 - `zod` 3 → 4.6.7 (GHSA-mrhx-c7xc-m3w5, épuisement mémoire) : `packages/shared/src/index.ts` passe de `z.setErrorMap` à `z.config({ customError })` (mêmes messages français, codes de zod 4 : `invalid_format`, `invalid_value`, `origin`) ; `ZodPipe` typé avec `ZodType`. `pnpm audit --prod` sans vulnérabilité.
 - Image proxy : `go-jose` relevé en 4.1.6 (CVE-2026-116587) et `golang.org/x/net` en 0.62.0 (CVE-2026-78661) dans la compilation de Caddy, signalés par Trivy.

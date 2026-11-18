@@ -1,7 +1,7 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { get, owner, post, resetDb, sessionCookies, startApp, admin } from "./helpers.js";
+import { get, owner, post, resetDb, sessionCookies, startApp, admin, fieldCipher } from "./helpers.js";
 
 let app: NestFastifyApplication;
 beforeAll(async () => {
@@ -99,6 +99,11 @@ describe("validation et enregistrement", () => {
 
     const txs = (await get(app, "/transactions", c)).json();
     expect(txs[0]).toMatchObject({ label: "Salaire 2026-09", amountCents: 228_540, date: "2026-09-30" });
+    // L'employeur et le libellé sont chiffrés en base, même écrits dans une transaction.
+    const stored = await admin.payslipImport.findFirstOrThrow({ include: { transaction: true } });
+    expect(stored.employer).toMatch(/^enc1:/);
+    expect(stored.transaction!.label).toMatch(/^enc1:/);
+    expect(fieldCipher.decryptField(stored.employer!)).toBe("ACME Conseil SAS");
     expect((await get(app, "/summary?from=2026-09-01&to=2026-09-30", c)).json().remainingCents).toBe(228_540);
 
     const audit = JSON.stringify((await get(app, "/household/audit", c)).json());

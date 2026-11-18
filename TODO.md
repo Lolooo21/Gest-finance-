@@ -34,7 +34,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | Terminé (jalon 12) ; envoi réel à vérifier avec votre SMTP en production |
 | Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | Terminé (jalon 16) |
 | Sécurité : vérifier au premier déploiement que chaque appareil Tailscale a sa propre IP côté API (limites de débit) | À faire (déploiement) |
-| Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | À étudier |
+| Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | Libellés, employeurs et notes : Terminé (jalon 21) ; montants : non (calculs SQL), à compenser par un disque chiffré sur le VPS |
 | Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | Terminé (jalon 16) ; reste : export du journal |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
@@ -135,7 +135,7 @@ Priorité : **P1** = MVP évolutif · **P2** = version 2 · **P3** = plus tard.
 | Idée | Prio | Notes / ajustements |
 |---|---|---|
 | Passkeys WebAuthn (verrouillage biométrique) en plus ou à la place du TOTP | P1 · **Terminé (jalon 20)** | Intégré à l'auth dès le jalon 2 plutôt qu'en ajout tardif |
-| Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
+| Chiffrement des champs sensibles (E2E complet = option ultérieure) | P1 · **Terminé (jalon 21)** ; reste : rotation de la clé | E2E complet empêcherait parsing/catégorisation côté serveur et le reste à vivre : on garde le chiffrement applicatif des champs + volume chiffré ; E2E à reconsidérer plus tard |
 | Mode confidentialité (masquer les montants d'un geste) | P1 · **Terminé (jalon 3)** | Purement front, quasi gratuit, stocké par appareil |
 | Export complet et suppression des données (RGPD) + sauvegardes chiffrées automatiques | P1 · **Terminé (jalon 19)** ; reste : export CSV des opérations pour un tableur | Export JSON/CSV + documents ; suppression vérifiée ; sauvegarde quotidienne chiffrée avec test de restauration en CI |
 | Journal d'audit des accès et modifications (consultable par le propriétaire) | P1 · **Terminé (jalon 16)** | Déjà prévu en base ; ajouter une page de consultation |

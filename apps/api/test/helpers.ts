@@ -3,6 +3,7 @@ import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import type { LightMyRequestResponse } from "fastify";
 import { createApp } from "../src/app.js";
 import { PrismaClient } from "@prisma/client";
+import { FieldCipher } from "../src/crypto/field-cipher.js";
 
 export async function startApp(rateLimitMax = 1000, resetLimitMax = 1000, authLimitMax = 1000) {
   // Hermétique : des clés VAPID dans l'environnement ou le .env de la machine activeraient les notifications push.
@@ -25,6 +26,11 @@ export async function startApp(rateLimitMax = 1000, resetLimitMax = 1000, authLi
 
 /** Connexion propriétaire (hors RLS) : réservée aux tests, pour préparer et vérifier les données. L'API, elle, n'a jamais ce rôle. */
 export const admin = new PrismaClient({ datasourceUrl: process.env.DATABASE_OWNER_URL });
+
+/** Les libellés sont chiffrés en base : la connexion propriétaire les lit chiffrés, les tests les déchiffrent avec la clé de test. */
+export const fieldCipher = new FieldCipher();
+export const plainLabels = async (where: object = {}) =>
+  (await admin.transaction.findMany({ where, select: { label: true } })).map((t) => fieldCipher.decryptField(t.label));
 
 // Le paramètre est conservé pour les appelants existants (resetDb(app)) : la base se vide avec la connexion propriétaire.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

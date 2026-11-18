@@ -76,7 +76,9 @@ Le script génère les mots de passe et clés, puis vous demande : la **clé pub
 informations du **stockage S3**. Il crée le dossier `secrets/` (accessible à vous seul, droits 700) et `infra/docker/.env`.
 
 > **Sauvegardez le dossier `secrets/` séparément** (gestionnaire de mots de passe), en particulier `field_encryption_key` :
-> elle chiffre les IBAN. Sans elle, une base restaurée contiendrait des IBAN illisibles. Le script ne régénère jamais un secret existant.
+> elle chiffre les IBAN, les libellés des opérations et des récurrences, les employeurs des fiches de paie et les notes d'épargne.
+> Sans elle, une base restaurée serait en grande partie illisible. Le script ne régénère jamais un secret existant.
+> Au premier déploiement d'une version ≥ jalon 21, le service `migrate` chiffre les libellés encore en clair (sans effet ensuite).
 
 Démarrage :
 ```
