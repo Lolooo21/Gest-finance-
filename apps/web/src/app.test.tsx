@@ -713,6 +713,32 @@ describe("prévisionnel et objectifs", () => {
     expect(await within(panel).findByText("Aucun découvert prévu sur 60 jours.")).toBeInTheDocument();
   });
 
+  it("accueil : montant des comptes courants cohérent avec l'alerte de découvert, total avec l'épargne à part", async () => {
+    // Découvert passager sur le compte courant, retour au positif, et un livret qui rend le total largement positif.
+    const f = forecast({
+      endCents: 510_000,
+      points: [
+        { date: "2026-10-21", totalCents: 550_000, checkingCents: 50_000 },
+        { date: "2026-10-26", totalCents: 450_000, checkingCents: -50_000 },
+        { date: "2026-11-20", totalCents: 510_000, checkingCents: 10_000 },
+      ],
+      accounts: [
+        { id: "a1", name: "Joint", type: "CHECKING", endCents: 10_000, minCents: -50_000, minDate: "2026-10-26", firstNegativeDate: "2026-10-26" },
+        { id: "s1", name: "Livret A", type: "SAVINGS", endCents: 500_000, minCents: 500_000, minDate: "2026-10-21", firstNegativeDate: null },
+      ],
+    });
+    mockApi(base((m, u) => (u.startsWith("/forecast?days=30") ? { json: f } : (undefined as never))));
+    renderApp();
+    const card = await screen.findByRole("region", { name: "Dans 30 jours" });
+    const text = (id: string) => within(card).getByTestId(id).textContent?.replace(/\s/g, " ");
+    expect(within(card).getByText(/Comptes courants le 20 novembre 2026/)).toBeInTheDocument();
+    expect(text("forecast-checking")).toContain("100,00");
+    expect(text("forecast-overdraft")).toContain("Découvert prévu le 26 octobre 2026 sur Joint");
+    expect(text("forecast-overdraft")).toContain("au plus bas -500,00");
+    expect(text("forecast-overdraft")).toContain("puis retour au positif");
+    expect(within(card).getByText(/Avec l'épargne, tous comptes/).textContent?.replace(/\s/g, " ")).toContain("5 100,00");
+  });
+
   it("masque les montants du prévisionnel en mode confidentialité", async () => {
     mockApi(base((m, u) => (u === "/forecast?days=30" ? { json: forecast() } : (undefined as never))));
     startAt("#operations");

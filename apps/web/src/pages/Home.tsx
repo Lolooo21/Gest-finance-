@@ -53,6 +53,8 @@ export function Home({ onGo, reviewOpen, onReview }: { onGo: (tab: Tab) => void;
   // avec le reste à vivre, bilan des entrées et sorties du mois qui ignore le solde des comptes.
   const checking = (accounts.data ?? []).filter((a) => a.type === "CHECKING" && (scope === "all" || (scope === "personal") === Boolean(a.personal)));
   const checkingToday = checking.reduce((sum, a) => sum + a.balanceCents, 0);
+  const checkingEnd = f?.points.at(-1)?.checkingCents ?? 0;
+  const overdrawn = (f?.accounts ?? []).filter((a) => a.type === "CHECKING" && a.firstNegativeDate).map((a) => a.name);
   const elapsed = (() => {
     const now = new Date();
     const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -130,10 +132,18 @@ export function Home({ onGo, reviewOpen, onReview }: { onGo: (tab: Tab) => void;
       {f && (
         <section aria-label="Dans 30 jours" className={`${cardClass} flex items-center justify-between gap-3`}>
           <div>
-            <p className="text-sm text-slate-600">Solde prévu le {formatDateFr(f.to)}</p>
-            <p className="text-xs text-slate-600">Total de tous les comptes, épargne comprise</p>
-            <p className={`text-xl font-bold tabular-nums ${f.endCents < 0 ? "text-red-700" : "text-emerald-700"}`}><Money cents={f.endCents} /></p>
-            {f.firstNegativeDate && <p className="text-sm font-medium text-red-700">Découvert prévu le {formatDateFr(f.firstNegativeDate)}</p>}
+            {/* Le découvert ne concerne que les comptes courants : le montant affiché est donc celui des comptes courants (et non le
+                total avec l'épargne, qui pouvait être positif à côté d'une alerte de découvert). Le total vient en second. */}
+            <p className="text-sm text-slate-600">Comptes courants le {formatDateFr(f.to)}</p>
+            <p className={`text-xl font-bold tabular-nums ${checkingEnd < 0 ? "text-red-700" : "text-emerald-700"}`} data-testid="forecast-checking"><Money cents={checkingEnd} /></p>
+            {f.firstNegativeDate && (
+              <p className="text-sm font-medium text-red-700" data-testid="forecast-overdraft">
+                Découvert prévu le {formatDateFr(f.firstNegativeDate)}{overdrawn.length ? ` sur ${overdrawn.join(", ")}` : ""}
+                {f.lowestCheckingDate && <> : au plus bas <Money cents={f.lowestCheckingCents} /> le {formatDateFr(f.lowestCheckingDate)}</>}
+                {checkingEnd >= 0 ? ", puis retour au positif." : "."}
+              </p>
+            )}
+            {f.endCents !== checkingEnd && <p className="text-xs text-slate-600">Avec l'épargne, tous comptes : <Money cents={f.endCents} /></p>}
           </div>
           <button type="button" onClick={() => onGo("operations")} className="min-h-11 px-1 text-sm font-medium underline">Détail</button>
         </section>
