@@ -40,7 +40,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | Terminé (jalon 16) ; reste : export du journal |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
-| Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) |
+| Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) ; paiement en plusieurs fois et libellés visibles du formulaire (novembre 2026) |
 | Modification d'un compte, d'une opération ou d'une règle (PATCH + édition en ligne) | Terminé (jalon 4) |
 | Interface 2FA (activation TOTP depuis le tableau de bord) | Terminé (jalon 4) ; QR code à faire |
 | Solde des comptes incluant les occurrences récurrentes échues | Terminé (jalon 4) ; opérations futures exclues du solde du jour et solde de fin de mois (correctif novembre 2026) |

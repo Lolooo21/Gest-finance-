@@ -10,3 +10,4 @@ export * from "./budgets.js";
 export * from "./statements.js";
 export * from "./categorize.js";
 export * from "./subscriptions.js";
+export * from "./installments.js";

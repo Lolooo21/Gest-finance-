@@ -126,6 +126,11 @@ export const TransactionDto = z.object({
 });
 export type TransactionDto = z.infer<typeof TransactionDto>;
 
+/** Paiement en plusieurs fois : montant TOTAL, date de la première échéance, puis une échéance par mois (2 à 48). */
+export const InstallmentsDto = TransactionDto.extend({ count: z.number().int().min(2).max(48) })
+  .refine((d) => Math.abs(d.amountCents) >= d.count, { message: "montant trop petit pour ce nombre d'échéances", path: ["amountCents"] });
+export type InstallmentsDto = z.infer<typeof InstallmentsDto>;
+
 export const RecurringRuleDto = z.object({
   accountId: z.string().uuid(),
   label: z.string().min(1).max(120),
