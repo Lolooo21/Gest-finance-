@@ -127,6 +127,37 @@ describe("App", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Le montant est invalide");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
+
+  it("enregistre un paiement en plusieurs fois avec l'aperçu des échéances", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
+      if (u === "/transactions/installments" && m === "POST") return { status: 201, json: { count: 3 } };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByLabelText("Compte")).toHaveTextContent("Courant"));
+    await user.selectOptions(screen.getByLabelText("Compte"), "a1");
+    await user.type(screen.getByLabelText("Libellé"), "Lave-linge");
+    await user.click(screen.getByLabelText("En plusieurs fois"));
+    await user.type(screen.getByLabelText("Montant total"), "100");
+    const date = screen.getByLabelText("Première échéance le");
+    await user.clear(date);
+    await user.type(date, "2026-11-19");
+    const count = screen.getByLabelText(/Nombre d'échéances/);
+    await user.clear(count);
+    await user.type(count, "3");
+    const preview = screen.getByTestId("installments-preview").textContent?.replace(/\s/g, " ");
+    expect(preview).toContain("3 échéances de 33,33");
+    expect(preview).toContain("la 1re : 33,34");
+    expect(preview).toContain("19 janvier 2027");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/transactions/installments")?.body)
+      .toMatchObject({ accountId: "a1", label: "Lave-linge", amountCents: -10_000, date: "2026-11-19", count: 3 }));
+  });
 });
 
 describe("modification et 2FA", () => {

@@ -27,7 +27,7 @@ const ACTIONS: Record<string, string> = {
   "privacy.member_deleted_self": "Un membre a supprimé son compte",
   "account.created": "Compte créé", "account.updated": "Compte modifié", "account.deleted": "Compte supprimé",
   "account.shared": "Compte personnel partagé avec le foyer", "account.made_personal": "Compte joint rendu personnel",
-  "transaction.created": "Opération ajoutée", "transaction.updated": "Opération modifiée", "transaction.deleted": "Opération supprimée",
+  "transaction.created": "Opération ajoutée", "transaction.installments": "Paiement en plusieurs fois ajouté", "transaction.updated": "Opération modifiée", "transaction.deleted": "Opération supprimée",
   "recurring_rule.created": "Récurrence ajoutée", "recurring_rule.updated": "Récurrence modifiée", "recurring_rule.deleted": "Récurrence supprimée",
   "statement.previewed": "Relevé analysé", "statement.imported": "Relevé importé",
   "payslip.parsed": "Fiche de paie lue", "payslip.confirmed": "Fiche de paie enregistrée",

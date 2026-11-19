@@ -1,7 +1,8 @@
+import { installmentPlan } from "@gest-finance/finance-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Account, type CategoryView, type Member, type Rule, type Tx } from "../api";
-import { centsToInput, parseEuros, todayIso } from "../money";
+import { centsToInput, formatCents, formatDateFr, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
 import { useCategories } from "./Budgets";
@@ -237,11 +238,19 @@ function AccountForm({ onDone }: { onDone: () => void }) {
 function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; categories: CategoryView[]; onDone: () => void }) {
   const toast = useToast();
   const [error, setError] = useState("");
-  const [recurring, setRecurring] = useState(false);
+  // Ponctuelle, récurrente (sans fin connue : loyer, abonnement…) ou paiement en plusieurs fois (nombre d'échéances fixe).
+  const [mode, setMode] = useState<"once" | "recurring" | "installments">("once");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(todayIso());
+  const [count, setCount] = useState("4");
+  const plan = mode === "installments" ? safePlan(parseEuros(amount), Number(count), date) : null;
   const save = useMutation({
     meta: { inline: true },
     mutationFn: ({ path, body }: { path: string; body: object }) => api("POST", path, body),
-    onSuccess: () => { toast.success(recurring ? "Récurrence ajoutée." : "Opération enregistrée."); return onDone(); },
+    onSuccess: () => {
+      toast.success(mode === "recurring" ? "Récurrence ajoutée." : mode === "installments" ? `Paiement en ${count} fois enregistré.` : "Opération enregistrée.");
+      return onDone();
+    },
     onError: (e) => setError(e instanceof ApiError ? e.message : "Une erreur est survenue."),
   });
   function submit(e: FormEvent<HTMLFormElement>) {
@@ -257,10 +266,13 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
     const categoryId = String(f.get("categoryId") ?? "");
     const base = { accountId: f.get("accountId"), label: f.get("label"), amountCents: signed, ...(categoryId ? { categoryId: categoryId === "none" ? null : categoryId } : {}) };
     const end = String(f.get("end") ?? "");
-    const req = recurring
+    if (mode === "installments" && !safePlan(cents, Number(count), date)) return setError("Choisissez entre 2 et 48 échéances, pour un montant d'au moins 1 centime par échéance.");
+    const req = mode === "recurring"
       ? { path: "/recurring-rules", body: { ...base, frequency: f.get("frequency"), start: f.get("date"), ...(end ? { end } : {}) } }
-      : { path: "/transactions", body: { ...base, date: f.get("date") } };
-    save.mutate(req, { onSuccess: () => form.reset() });
+      : mode === "installments"
+        ? { path: "/transactions/installments", body: { ...base, date: f.get("date"), count: Number(count) } }
+        : { path: "/transactions", body: { ...base, date: f.get("date") } };
+    save.mutate(req, { onSuccess: () => { form.reset(); setAmount(""); setDate(todayIso()); } });
   }
   return (
     <form onSubmit={submit} className="grid gap-2 sm:grid-cols-2">
@@ -270,8 +282,12 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
       </select>
       <input name="label" required maxLength={120} placeholder="Libellé (ex. Courses)" aria-label="Libellé" className={fieldClass} />
-      <input name="amount" required placeholder="Montant (€)" aria-label="Montant" inputMode="decimal" className={fieldClass} />
-      <input name="date" type="date" required defaultValue={todayIso()} aria-label="Date" className={fieldClass} />
+      <input name="amount" required placeholder={mode === "installments" ? "Montant total (€)" : "Montant (€)"} aria-label={mode === "installments" ? "Montant total" : "Montant"}
+        inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={fieldClass} />
+      <label className="grid gap-1 text-sm">
+        {mode === "once" ? "Date" : mode === "recurring" ? "Première fois le" : "Première échéance le"}
+        <input name="date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} className={fieldClass} />
+      </label>
       {categories.length > 0 && (
         <select name="categoryId" aria-label="Catégorie" className={fieldClass} defaultValue="">
           <option value="">Catégorie automatique</option>
@@ -279,11 +295,37 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       )}
-      <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} className="h-5 w-5" /> Récurrent (se répète)</label>
-      {recurring && (
+      <fieldset className="grid gap-1 text-sm sm:col-span-2">
+        <legend className="mb-1">Type</legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {([["once", "Ponctuelle"], ["recurring", "Récurrente (se répète)"], ["installments", "En plusieurs fois"]] as const).map(([value, text]) => (
+            <label key={value} className="flex min-h-11 items-center gap-2">
+              <input type="radio" name="mode" value={value} checked={mode === value} onChange={() => setMode(value)} className="h-5 w-5" /> {text}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {mode === "recurring" && (
         <>
-          <select name="frequency" aria-label="Fréquence" className={fieldClass} defaultValue="MONTHLY"><option value="WEEKLY">Chaque semaine</option><option value="MONTHLY">Chaque mois</option><option value="YEARLY">Chaque année</option></select>
-          <input name="end" type="date" aria-label="Date de fin (optionnelle)" className={fieldClass} />
+          <label className="grid gap-1 text-sm">Fréquence
+            <select name="frequency" className={fieldClass} defaultValue="MONTHLY"><option value="WEEKLY">Chaque semaine</option><option value="MONTHLY">Chaque mois</option><option value="YEARLY">Chaque année</option></select>
+          </label>
+          <label className="grid gap-1 text-sm">Jusqu'au (facultatif, vide = sans fin)
+            <input name="end" type="date" className={fieldClass} />
+          </label>
+        </>
+      )}
+      {mode === "installments" && (
+        <>
+          <label className="grid gap-1 text-sm">Nombre d'échéances (une par mois)
+            <input name="count" type="number" min={2} max={48} required list="echeances" value={count} onChange={(e) => setCount(e.target.value)} className={fieldClass} />
+            <datalist id="echeances">{[2, 3, 4, 5, 6, 10, 12, 24].map((n) => <option key={n} value={n} />)}</datalist>
+          </label>
+          <p className="self-end text-sm text-slate-600" aria-live="polite" data-testid="installments-preview">
+            {plan
+              ? `${plan.length} échéances de ${formatCents(Math.abs(plan[plan.length - 1]!.amountCents))}${plan[0]!.amountCents !== plan[1]!.amountCents ? ` (la 1re : ${formatCents(Math.abs(plan[0]!.amountCents))})` : ""}, du ${formatDateFr(plan[0]!.date)} au ${formatDateFr(plan[plan.length - 1]!.date)}.`
+              : "Saisissez le montant total et le nombre d'échéances (2 à 48)."}
+          </p>
         </>
       )}
       <Button type="submit" icon="plus" loading={save.isPending} className="sm:col-span-2">Enregistrer</Button>
@@ -353,4 +395,10 @@ export function TwoFactor({ onClose }: { onClose: () => void }) {
       {error && <p role="alert" className="mt-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     </section>
   );
+}
+
+/** Échéancier pour l'aperçu, ou null si les valeurs saisies ne permettent pas d'en faire un. */
+function safePlan(cents: number | null, count: number, date: string) {
+  if (cents === null || !Number.isInteger(count) || count < 2 || count > 48 || !date) return null;
+  try { return installmentPlan(-cents, count, date); } catch { return null; }
 }

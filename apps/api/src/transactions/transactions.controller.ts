@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { TransactionDto, TransactionPatch } from "@gest-finance/shared";
+import { installmentPlan } from "@gest-finance/finance-core";
+import { InstallmentsDto, TransactionDto, TransactionPatch } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
 import { CategorizerService } from "../categories/categorizer.service.js";
 import { AuthGuard, Roles, type AuthUser } from "../common/auth.guard.js";
@@ -41,6 +42,27 @@ export class TransactionsController {
     });
     await this.audit.record(user.householdId, user.userId, "transaction.created");
     return view(t);
+  }
+
+  /**
+   * Paiement en plusieurs fois : une opération par échéance mensuelle (« Libellé (1/4) »…), créées ensemble. Chaque échéance compte
+   * dans le solde à sa date, apparaît dans le prévisionnel et se modifie ou se supprime comme une opération ordinaire.
+   */
+  @Post("installments")
+  @Roles("OWNER", "ADULT")
+  async createInstallments(@CurrentUser() user: AuthUser, @Body(new ZodPipe(InstallmentsDto)) dto: InstallmentsDto) {
+    const account = await this.prisma.bankAccount.findFirst({ where: { id: dto.accountId, householdId: user.householdId }, select: { id: true } });
+    if (!account) throw new NotFoundException("Compte introuvable");
+    const categoryId = await this.categorizer.resolve(user.householdId, dto.label, dto.categoryId);
+    const plan = installmentPlan(dto.amountCents, dto.count, dto.date);
+    await this.prisma.transaction.createMany({
+      data: plan.map((p) => ({
+        householdId: user.householdId, accountId: dto.accountId, amountCents: p.amountCents, date: toDate(p.date),
+        label: `${dto.label.slice(0, 110)} (${p.index}/${dto.count})`, categoryId,
+      })),
+    });
+    await this.audit.record(user.householdId, user.userId, "transaction.installments");
+    return { count: plan.length, installments: plan };
   }
 
   @Patch(":id")
