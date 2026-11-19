@@ -1,5 +1,11 @@
 # DONE — réalisé
 
+## Correctif : « Trop de tentatives » après une série de modifications (novembre 2026)
+- Cause : après chaque enregistrement, l'écran Opérations rechargeait **toutes** les requêtes actives (profil, rappel… compris) ; quelques modifications rapides dépassaient le plafond général de 100 requêtes par minute et par appareil.
+- `apps/web/src/pages/Operations.tsx` : `refresh` ne recharge plus que les données financières (`FINANCE_KEYS` : comptes, opérations, récurrences, prévisionnel, reste à vivre, catégories et budgets, abonnements, bilan).
+- `apps/api/src/app.ts` : plafond général relevé à **300 requêtes par minute** et par appareil ; plafonds dédiés inchangés (authentification 10, lien de réinitialisation 5, imports de PDF 10).
+- Tests : `app.test.tsx` (10 modifications d'affilée, ni profil ni rappel ni membres rechargés ; le test échoue avec l'ancien rechargement complet).
+
 ## Correctif : date de fin des récurrences sur téléphone (novembre 2026)
 - `apps/web/src/pages/Operations.tsx` : le calendrier natif des téléphones ne permet pas d'effacer une date, donc impossible de créer une récurrence sans fin ou de retirer une fin. Nouveau composant `EndDate` (champ « Jusqu'au » + case **« Sans fin »**, cochée par défaut quand il n'y a pas de fin ; cochée = champ désactivé, envoyé comme vide → `end` absent à la création, `end: null` à la modification), utilisé dans le formulaire de saisie et dans la modification d'une récurrence.
 - Tests : `app.test.tsx` (fin ajoutée, refusée avant le début, retirée avec « Sans fin »).

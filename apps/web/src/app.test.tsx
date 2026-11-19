@@ -211,6 +211,26 @@ describe("modification et 2FA", () => {
     await waitFor(() => expect(calls.find((c) => c.method === "PATCH")).toMatchObject({ url: "/recurring-rules/r1", body: { amountCents: 250_000, end: "2027-06-30" } }));
   });
 
+  it("après chaque modification, ne recharge que les données financières (série de 10 modifications)", async () => {
+    const rule = { id: "r1", accountId: "a1", label: "Salaire", amountCents: 250_000, frequency: "MONTHLY", start: "2026-01-28", end: null, categoryId: null };
+    const calls = mockApi(dashboardApi((m, u) => (m === "PATCH" ? { json: { ok: true } } : u === "/recurring-rules" ? { json: [rule] } : {})));
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "Modifier Salaire" });
+    await waitFor(() => expect(calls.some((c) => c.url === "/household/me")).toBe(true));
+    const before = calls.length;
+    for (let i = 0; i < 10; i++) {
+      await user.click(await screen.findByRole("button", { name: "Modifier Salaire" }));
+      await user.click(within(screen.getByLabelText("Jusqu'au").closest("form")!).getByRole("button", { name: "Enregistrer" }));
+      await waitFor(() => expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(i + 1));
+    }
+    await waitFor(() => expect(calls.slice(before).filter((c) => c.url === "/recurring-rules").length).toBeGreaterThanOrEqual(10));
+    const reloaded = new Set(calls.slice(before).filter((c) => c.method === "GET").map((c) => c.url.split("?")[0]));
+    // Profil, rappel, membres… ne dépendent pas d'une récurrence : pas de requête inutile vers la limite de débit.
+    for (const url of ["/household/me", "/reminder", "/household/members", "/auth/session"]) expect(reloaded.has(url)).toBe(false);
+  });
+
   it("retire la date de fin d'une récurrence en cochant « Sans fin »", async () => {
     const rule = { id: "r1", accountId: "a1", label: "Crédit", amountCents: -30_000, frequency: "MONTHLY", start: "2026-01-05", end: "2027-06-05", categoryId: null };
     const calls = mockApi(dashboardApi((m, u) => (m === "PATCH" ? { json: { ok: true } } : u === "/recurring-rules" ? { json: [rule] } : {})));
