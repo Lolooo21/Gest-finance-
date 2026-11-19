@@ -1,5 +1,13 @@
 # DONE — réalisé
 
+## Correctif de sécurité : `effect` (novembre 2026)
+- `pnpm-workspace.yaml` : override `effect: ">=3.22.1 <4"` (dépendance indirecte `prisma > @prisma/config > effect`, ReDoS GHSA-7589-6fvf-x4pw, gravité haute, publiée le 19 novembre 2026) ; `pnpm-lock.yaml` passe à `effect@3.22.5`. `pnpm audit --prod --audit-level high` : aucune faille ; `prisma validate` et tests API 246 ✓.
+
+## Correctif : carte « Dans 30 jours » de l'accueil contradictoire (novembre 2026)
+- Cause : la carte affichait le **total de tous les comptes, épargne comprise** (souvent positif) juste au-dessus d'une alerte « Découvert prévu », qui ne concerne que les **comptes courants**.
+- `apps/web/src/pages/Home.tsx` : montant principal = **comptes courants** à 30 jours (dernier point `checkingCents` du prévisionnel) ; alerte détaillée « Découvert prévu le … sur <compte(s)> : au plus bas … le …, puis retour au positif » ; total avec l'épargne en petit, seulement s'il diffère.
+- Tests : `app.test.tsx` (découvert passager sur le compte joint, livret qui rend le total positif).
+
 ## Accueil : reste à vivre et soldes expliqués (novembre 2026)
 - `apps/web/src/pages/Home.tsx` : la carte principale précise que le reste à vivre est « entrées − sorties du mois entier, échéances à venir comprises, hors solde des comptes » et affiche à part **l'argent disponible aujourd'hui sur les comptes courants** de la vue choisie (tous / joints / mes comptes ; même calcul que l'écran Comptes) ; la carte « Solde prévu le … » indique « Total de tous les comptes, épargne comprise ».
 - Tests : `app.test.tsx` (explication affichée, solde des comptes courants du jour).
