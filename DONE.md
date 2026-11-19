@@ -1,5 +1,9 @@
 # DONE — réalisé
 
+## Accueil : reste à vivre et soldes expliqués (novembre 2026)
+- `apps/web/src/pages/Home.tsx` : la carte principale précise que le reste à vivre est « entrées − sorties du mois entier, échéances à venir comprises, hors solde des comptes » et affiche à part **l'argent disponible aujourd'hui sur les comptes courants** de la vue choisie (tous / joints / mes comptes ; même calcul que l'écran Comptes) ; la carte « Solde prévu le … » indique « Total de tous les comptes, épargne comprise ».
+- Tests : `app.test.tsx` (explication affichée, solde des comptes courants du jour).
+
 ## Correctif : « Trop de tentatives » après une série de modifications (novembre 2026)
 - Cause : après chaque enregistrement, l'écran Opérations rechargeait **toutes** les requêtes actives (profil, rappel… compris) ; quelques modifications rapides dépassaient le plafond général de 100 requêtes par minute et par appareil.
 - `apps/web/src/pages/Operations.tsx` : `refresh` ne recharge plus que les données financières (`FINANCE_KEYS` : comptes, opérations, récurrences, prévisionnel, reste à vivre, catégories et budgets, abonnements, bilan).

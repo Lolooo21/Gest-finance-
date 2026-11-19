@@ -49,6 +49,10 @@ export function Home({ onGo, reviewOpen, onReview }: { onGo: (tab: Tab) => void;
 
   const s = summary.data;
   const f = forecast.data;
+  // Argent disponible aujourd'hui sur les comptes courants de la vue choisie (même calcul que l'écran Comptes) : à ne pas confondre
+  // avec le reste à vivre, bilan des entrées et sorties du mois qui ignore le solde des comptes.
+  const checking = (accounts.data ?? []).filter((a) => a.type === "CHECKING" && (scope === "all" || (scope === "personal") === Boolean(a.personal)));
+  const checkingToday = checking.reduce((sum, a) => sum + a.balanceCents, 0);
   const elapsed = (() => {
     const now = new Date();
     const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -65,10 +69,16 @@ export function Home({ onGo, reviewOpen, onReview }: { onGo: (tab: Tab) => void;
           <ScopeFilter tone="dark" />
         </div>
         <p className="text-4xl font-bold tracking-tight tabular-nums" data-testid="remaining">{s ? <Money cents={s.remainingCents} /> : "…"}</p>
+        <p className="text-xs opacity-90">Entrées − sorties du mois entier, échéances à venir comprises, hors solde des comptes.</p>
         {s && (
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <span>Entrées <strong className="text-brand-mint"><Money cents={s.incomeCents} /></strong></span>
             <span>Sorties <strong><Money cents={s.fixedChargesCents + s.oneOffExpensesCents} /></strong></span>
+          </p>
+        )}
+        {checking.length > 0 && (
+          <p className="text-sm" data-testid="checking-today">
+            Sur {checking.length > 1 ? "vos comptes courants" : "votre compte courant"} aujourd'hui : <strong className="tabular-nums"><Money cents={checkingToday} /></strong>
           </p>
         )}
         <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-white/25"><div className="h-full bg-brand-mint" style={{ width: `${elapsed.percent}%` }} /></div>
@@ -121,6 +131,7 @@ export function Home({ onGo, reviewOpen, onReview }: { onGo: (tab: Tab) => void;
         <section aria-label="Dans 30 jours" className={`${cardClass} flex items-center justify-between gap-3`}>
           <div>
             <p className="text-sm text-slate-600">Solde prévu le {formatDateFr(f.to)}</p>
+            <p className="text-xs text-slate-600">Total de tous les comptes, épargne comprise</p>
             <p className={`text-xl font-bold tabular-nums ${f.endCents < 0 ? "text-red-700" : "text-emerald-700"}`}><Money cents={f.endCents} /></p>
             {f.firstNegativeDate && <p className="text-sm font-medium text-red-700">Découvert prévu le {formatDateFr(f.firstNegativeDate)}</p>}
           </div>
