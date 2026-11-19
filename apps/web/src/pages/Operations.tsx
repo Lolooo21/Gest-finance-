@@ -1,7 +1,8 @@
+import { installmentPlan } from "@gest-finance/finance-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Account, type CategoryView, type Member, type Rule, type Tx } from "../api";
-import { centsToInput, parseEuros, todayIso } from "../money";
+import { centsToInput, formatCents, formatDateFr, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
 import { useCategories } from "./Budgets";
@@ -147,12 +148,17 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
           {rules.data?.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
               {editing === r.id ? (
-                <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }, categoryField(r.categoryId)]}
+                <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }, categoryField(r.categoryId),
+                  { name: "end", label: "Jusqu'au (vide = sans fin)", value: r.end ?? "", type: "date", optional: true }]}
                   sign={r.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
-                  onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/recurring-rules/${r.id}`, body: { label: v.label, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null } }); }} />
+                  onSave={(v, sign) => {
+                    const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)";
+                    if (v.end && v.end < r.start) return `La date de fin doit être après le début (${formatDateFr(r.start)}).`;
+                    patch.mutate({ path: `/recurring-rules/${r.id}`, body: { label: v.label, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null, end: v.end || null } });
+                  }} />
               ) : (
                 <>
-                  <span>{r.label} · {FREQ[r.frequency]} <span className="text-xs text-slate-600">({names.get(r.accountId)}{withCategory(r.categoryId)})</span></span>
+                  <span>{r.label} · {FREQ[r.frequency]}{r.end ? ` jusqu'au ${formatDateFr(r.end)}` : ""} <span className="text-xs text-slate-600">({names.get(r.accountId)}{withCategory(r.categoryId)})</span></span>
                   <span className="flex flex-wrap items-center gap-2">
                     <strong className={`tabular-nums ${r.amountCents < 0 ? "text-red-700" : "text-emerald-700"}`}><Money cents={r.amountCents} /></strong>
                     <RowActions label={r.label} onEdit={() => setEditing(r.id)} onDelete={() => askDelete(`/recurring-rules/${r.id}`, `la récurrence « ${r.label} »`, "Elle ne sera plus comptée dans le reste à vivre.", "Récurrence supprimée.")} />
@@ -161,7 +167,7 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
               )}
             </li>
           ))}
-          {rules.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucune récurrence (salaire, loyer…) : ajoutez-en depuis le formulaire avec « Récurrent ».</li>}
+          {rules.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucune récurrence (salaire, loyer…) : ajoutez-en depuis le formulaire avec le type « Récurrente ».</li>}
         </ul>
       </section>
     </div>
@@ -237,11 +243,19 @@ function AccountForm({ onDone }: { onDone: () => void }) {
 function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; categories: CategoryView[]; onDone: () => void }) {
   const toast = useToast();
   const [error, setError] = useState("");
-  const [recurring, setRecurring] = useState(false);
+  // Ponctuelle, récurrente (sans fin connue : loyer, abonnement…) ou paiement en plusieurs fois (nombre d'échéances fixe).
+  const [mode, setMode] = useState<"once" | "recurring" | "installments">("once");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(todayIso());
+  const [count, setCount] = useState("4");
+  const plan = mode === "installments" ? safePlan(parseEuros(amount), Number(count), date) : null;
   const save = useMutation({
     meta: { inline: true },
     mutationFn: ({ path, body }: { path: string; body: object }) => api("POST", path, body),
-    onSuccess: () => { toast.success(recurring ? "Récurrence ajoutée." : "Opération enregistrée."); return onDone(); },
+    onSuccess: () => {
+      toast.success(mode === "recurring" ? "Récurrence ajoutée." : mode === "installments" ? `Paiement en ${count} fois enregistré.` : "Opération enregistrée.");
+      return onDone();
+    },
     onError: (e) => setError(e instanceof ApiError ? e.message : "Une erreur est survenue."),
   });
   function submit(e: FormEvent<HTMLFormElement>) {
@@ -257,10 +271,13 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
     const categoryId = String(f.get("categoryId") ?? "");
     const base = { accountId: f.get("accountId"), label: f.get("label"), amountCents: signed, ...(categoryId ? { categoryId: categoryId === "none" ? null : categoryId } : {}) };
     const end = String(f.get("end") ?? "");
-    const req = recurring
+    if (mode === "installments" && !safePlan(cents, Number(count), date)) return setError("Choisissez entre 2 et 48 échéances, pour un montant d'au moins 1 centime par échéance.");
+    const req = mode === "recurring"
       ? { path: "/recurring-rules", body: { ...base, frequency: f.get("frequency"), start: f.get("date"), ...(end ? { end } : {}) } }
-      : { path: "/transactions", body: { ...base, date: f.get("date") } };
-    save.mutate(req, { onSuccess: () => form.reset() });
+      : mode === "installments"
+        ? { path: "/transactions/installments", body: { ...base, date: f.get("date"), count: Number(count) } }
+        : { path: "/transactions", body: { ...base, date: f.get("date") } };
+    save.mutate(req, { onSuccess: () => { form.reset(); setAmount(""); setDate(todayIso()); } });
   }
   return (
     <form onSubmit={submit} className="grid gap-2 sm:grid-cols-2">
@@ -270,8 +287,12 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
       </select>
       <input name="label" required maxLength={120} placeholder="Libellé (ex. Courses)" aria-label="Libellé" className={fieldClass} />
-      <input name="amount" required placeholder="Montant (€)" aria-label="Montant" inputMode="decimal" className={fieldClass} />
-      <input name="date" type="date" required defaultValue={todayIso()} aria-label="Date" className={fieldClass} />
+      <input name="amount" required placeholder={mode === "installments" ? "Montant total (€)" : "Montant (€)"} aria-label={mode === "installments" ? "Montant total" : "Montant"}
+        inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={fieldClass} />
+      <label className="grid gap-1 text-sm">
+        {mode === "once" ? "Date" : mode === "recurring" ? "Première fois le" : "Première échéance le"}
+        <input name="date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} className={fieldClass} />
+      </label>
       {categories.length > 0 && (
         <select name="categoryId" aria-label="Catégorie" className={fieldClass} defaultValue="">
           <option value="">Catégorie automatique</option>
@@ -279,11 +300,37 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       )}
-      <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} className="h-5 w-5" /> Récurrent (se répète)</label>
-      {recurring && (
+      <fieldset className="grid gap-1 text-sm sm:col-span-2">
+        <legend className="mb-1">Type</legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {([["once", "Ponctuelle"], ["recurring", "Récurrente (se répète)"], ["installments", "En plusieurs fois"]] as const).map(([value, text]) => (
+            <label key={value} className="flex min-h-11 items-center gap-2">
+              <input type="radio" name="mode" value={value} checked={mode === value} onChange={() => setMode(value)} className="h-5 w-5" /> {text}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {mode === "recurring" && (
         <>
-          <select name="frequency" aria-label="Fréquence" className={fieldClass} defaultValue="MONTHLY"><option value="WEEKLY">Chaque semaine</option><option value="MONTHLY">Chaque mois</option><option value="YEARLY">Chaque année</option></select>
-          <input name="end" type="date" aria-label="Date de fin (optionnelle)" className={fieldClass} />
+          <label className="grid gap-1 text-sm">Fréquence
+            <select name="frequency" className={fieldClass} defaultValue="MONTHLY"><option value="WEEKLY">Chaque semaine</option><option value="MONTHLY">Chaque mois</option><option value="YEARLY">Chaque année</option></select>
+          </label>
+          <label className="grid gap-1 text-sm">Jusqu'au (facultatif, vide = sans fin)
+            <input name="end" type="date" className={fieldClass} />
+          </label>
+        </>
+      )}
+      {mode === "installments" && (
+        <>
+          <label className="grid gap-1 text-sm">Nombre d'échéances (une par mois)
+            <input name="count" type="number" min={2} max={48} required list="echeances" value={count} onChange={(e) => setCount(e.target.value)} className={fieldClass} />
+            <datalist id="echeances">{[2, 3, 4, 5, 6, 10, 12, 24].map((n) => <option key={n} value={n} />)}</datalist>
+          </label>
+          <p className="self-end text-sm text-slate-600" aria-live="polite" data-testid="installments-preview">
+            {plan
+              ? `${plan.length} échéances de ${formatCents(Math.abs(plan[plan.length - 1]!.amountCents))}${plan[0]!.amountCents !== plan[1]!.amountCents ? ` (la 1re : ${formatCents(Math.abs(plan[0]!.amountCents))})` : ""}, du ${formatDateFr(plan[0]!.date)} au ${formatDateFr(plan[plan.length - 1]!.date)}.`
+              : "Saisissez le montant total et le nombre d'échéances (2 à 48)."}
+          </p>
         </>
       )}
       <Button type="submit" icon="plus" loading={save.isPending} className="sm:col-span-2">Enregistrer</Button>
@@ -293,7 +340,7 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
 }
 
 /** Champ de saisie, ou liste déroulante si `options` est fourni (valeur vide autorisée). */
-interface Field { name: string; label: string; value: string; type?: string; options?: { value: string; label: string }[] }
+interface Field { name: string; label: string; value: string; type?: string; optional?: boolean; options?: { value: string; label: string }[] }
 
 /** Formulaire de modification en ligne. `onSave` peut renvoyer un message d'erreur de validation. */
 function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: "in" | "out"; onSave: (v: Record<string, string>, sign: "in" | "out") => string | void; onCancel: () => void }) {
@@ -310,7 +357,12 @@ function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: 
         <select key={x.name} name={x.name} defaultValue={x.value} aria-label={x.label} className={`${fieldClass} w-auto`}>
           {x.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-      ) : <input key={x.name} name={x.name} type={x.type} defaultValue={x.value} aria-label={x.label} required className={`${fieldClass} min-w-0 flex-1`} />)}
+      ) : x.type === "date" ? (
+        // Un champ date n'affiche pas d'indication : son libellé reste visible.
+        <label key={x.name} className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-slate-600">{x.label}
+          <input name={x.name} type="date" defaultValue={x.value} required={!x.optional} className={fieldClass} />
+        </label>
+      ) : <input key={x.name} name={x.name} type={x.type} defaultValue={x.value} aria-label={x.label} required={!x.optional} className={`${fieldClass} min-w-0 flex-1`} />)}
       {sign && <select name="sign" defaultValue={sign} aria-label="Sens" className={`${fieldClass} w-auto`}><option value="out">Sortie</option><option value="in">Entrée</option></select>}
       <Button type="submit" icon="check">Enregistrer</Button>
       <Button variant="ghost" onClick={onCancel}>Annuler</Button>
@@ -353,4 +405,10 @@ export function TwoFactor({ onClose }: { onClose: () => void }) {
       {error && <p role="alert" className="mt-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     </section>
   );
+}
+
+/** Échéancier pour l'aperçu, ou null si les valeurs saisies ne permettent pas d'en faire un. */
+function safePlan(cents: number | null, count: number, date: string) {
+  if (cents === null || !Number.isInteger(count) || count < 2 || count > 48 || !date) return null;
+  try { return installmentPlan(-cents, count, date); } catch { return null; }
 }

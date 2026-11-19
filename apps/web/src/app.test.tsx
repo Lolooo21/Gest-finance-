@@ -127,6 +127,37 @@ describe("App", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Le montant est invalide");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
+
+  it("enregistre un paiement en plusieurs fois avec l'aperçu des échéances", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts") return { json: [{ id: "a1", name: "Courant", type: "CHECKING", balanceCents: 0, endOfMonthCents: 0, ibanMasked: null }] };
+      if (u === "/transactions/installments" && m === "POST") return { status: 201, json: { count: 3 } };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByLabelText("Compte")).toHaveTextContent("Courant"));
+    await user.selectOptions(screen.getByLabelText("Compte"), "a1");
+    await user.type(screen.getByLabelText("Libellé"), "Lave-linge");
+    await user.click(screen.getByLabelText("En plusieurs fois"));
+    await user.type(screen.getByLabelText("Montant total"), "100");
+    const date = screen.getByLabelText("Première échéance le");
+    await user.clear(date);
+    await user.type(date, "2026-11-19");
+    const count = screen.getByLabelText(/Nombre d'échéances/);
+    await user.clear(count);
+    await user.type(count, "3");
+    const preview = screen.getByTestId("installments-preview").textContent?.replace(/\s/g, " ");
+    expect(preview).toContain("3 échéances de 33,33");
+    expect(preview).toContain("la 1re : 33,34");
+    expect(preview).toContain("19 janvier 2027");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/transactions/installments")?.body)
+      .toMatchObject({ accountId: "a1", label: "Lave-linge", amountCents: -10_000, date: "2026-11-19", count: 3 }));
+  });
 });
 
 describe("modification et 2FA", () => {
@@ -153,6 +184,26 @@ describe("modification et 2FA", () => {
     await user.click(within(amount.closest("form")!).getByRole("button", { name: "Enregistrer" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
     expect(calls.find((c) => c.method === "PATCH")).toMatchObject({ url: "/transactions/t1", body: { label: "Courses", amountCents: -5000, date: "2026-10-05" } });
+  });
+
+  it("modifie la date de fin d'une récurrence, la refuse avant le début et peut la retirer", async () => {
+    const rule = { id: "r1", accountId: "a1", label: "Salaire", amountCents: 250_000, frequency: "MONTHLY", start: "2026-01-28", end: null, categoryId: null };
+    const calls = mockApi(dashboardApi((m, u) => (m === "PATCH" ? { json: { ok: true } } : u === "/recurring-rules" ? { json: [rule] } : {})));
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Modifier Salaire" }));
+    const end = screen.getByLabelText("Jusqu'au (vide = sans fin)");
+    expect(end).toHaveValue("");
+    const save = within(end.closest("form")!).getByRole("button", { name: "Enregistrer" });
+    await user.type(end, "2025-12-31");
+    await user.click(save);
+    expect(await screen.findByRole("alert")).toHaveTextContent("La date de fin doit être après le début");
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+    await user.clear(end);
+    await user.type(end, "2027-06-30");
+    await user.click(save);
+    await waitFor(() => expect(calls.find((c) => c.method === "PATCH")).toMatchObject({ url: "/recurring-rules/r1", body: { amountCents: 250_000, end: "2027-06-30" } }));
   });
 
   it("active le 2FA : affiche le secret puis envoie le code", async () => {

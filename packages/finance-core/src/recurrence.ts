@@ -15,7 +15,8 @@ const DAY_MS = 86_400_000;
 
 const toDate = (iso: string): Date => new Date(`${iso}T00:00:00Z`);
 
-function addMonths(base: Date, months: number): Date {
+/** Ajoute des mois en ramenant le jour au dernier jour du mois si besoin (31 janvier + 1 mois = 28 ou 29 février). */
+export function addMonths(base: Date, months: number): Date {
   const day = base.getUTCDate();
   const target = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + months, 1));
   const lastDay = new Date(

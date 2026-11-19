@@ -172,3 +172,31 @@ describe("modification et solde avec récurrences", () => {
     expect((await get(app, "/accounts", c)).json()[0].balanceCents).toBe(3_000);
   });
 });
+
+describe("paiement en plusieurs fois", () => {
+  it("crée une opération par mois, somme exacte, et seule l'échéance du jour compte dans le solde", async () => {
+    const c = await register();
+    const accountId = await newAccount(c);
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await post(app, "/transactions/installments", { accountId, amountCents: -10_000, date: today, label: "Lave-linge", count: 3 }, c);
+    expect(res.statusCode).toBe(201);
+    expect(res.json().count).toBe(3);
+    const list = (await get(app, "/transactions", c)).json() as { label: string; amountCents: number; date: string }[];
+    expect(list.map((t) => t.label).sort()).toEqual(["Lave-linge (1/3)", "Lave-linge (2/3)", "Lave-linge (3/3)"]);
+    expect(list.reduce((s, t) => s + t.amountCents, 0)).toBe(-10_000);
+    expect(new Set(list.map((t) => t.date.slice(0, 7))).size).toBe(3);
+    expect((await get(app, "/accounts", c)).json()[0].balanceCents).toBe(100_000 - 3_334);
+  });
+
+  it("refuse 1 échéance, plus de 48, un montant trop petit et le compte d'un autre foyer", async () => {
+    const a = await register(1);
+    const b = await register(2);
+    const accountId = await newAccount(a);
+    const body = { accountId, amountCents: -10_000, date: "2026-11-19", label: "Achat" };
+    expect((await post(app, "/transactions/installments", { ...body, count: 1 }, a)).statusCode).toBe(400);
+    expect((await post(app, "/transactions/installments", { ...body, count: 49 }, a)).statusCode).toBe(400);
+    expect((await post(app, "/transactions/installments", { ...body, amountCents: -3, count: 4 }, a)).statusCode).toBe(400);
+    expect((await post(app, "/transactions/installments", { ...body, count: 4 }, b)).statusCode).toBe(404);
+    expect(await admin.transaction.count()).toBe(0);
+  });
+});
