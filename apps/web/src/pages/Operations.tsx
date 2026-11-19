@@ -11,6 +11,8 @@ import { PayslipImport } from "./Payslip";
 import { StatementImport } from "./StatementImport";
 
 const FREQ = { WEEKLY: "chaque semaine", MONTHLY: "chaque mois", YEARLY: "chaque année" } as const;
+/** Données recalculées à partir des comptes, opérations et récurrences. */
+const FINANCE_KEYS = new Set(["accounts", "tx", "rules", "forecast", "summary", "categories", "subscriptions", "review"]);
 type ImportPanel = "statement" | "payslip" | null;
 
 /**
@@ -29,7 +31,9 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
   const rules = useQuery({ queryKey: ["rules"], queryFn: () => api<Rule[]>("GET", "/recurring-rules") });
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Member>("GET", "/household/me") });
   const categories = useCategories();
-  const refresh = () => qc.invalidateQueries();
+  // Après un enregistrement, seules les données qui en dépendent sont rechargées (soldes, listes, prévisionnel, reste à vivre,
+  // budgets), pas tout l'écran : moins de requêtes, et une série de modifications ne bute plus sur la limite de débit de l'API.
+  const refresh = () => qc.invalidateQueries({ predicate: (q) => FINANCE_KEYS.has(String(q.queryKey[0])) });
   const failed = [accounts, txs, rules].find((q) => q.isError);
 
   useEffect(() => {
