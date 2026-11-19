@@ -35,7 +35,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Afficher / masquer le mot de passe à la connexion et à l'inscription | Terminé (jalon 12) |
 | Réinitialisation du mot de passe par lien e-mail (SMTP en production, Mailpit en développement) | Terminé (jalon 12) ; envoi réel à vérifier avec votre SMTP en production |
 | Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | Terminé (jalon 16) |
-| Sécurité : vérifier au premier déploiement que chaque appareil Tailscale a sa propre IP côté API (limites de débit) | À faire (déploiement) |
+| Sécurité : vérifier au premier déploiement que chaque appareil Tailscale a sa propre IP côté API (limites de débit) | À faire (déploiement) ; Caddy fait confiance à Tailscale (`trusted_proxies` 100.64.0.0/10 et réseaux privés) et transmet l'IP de l'appareil : reste à le constater dans les journaux en production |
 | Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | Libellés, employeurs et notes : Terminé (jalon 21) ; montants : non (calculs SQL), à compenser par un disque chiffré sur le VPS |
 | Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | Terminé (jalon 16) ; reste : export du journal |

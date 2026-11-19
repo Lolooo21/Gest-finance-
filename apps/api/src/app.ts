@@ -85,6 +85,8 @@ export async function createApp(opts: AppOptions = {}): Promise<NestFastifyAppli
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 0 } });
   // L'import de PDF (coûteux) a son propre plafond et son propre compteur, par IP.
   const isUpload = (url: string) => url.startsWith("/payslips/parse");
+  // Plafond général : 300 requêtes par minute et par appareil. Chaque enregistrement recharge plusieurs listes : à 100, une série de
+  // modifications rapides (normale) était refusée. Les routes sensibles gardent leurs plafonds bas, ci-dessous.
   // Plafonds dédiés, chacun avec son compteur par IP : demandes de lien de réinitialisation (5/min), tentatives
   // d'authentification (10/min, en plus du verrouillage du compte après 5 échecs), imports de PDF (10/min).
   const buckets = [
@@ -94,7 +96,7 @@ export async function createApp(opts: AppOptions = {}): Promise<NestFastifyAppli
   ];
   const bucket = (url: string) => buckets.find((b) => b.match(url));
   await app.register(rateLimit, {
-    max: (req) => bucket(req.url)?.max ?? opts.rateLimitMax ?? 100,
+    max: (req) => bucket(req.url)?.max ?? opts.rateLimitMax ?? 300,
     keyGenerator: (req) => { const b = bucket(req.url); return b ? `${b.name}:${req.ip}` : req.ip; },
     timeWindow: "1 minute",
   });
