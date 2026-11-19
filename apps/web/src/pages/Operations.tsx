@@ -149,7 +149,7 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
             <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
               {editing === r.id ? (
                 <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }, categoryField(r.categoryId),
-                  { name: "end", label: "Jusqu'au (vide = sans fin)", value: r.end ?? "", type: "date", optional: true }]}
+                  { name: "end", label: "Jusqu'au", value: r.end ?? "", type: "date", optional: true }]}
                   sign={r.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
                   onSave={(v, sign) => {
                     const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)";
@@ -315,9 +315,7 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
           <label className="grid gap-1 text-sm">Fréquence
             <select name="frequency" className={fieldClass} defaultValue="MONTHLY"><option value="WEEKLY">Chaque semaine</option><option value="MONTHLY">Chaque mois</option><option value="YEARLY">Chaque année</option></select>
           </label>
-          <label className="grid gap-1 text-sm">Jusqu'au (facultatif, vide = sans fin)
-            <input name="end" type="date" className={fieldClass} />
-          </label>
+          <EndDate name="end" label="Jusqu'au" defaultValue="" className="grid gap-1 text-sm" />
         </>
       )}
       {mode === "installments" && (
@@ -357,6 +355,8 @@ function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: 
         <select key={x.name} name={x.name} defaultValue={x.value} aria-label={x.label} className={`${fieldClass} w-auto`}>
           {x.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+      ) : x.type === "date" && x.optional ? (
+        <EndDate key={x.name} name={x.name} label={x.label} defaultValue={x.value} className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-slate-600" />
       ) : x.type === "date" ? (
         // Un champ date n'affiche pas d'indication : son libellé reste visible.
         <label key={x.name} className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-slate-600">{x.label}
@@ -368,6 +368,24 @@ function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: 
       <Button variant="ghost" onClick={onCancel}>Annuler</Button>
       {error && <p role="alert" className="w-full rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     </form>
+  );
+}
+
+/**
+ * Date de fin facultative. La case « Sans fin » remplace le champ vide : le calendrier des téléphones ne permet pas toujours d'effacer
+ * une date. Case cochée = champ désactivé, donc absent du formulaire (lu comme vide).
+ */
+function EndDate({ name, label, defaultValue, className }: { name: string; label: string; defaultValue: string; className: string }) {
+  const [none, setNone] = useState(!defaultValue);
+  return (
+    <div className={className}>
+      <label className="flex flex-col gap-1">{label}
+        <input name={name} type="date" defaultValue={defaultValue} disabled={none} required={!none} className={`${fieldClass} disabled:opacity-50`} />
+      </label>
+      <label className="flex min-h-11 items-center gap-2 text-sm text-slate-900">
+        <input type="checkbox" checked={none} onChange={(e) => setNone(e.target.checked)} className="h-5 w-5" /> Sans fin
+      </label>
+    </div>
   );
 }
 
