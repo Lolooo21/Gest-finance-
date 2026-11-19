@@ -148,12 +148,17 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
           {rules.data?.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
               {editing === r.id ? (
-                <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }, categoryField(r.categoryId)]}
+                <EditForm fields={[{ name: "label", label: "Libellé", value: r.label }, { name: "amount", label: "Montant (€)", value: centsToInput(r.amountCents) }, categoryField(r.categoryId),
+                  { name: "end", label: "Jusqu'au (vide = sans fin)", value: r.end ?? "", type: "date", optional: true }]}
                   sign={r.amountCents < 0 ? "out" : "in"} onCancel={() => setEditing(null)}
-                  onSave={(v, sign) => { const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)"; patch.mutate({ path: `/recurring-rules/${r.id}`, body: { label: v.label, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null } }); }} />
+                  onSave={(v, sign) => {
+                    const c = parseEuros(v.amount ?? ""); if (c === null) return "Montant invalide (ex. 12,50)";
+                    if (v.end && v.end < r.start) return `La date de fin doit être après le début (${formatDateFr(r.start)}).`;
+                    patch.mutate({ path: `/recurring-rules/${r.id}`, body: { label: v.label, amountCents: sign === "out" ? -c : c, categoryId: v.categoryId || null, end: v.end || null } });
+                  }} />
               ) : (
                 <>
-                  <span>{r.label} · {FREQ[r.frequency]} <span className="text-xs text-slate-600">({names.get(r.accountId)}{withCategory(r.categoryId)})</span></span>
+                  <span>{r.label} · {FREQ[r.frequency]}{r.end ? ` jusqu'au ${formatDateFr(r.end)}` : ""} <span className="text-xs text-slate-600">({names.get(r.accountId)}{withCategory(r.categoryId)})</span></span>
                   <span className="flex flex-wrap items-center gap-2">
                     <strong className={`tabular-nums ${r.amountCents < 0 ? "text-red-700" : "text-emerald-700"}`}><Money cents={r.amountCents} /></strong>
                     <RowActions label={r.label} onEdit={() => setEditing(r.id)} onDelete={() => askDelete(`/recurring-rules/${r.id}`, `la récurrence « ${r.label} »`, "Elle ne sera plus comptée dans le reste à vivre.", "Récurrence supprimée.")} />
@@ -162,7 +167,7 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
               )}
             </li>
           ))}
-          {rules.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucune récurrence (salaire, loyer…) : ajoutez-en depuis le formulaire avec « Récurrent ».</li>}
+          {rules.data?.length === 0 && <li className="py-3 text-sm text-slate-600">Aucune récurrence (salaire, loyer…) : ajoutez-en depuis le formulaire avec le type « Récurrente ».</li>}
         </ul>
       </section>
     </div>
@@ -335,7 +340,7 @@ function EntryForm({ accounts, categories, onDone }: { accounts: Account[]; cate
 }
 
 /** Champ de saisie, ou liste déroulante si `options` est fourni (valeur vide autorisée). */
-interface Field { name: string; label: string; value: string; type?: string; options?: { value: string; label: string }[] }
+interface Field { name: string; label: string; value: string; type?: string; optional?: boolean; options?: { value: string; label: string }[] }
 
 /** Formulaire de modification en ligne. `onSave` peut renvoyer un message d'erreur de validation. */
 function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: "in" | "out"; onSave: (v: Record<string, string>, sign: "in" | "out") => string | void; onCancel: () => void }) {
@@ -352,7 +357,12 @@ function EditForm({ fields, sign, onSave, onCancel }: { fields: Field[]; sign?: 
         <select key={x.name} name={x.name} defaultValue={x.value} aria-label={x.label} className={`${fieldClass} w-auto`}>
           {x.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-      ) : <input key={x.name} name={x.name} type={x.type} defaultValue={x.value} aria-label={x.label} required className={`${fieldClass} min-w-0 flex-1`} />)}
+      ) : x.type === "date" ? (
+        // Un champ date n'affiche pas d'indication : son libellé reste visible.
+        <label key={x.name} className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-slate-600">{x.label}
+          <input name={x.name} type="date" defaultValue={x.value} required={!x.optional} className={fieldClass} />
+        </label>
+      ) : <input key={x.name} name={x.name} type={x.type} defaultValue={x.value} aria-label={x.label} required={!x.optional} className={`${fieldClass} min-w-0 flex-1`} />)}
       {sign && <select name="sign" defaultValue={sign} aria-label="Sens" className={`${fieldClass} w-auto`}><option value="out">Sortie</option><option value="in">Entrée</option></select>}
       <Button type="submit" icon="check">Enregistrer</Button>
       <Button variant="ghost" onClick={onCancel}>Annuler</Button>

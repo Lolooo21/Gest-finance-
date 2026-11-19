@@ -186,6 +186,26 @@ describe("modification et 2FA", () => {
     expect(calls.find((c) => c.method === "PATCH")).toMatchObject({ url: "/transactions/t1", body: { label: "Courses", amountCents: -5000, date: "2026-10-05" } });
   });
 
+  it("modifie la date de fin d'une récurrence, la refuse avant le début et peut la retirer", async () => {
+    const rule = { id: "r1", accountId: "a1", label: "Salaire", amountCents: 250_000, frequency: "MONTHLY", start: "2026-01-28", end: null, categoryId: null };
+    const calls = mockApi(dashboardApi((m, u) => (m === "PATCH" ? { json: { ok: true } } : u === "/recurring-rules" ? { json: [rule] } : {})));
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Modifier Salaire" }));
+    const end = screen.getByLabelText("Jusqu'au (vide = sans fin)");
+    expect(end).toHaveValue("");
+    const save = within(end.closest("form")!).getByRole("button", { name: "Enregistrer" });
+    await user.type(end, "2025-12-31");
+    await user.click(save);
+    expect(await screen.findByRole("alert")).toHaveTextContent("La date de fin doit être après le début");
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+    await user.clear(end);
+    await user.type(end, "2027-06-30");
+    await user.click(save);
+    await waitFor(() => expect(calls.find((c) => c.method === "PATCH")).toMatchObject({ url: "/recurring-rules/r1", body: { amountCents: 250_000, end: "2027-06-30" } }));
+  });
+
   it("active le 2FA : affiche le secret puis envoie le code", async () => {
     const calls = mockApi(dashboardApi((m, u) => {
       if (u === "/auth/2fa/setup") return { status: 201, json: { secret: "JBSWY3DPEHPK3PXP", otpauthUrl: "otpauth://totp/x" } };
