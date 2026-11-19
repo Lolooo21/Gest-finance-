@@ -84,6 +84,9 @@ describe("App", () => {
     renderApp();
     const user = userEvent.setup();
     await waitFor(() => expect(screen.getByTestId("remaining").textContent?.replace(/\s/g, " ")).toContain("1 700,00"));
+    // Le reste à vivre est expliqué, et l'argent réellement disponible aujourd'hui est affiché à part.
+    expect(screen.getByText(/hors solde des comptes/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("checking-today").textContent?.replace(/\s/g, " ")).toContain("1 000,00"));
 
     await user.click(screen.getByRole("button", { name: /Masquer les montants/ }));
     expect(screen.getByTestId("remaining").textContent).toBe("•••• €");
