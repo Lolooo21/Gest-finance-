@@ -12,3 +12,4 @@ onlyBuiltDependencies:
 overrides:
   fastify: ">=5.12.7 <6"
   deepmerge-ts: ">=8.0.0"
+  effect: ">=3.22.1 <4"

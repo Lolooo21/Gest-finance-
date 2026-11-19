@@ -1,5 +1,8 @@
 # DONE — réalisé
 
+## Correctif de sécurité : `effect` (novembre 2026)
+- `pnpm-workspace.yaml` : override `effect: ">=3.22.1 <4"` (dépendance indirecte `prisma > @prisma/config > effect`, ReDoS GHSA-7589-6fvf-x4pw, gravité haute, publiée le 19 novembre 2026) ; `pnpm-lock.yaml` passe à `effect@3.22.5`. `pnpm audit --prod --audit-level high` : aucune faille ; `prisma validate` et tests API 246 ✓.
+
 ## Correctif : carte « Dans 30 jours » de l'accueil contradictoire (novembre 2026)
 - Cause : la carte affichait le **total de tous les comptes, épargne comprise** (souvent positif) juste au-dessus d'une alerte « Découvert prévu », qui ne concerne que les **comptes courants**.
 - `apps/web/src/pages/Home.tsx` : montant principal = **comptes courants** à 30 jours (dernier point `checkingCents` du prévisionnel) ; alerte détaillée « Découvert prévu le … sur <compte(s)> : au plus bas … le …, puis retour au positif » ; total avec l'épargne en petit, seulement s'il diffère.
