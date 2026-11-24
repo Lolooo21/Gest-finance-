@@ -4,7 +4,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type Account, type CategoryView, type Member, type Rule, type Tx } from "../api";
 import { centsToInput, formatCents, formatDateFr, parseEuros, todayIso } from "../money";
 import { Money } from "../privacy";
+import { ColorDot, ColorPicker } from "../colors";
 import { Button, cardClass, ErrorBanner, fieldClass, Icon, useConfirm, useToast } from "../ui";
+import { AccountEditForm } from "./AccountEdit";
 import { useCategories } from "./Budgets";
 import { ForecastPanel } from "./Forecast";
 import { PayslipImport } from "./Payslip";
@@ -91,11 +93,10 @@ export function Operations({ focusEntry = 0 }: { focusEntry?: number }) {
           {accounts.data?.map((a) => (
             <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
               {editing === a.id ? (
-                <EditForm fields={[{ name: "name", label: "Nom du compte", value: a.name }]} onCancel={() => setEditing(null)}
-                  onSave={(v) => patch.mutate({ path: `/accounts/${a.id}`, body: { name: v.name } })} />
+                <AccountEditForm account={a} onDone={() => setEditing(null)} />
               ) : (
                 <>
-                  <span>{a.name} <span className="text-xs text-slate-600">{a.type === "SAVINGS" ? "épargne" : "courant"}{a.ibanMasked ? ` · ${a.ibanMasked}` : ""}</span>{" "}
+                  <span className="inline-flex flex-wrap items-center gap-x-1.5"><ColorDot color={a.color} /> {a.name} <span className="text-xs text-slate-600">{a.type === "SAVINGS" ? "épargne" : "courant"}{a.ibanMasked ? ` · ${a.ibanMasked}` : ""}</span>{" "}
                     <OwnershipBadge personal={a.personal} /></span>
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="text-right">
@@ -202,6 +203,7 @@ function OwnershipBadge({ personal }: { personal?: boolean }) {
 function AccountForm({ onDone }: { onDone: () => void }) {
   const toast = useToast();
   const [error, setError] = useState("");
+  const [color, setColor] = useState<string | null>(null);
   const create = useMutation({
     meta: { inline: true },
     mutationFn: (body: object) => api("POST", "/accounts", body),
@@ -221,7 +223,8 @@ function AccountForm({ onDone }: { onDone: () => void }) {
     setError("");
     const iban = String(f.get("iban") ?? "").trim();
     const personal = f.get("personal") === "on";
-    create.mutate({ name: f.get("name"), type: f.get("type"), initialBalanceCents: negative ? -cents : cents, ...(iban ? { iban } : {}), ...(personal ? { personal } : {}) }, { onSuccess: () => form.reset() });
+    create.mutate({ name: f.get("name"), type: f.get("type"), initialBalanceCents: negative ? -cents : cents, ...(iban ? { iban } : {}), ...(personal ? { personal } : {}), ...(color ? { color } : {}) },
+      { onSuccess: () => { form.reset(); setColor(null); } });
   }
   return (
     <form onSubmit={submit} className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
@@ -238,6 +241,7 @@ function AccountForm({ onDone }: { onDone: () => void }) {
         <input type="checkbox" name="personal" className="mt-1 h-4 w-4 accent-teal-600" />
         <span>Compte personnel <span className="text-slate-600">— visible par vous seul ; sinon compte joint, visible par tout le foyer</span></span>
       </label>
+      <div className="sm:col-span-2"><ColorPicker value={color} onChange={setColor} label="Couleur du compte (facultatif)" /></div>
       <Button type="submit" icon="plus" loading={create.isPending} className="sm:col-span-2">Ajouter le compte</Button>
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800 sm:col-span-2">{error}</p>}
     </form>

@@ -38,10 +38,15 @@ export class CategoriesService {
       name: c.name,
       monthlyBudgetCents: c.monthlyBudgetCents,
       rollover: c.rollover,
+      color: c.color,
+      resetAt: c.budgetResetAt ? toIso(c.budgetResetAt) : null,
       spentCents: categorySpent(c.id, month, rules, oneOffs),
       // Un budget créé après le mois consulté n'a pas encore d'effet sur ce mois.
       budget: c.monthlyBudgetCents && c.budgetSince && toIso(c.budgetSince).slice(0, 7) <= month
-        ? evaluateBudget({ limitCents: c.monthlyBudgetCents, rollover: c.rollover, since: toIso(c.budgetSince).slice(0, 7) }, c.id, month, rules, oneOffs)
+        ? evaluateBudget({
+          limitCents: c.monthlyBudgetCents, rollover: c.rollover, since: toIso(c.budgetSince).slice(0, 7),
+          ...(c.budgetResetAt ? { startDate: toIso(c.budgetResetAt) } : {}),
+        }, c.id, month, rules, oneOffs)
         : null,
     }));
     const budgeted = views.flatMap((v) => (v.budget ? [v.budget] : []));

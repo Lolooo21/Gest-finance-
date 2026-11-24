@@ -113,6 +113,37 @@ describe("catégories et budgets", () => {
     expect((await overview(c)).uncategorizedSpentCents).toBe(1_000);
   });
 
+  it("enregistre une couleur pastel et refuse une couleur hors palette", async () => {
+    const c = await register();
+    expect((await post(app, "/categories", { name: "Courses", color: "#ff0000" }, c)).statusCode).toBe(400);
+    const id = await newCategory(c, { name: "Courses", monthlyBudgetCents: 40_000, color: "menthe" });
+    expect((await overview(c)).categories[0]).toMatchObject({ color: "menthe", resetAt: null });
+    expect((await put(`/categories/${id}`, { name: "Courses", monthlyBudgetCents: 40_000, color: "lavande" }, c)).statusCode).toBe(200);
+    expect((await overview(c)).categories[0].color).toBe("lavande");
+  });
+
+  it("remet un budget à zéro : seules les dépenses à partir d'aujourd'hui comptent, sans rien supprimer", async () => {
+    const c = await register();
+    const acc = await newAccount(c);
+    const courses = await newCategory(c, { name: "Courses", monthlyBudgetCents: 40_000 });
+    const sans = await newCategory(c, { name: "Divers" });
+    const today = new Date().toISOString().slice(0, 10);
+    await spend(c, acc, -30_000, courses, day(1));
+    const reset = await post(app, `/categories/${courses}/reset`, {}, c);
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json()).toEqual({ resetAt: today });
+    await spend(c, acc, -2_000, courses, today);
+    const data = await overview(c);
+    // Le 1er du mois, la dépense du jour même compte encore (remise à zéro le jour même).
+    const expected = today === day(1) ? 32_000 : 2_000;
+    expect(data.categories[0]).toMatchObject({ resetAt: today, spentCents: 32_000, budget: { spentCents: expected, carryOverCents: 0 } });
+    expect((await get(app, "/transactions", c)).json()).toHaveLength(2);
+    // Sans budget : rien à remettre à zéro ; autre foyer : introuvable ; enfant ou visiteur : refusé.
+    expect((await post(app, `/categories/${sans}/reset`, {}, c)).statusCode).toBe(400);
+    expect((await post(app, `/categories/${courses}/reset`, {}, await register(2))).statusCode).toBe(404);
+    expect((await post(app, `/categories/${courses}/reset`, {})).statusCode).toBe(401);
+  });
+
   it("isole les foyers et interdit l'écriture à un enfant", async () => {
     const a = await register();
     const id = await newCategory(a, { name: "Courses", monthlyBudgetCents: 10_000 });

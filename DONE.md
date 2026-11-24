@@ -1,5 +1,20 @@
 # DONE — réalisé
 
+## Accueil, comptes, budgets, objectifs et prévision plus clairs (novembre 2026)
+- `packages/finance-core/src/budgets.ts` : `BudgetInput.startDate` (remise à zéro) et paramètre `startDate` de `categorySpent` : dans le mois de cette date, seules les dépenses à partir de ce jour comptent (opérations et occurrences récurrentes). Tests : `budgets.test.ts`.
+- `packages/shared` : `PASTEL_COLORS` / `PastelColor` (menthe, rose, ciel, sable, lavande, peche, lagon, sauge) ; `color` dans `AccountDto` et `CategoryDto` ; `AccountPatch.balanceCents` (solde voulu aujourd'hui).
+- Migration `20261124100000_couleurs_remise_a_zero` : `BankAccount.color`, `Category.color`, `Category.budgetResetAt`.
+- `apps/api/src/accounts/accounts.controller.ts` : couleur enregistrée et renvoyée ; `PATCH` avec `balanceCents` décale `initialBalanceCents` de l'écart avec le solde calculé du jour (aucune opération, reste à vivre inchangé), audit `account.balance_adjusted`.
+- `apps/api/src/categories` : couleur enregistrée et renvoyée, `resetAt` dans la liste ; `POST /categories/:id/reset` (OWNER/ADULT, budget requis) fixe `budgetResetAt` = aujourd'hui et `budgetSince` = 1er du mois ; retirer le plafond efface la remise à zéro. Export RGPD : couleur et date de remise à zéro.
+- Tests API : `finance.int.test.ts` (solde corrigé sans opération ni effet sur le reste à vivre, couleur, couleur hors palette refusée, IDOR), `budgets.int.test.ts` (couleur, remise à zéro, sans budget 400, autre foyer 404, sans session 401).
+- `apps/web/src/colors.tsx` : palette pastel accordée à la charte, `ColorDot`, `ColorPicker` (boutons radio accessibles). Les pastels ne passent pas le contrôle de distinction des couleurs (daltonisme) : la couleur est donc toujours affichée à côté du nom, jamais seule.
+- `apps/web/src/pages/AccountEdit.tsx` : modification d'un compte (nom, couleur, solde du jour avec case « Découvert »), utilisée dans l'onglet Opérations et sur l'accueil.
+- `apps/web/src/pages/Home.tsx` : en-têtes de carte avec une phrase d'explication ; carte **« Mes comptes »** (initiale sur fond de couleur, type, joint/personnel, solde du jour, total, crayon « Modifier le solde » pour un adulte) ; budgets en cours avec couleur et « Reste … à dépenser » ; carte « Prévision à 30 jours » avec courbe compacte, alerte ou message rassurant.
+- `apps/web/src/pages/ForecastChart.tsx` (nouveau, remplace la courbe de `Forecast.tsx`) : largeur réelle de l'écran, graduations, dates, zone sous zéro en rouge, point le plus bas, info-bulle date + solde au survol, au doigt et aux flèches du clavier (Échap pour fermer), montants masqués en mode confidentialité. `Forecast.tsx` : tuiles cohérentes avec la courbe (comptes courants), dates des échéances en clair.
+- `apps/web/src/pages/Budgets.tsx` : encart « Comment utiliser un budget ? », bouton « Nouveau budget », couleur au choix, bouton **« Ajouter une dépense »** par budget (sortie ponctuelle classée dans la catégorie), **« Remettre à zéro »** avec confirmation, barre à la couleur du budget tant qu'il est sous 80 %.
+- `apps/web/src/pages/Goals.tsx` : « Créer l'objectif », « Modifier le plafond », « Supprimer » confirmé ; phrase d'explication. (Les objectifs d'épargne avaient déjà création, modification et suppression.)
+- Tests front : `app.test.tsx` (carte Mes comptes et solde corrigé depuis l'accueil, dépense ajoutée depuis un budget, remise à zéro confirmée, couleur envoyée, info-bulle de la courbe au clavier, suppression d'objectif confirmée).
+
 ## Correctif de sécurité : `effect` (novembre 2026)
 - `pnpm-workspace.yaml` : override `effect: ">=3.22.1 <4"` (dépendance indirecte `prisma > @prisma/config > effect`, ReDoS GHSA-7589-6fvf-x4pw, gravité haute, publiée le 19 novembre 2026) ; `pnpm-lock.yaml` passe à `effect@3.22.5`. `pnpm audit --prod --audit-level high` : aucune faille ; `prisma validate` et tests API 246 ✓.
 

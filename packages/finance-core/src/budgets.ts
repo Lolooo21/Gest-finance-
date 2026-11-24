@@ -28,6 +28,11 @@ export interface BudgetInput {
   rollover: boolean;
   /** Premier mois budgété (« AAAA-MM ») : aucun reliquat n'est reporté depuis un mois antérieur. */
   since: string;
+  /**
+   * Remise à zéro (« AAAA-MM-JJ », facultative) : dans le mois de cette date, seules les dépenses à partir de ce jour comptent.
+   * Les mois suivants sont mesurés en entier ; `since` doit alors être le mois de cette date (aucun reliquat d'avant).
+   */
+  startDate?: string;
 }
 
 export interface BudgetEvaluation {
@@ -49,8 +54,9 @@ export interface BudgetEvaluation {
  * Dépenses nettes d'une catégorie sur un mois : sorties moins remboursements (entrées de la même catégorie), jamais négatives.
  * `categoryId = null` mesure les opérations sans catégorie.
  */
-export function categorySpent(categoryId: string | null, month: string, rules: CategorizedRule[], oneOffs: CategorizedOneOff[]): number {
-  const from = `${month}-01`;
+export function categorySpent(categoryId: string | null, month: string, rules: CategorizedRule[], oneOffs: CategorizedOneOff[], startDate?: string): number {
+  // Une date de départ dans le mois (remise à zéro du budget) écarte les dépenses antérieures de ce mois.
+  const from = startDate && startDate.slice(0, 7) === month && startDate > `${month}-01` ? startDate : `${month}-01`;
   const to = lastDay(month);
   let net = 0;
   for (const r of rules) {
@@ -81,11 +87,11 @@ export function evaluateBudget(
   let carry = 0;
   if (budget.rollover) {
     for (let m = budget.since; m < month; m = addMonthsToMonth(m, 1)) {
-      carry = Math.max(0, budget.limitCents + carry - categorySpent(categoryId, m, rules, oneOffs));
+      carry = Math.max(0, budget.limitCents + carry - categorySpent(categoryId, m, rules, oneOffs, budget.startDate));
     }
   }
   const availableCents = budget.limitCents + carry;
-  const spentCents = categorySpent(categoryId, month, rules, oneOffs);
+  const spentCents = categorySpent(categoryId, month, rules, oneOffs, budget.startDate);
   return {
     month,
     limitCents: budget.limitCents,

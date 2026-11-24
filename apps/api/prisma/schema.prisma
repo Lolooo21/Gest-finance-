@@ -141,6 +141,8 @@ model BankAccount {
   initialBalanceCents Int
   /// IBAN chiffré AES-256-GCM (format iv.tag.données en base64)
   ibanEncrypted       String?
+  /// Couleur pastel de repère (clé de PASTEL_COLORS) ; null = aucune
+  color               String?
   createdAt           DateTime @default(now())
   transactions        Transaction[]
   recurringRules      RecurringRule[]
@@ -314,6 +316,10 @@ model Category {
   rollover           Boolean  @default(false)
   /// Début du budget : aucun reliquat n'est reporté depuis un mois antérieur (null = sans budget)
   budgetSince        DateTime? @db.Date
+  /// Remise à zéro du budget : dans le mois de cette date, seules les dépenses à partir de ce jour comptent (null = jamais)
+  budgetResetAt      DateTime? @db.Date
+  /// Couleur pastel de repère (clé de PASTEL_COLORS) ; null = aucune
+  color              String?
   createdAt          DateTime @default(now())
   transactions       Transaction[]
   recurringRules     RecurringRule[]
