@@ -77,7 +77,7 @@ describe("RLS : isolation par foyer en base", () => {
     // Idem pour les tables rattachées à un utilisateur : jeton de rafraîchissement d'un utilisateur d'un autre foyer.
     const userB = await admin.user.findFirstOrThrow({ where: { householdId: b } });
     await expect(
-      runInHousehold(a, async () => await scoped.refreshToken.create({ data: { userId: userB.id, tokenHash: "h", expiresAt: new Date(Date.now() + 1000) } })),
+      runInHousehold(a, async () => await scoped.refreshToken.create({ data: { userId: userB.id, tokenHash: "h", sessionId: "s", expiresAt: new Date(Date.now() + 1000) } })),
     ).rejects.toThrow();
   });
 
@@ -86,8 +86,8 @@ describe("RLS : isolation par foyer en base", () => {
     const userB = await admin.user.findFirstOrThrow({ where: { householdId: b } });
     await admin.refreshToken.createMany({
       data: [
-        { userId: userA.id, tokenHash: "ta", expiresAt: new Date(Date.now() + 1000) },
-        { userId: userB.id, tokenHash: "tb", expiresAt: new Date(Date.now() + 1000) },
+        { userId: userA.id, tokenHash: "ta", sessionId: "sa", expiresAt: new Date(Date.now() + 1000) },
+        { userId: userB.id, tokenHash: "tb", sessionId: "sb", expiresAt: new Date(Date.now() + 1000) },
       ],
     });
     await admin.reminderSetting.createMany({ data: [{ userId: userA.id }, { userId: userB.id }] });

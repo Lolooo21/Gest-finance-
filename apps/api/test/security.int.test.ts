@@ -105,13 +105,23 @@ describe("sessions", () => {
     expect((await get(app, "/accounts", { access: second.access! })).statusCode).toBe(401);
   });
 
-  it("refuse un jeton sans version de session, non signé, ou signé avec un autre algorithme", async () => {
+  it("refuse un jeton sans version de session, sans session, d'une session d'un autre, non signé, ou signé avec un autre algorithme", async () => {
     await register();
     const user = await admin.user.findFirstOrThrow();
-    const claims = { userId: user.id, householdId: user.householdId, role: "OWNER" };
+    const { sessionId } = await admin.refreshToken.findFirstOrThrow({ where: { userId: user.id } });
+    const claims = { userId: user.id, householdId: user.householdId, role: "OWNER", sid: sessionId };
     const secret = process.env.JWT_SECRET!;
+    // Session ouverte par un autre utilisateur (autre foyer) : son identifiant ne vaut rien avec mon userId.
+    await register(2);
+    const other = await admin.user.findFirstOrThrow({ where: { NOT: { id: user.id } } });
+    const { sessionId: otherSession } = await admin.refreshToken.findFirstOrThrow({ where: { userId: other.id } });
+    const { sid: _sid, ...noSession } = claims;
+    void _sid;
     for (const access of [
       jwt.sign(claims, secret, { algorithm: "HS256", expiresIn: "15m" }),
+      jwt.sign({ ...noSession, sv: 0 }, secret, { algorithm: "HS256", expiresIn: "15m" }),
+      jwt.sign({ ...claims, sv: 0, sid: otherSession }, secret, { algorithm: "HS256", expiresIn: "15m" }),
+      jwt.sign({ ...claims, sv: 0, sid: "session-inventee" }, secret, { algorithm: "HS256", expiresIn: "15m" }),
       jwt.sign({ ...claims, sv: 0 }, secret, { algorithm: "HS512", expiresIn: "15m" }),
       jwt.sign({ ...claims, sv: 0 }, "", { algorithm: "none" }),
     ]) {

@@ -10,13 +10,17 @@ export interface AuthUser {
   role: Role;
   /** Version de session de l'utilisateur à l'émission du jeton. */
   sv?: number;
+  /** Session (connexion sur un appareil) : fermée à la déconnexion. */
+  sid?: string;
 }
 
 export const Roles = (...roles: Role[]) => SetMetadata("roles", roles);
 
 /**
- * Vérifie le JWT d'accès (cookie `access`), sa version de session et les rôles requis. Le householdId vient TOUJOURS du jeton.
- * La version de session est relue en base : un mot de passe changé ou réinitialisé coupe aussitôt tous les jetons déjà émis.
+ * Vérifie le JWT d'accès (cookie `access`), sa version de session, sa session et les rôles requis. Le householdId vient TOUJOURS
+ * du jeton. La version de session est relue en base : un mot de passe changé ou réinitialisé coupe aussitôt tous les jetons déjà
+ * émis. La session (`sid`) doit avoir encore un refresh token actif : après une déconnexion, le jeton d'accès est refusé aussitôt,
+ * sans attendre ses 15 minutes. Un jeton sans session (émis avant cette vérification) est refusé : le front renouvelle la session.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -36,8 +40,12 @@ export class AuthGuard implements CanActivate {
     } catch {
       throw new UnauthorizedException();
     }
-    const current = await this.system.user.findUnique({ where: { id: payload.userId }, select: { sessionVersion: true } });
-    if (!current || current.sessionVersion !== payload.sv) throw new UnauthorizedException();
+    if (!payload.sid) throw new UnauthorizedException();
+    const [current, session] = await Promise.all([
+      this.system.user.findUnique({ where: { id: payload.userId }, select: { sessionVersion: true } }),
+      this.system.refreshToken.findFirst({ where: { sessionId: payload.sid, userId: payload.userId, revokedAt: null, expiresAt: { gt: new Date() } }, select: { id: true } }),
+    ]);
+    if (!current || current.sessionVersion !== payload.sv || !session) throw new UnauthorizedException();
     const required = this.reflector.get<Role[] | undefined>("roles", ctx.getHandler());
     if (required && !required.includes(payload.role)) throw new ForbiddenException();
     req.user = payload;
