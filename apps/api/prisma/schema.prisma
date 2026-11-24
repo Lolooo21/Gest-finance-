@@ -68,11 +68,15 @@ model RefreshToken {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tokenHash String   @unique
+  /// Session (une par connexion et par appareil) : commune à tous les jetons d'une même chaîne de renouvellement et portée par le
+  /// jeton d'accès (`sid`). Une session sans jeton actif est fermée : ses jetons d'accès sont refusés aussitôt (déconnexion).
+  sessionId String
   expiresAt DateTime
   revokedAt DateTime?
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([sessionId])
 }
 
 /// Lien de réinitialisation du mot de passe : seule l'empreinte SHA-256 est stockée ; usage unique, 30 minutes.

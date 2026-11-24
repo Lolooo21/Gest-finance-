@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException, ConflictException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { authenticator } from "otplib";
 import type { ChangePasswordDto, LoginDto, MemberPasswordDto, RegisterDto, ResetPasswordDto } from "@gest-finance/shared";
 import { AuditService } from "../audit/audit.service.js";
@@ -169,7 +169,10 @@ export class AuthService {
     return this.issueSession(updated);
   }
 
-  /** Rotation : l'ancien refresh token est révoqué ; sa réutilisation révoque toute la famille de l'utilisateur. */
+  /**
+   * Rotation : un nouveau refresh token de la même session est émis, puis l'ancien est révoqué (dans cet ordre, pour que la
+   * session ne paraisse jamais fermée entre les deux) ; la réutilisation d'un jeton révoqué ferme toutes les sessions.
+   */
   async refresh(token: string): Promise<Session> {
     const record = await this.system.refreshToken.findUnique({
       where: { tokenHash: sha256(token) },
@@ -183,13 +186,32 @@ export class AuthService {
       await this.audit.record(record.user.householdId, record.userId, "auth.refresh_reuse_detected");
       throw new UnauthorizedException();
     }
+    const session = await this.issueSession(record.user, record.sessionId);
     await this.system.refreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } });
-    return this.issueSession(record.user);
+    return session;
   }
 
-  async logout(token: string | undefined) {
-    if (!token) return;
-    await this.system.refreshToken.updateMany({ where: { tokenHash: sha256(token), revokedAt: null }, data: { revokedAt: new Date() } });
+  /**
+   * Déconnexion : ferme la session de cet appareil. Elle est retrouvée par le refresh token (empreinte connue en base) ou, à
+   * défaut, par le jeton d'accès s'il est valide (signature ET date) ; la révocation est toujours bornée à l'utilisateur à qui
+   * appartient le jeton. Tous les jetons de la session sont révoqués : le jeton d'accès est refusé dès la requête suivante.
+   * Les autres appareils restent connectés.
+   */
+  async logout(refreshToken: string | undefined, accessToken: string | undefined) {
+    const fromRefresh = await this.system.refreshToken.findUnique({
+      where: { tokenHash: sha256(refreshToken ?? "") },
+      select: { sessionId: true, userId: true, user: { select: { householdId: true } } },
+    });
+    const fromAccess = await this.jwt.verifyAsync<{ sid?: unknown; userId?: unknown; householdId?: unknown }>(accessToken ?? "").catch(() => null);
+    const targets: { sessionId: string; userId: string; householdId: string }[] = [];
+    if (fromRefresh) targets.push({ sessionId: fromRefresh.sessionId, userId: fromRefresh.userId, householdId: fromRefresh.user.householdId });
+    if (fromAccess && typeof fromAccess.sid === "string" && typeof fromAccess.userId === "string" && typeof fromAccess.householdId === "string") {
+      targets.push({ sessionId: fromAccess.sid, userId: fromAccess.userId, householdId: fromAccess.householdId });
+    }
+    for (const t of targets) {
+      const { count } = await this.system.refreshToken.updateMany({ where: { sessionId: t.sessionId, userId: t.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      if (count > 0) await this.audit.record(t.householdId, t.userId, "auth.logout");
+    }
   }
 
   async setupTotp(userId: string) {
@@ -262,11 +284,12 @@ export class AuthService {
   }
 
   /** Ouvre une session (jeton d'accès 15 min + jeton de rafraîchissement à rotation) ; utilisé aussi par la connexion par passkey. */
-  async issueSession(user: { id: string; householdId: string; role: "OWNER" | "ADULT" | "CHILD"; sessionVersion: number }): Promise<Session> {
-    const access = await this.jwt.signAsync({ userId: user.id, householdId: user.householdId, role: user.role, sv: user.sessionVersion });
+  /** Émet un jeton d'accès et un refresh token ; sans `sessionId`, ouvre une nouvelle session (connexion, inscription, passkey). */
+  async issueSession(user: { id: string; householdId: string; role: "OWNER" | "ADULT" | "CHILD"; sessionVersion: number }, sessionId: string = randomUUID()): Promise<Session> {
+    const access = await this.jwt.signAsync({ userId: user.id, householdId: user.householdId, role: user.role, sv: user.sessionVersion, sid: sessionId });
     const refresh = randomBytes(32).toString("base64url");
     await this.system.refreshToken.create({
-      data: { userId: user.id, tokenHash: sha256(refresh), expiresAt: new Date(Date.now() + REFRESH_DAYS * 86_400_000) },
+      data: { userId: user.id, tokenHash: sha256(refresh), sessionId, expiresAt: new Date(Date.now() + REFRESH_DAYS * 86_400_000) },
     });
     return { access, refresh };
   }
