@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -15,7 +16,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: "autoUpdate",
+      // « prompt » : la nouvelle version attend l'accord de l'utilisateur (bandeau « Mettre à jour », UpdateBanner.tsx), au lieu
+      // de rester invisible jusqu'à une prochaine ouverture de l'appli installée.
+      registerType: "prompt",
       manifest: {
         name: "Gest-finance",
         short_name: "Finances",
@@ -32,5 +35,9 @@ export default defineConfig({
   // changeOrigin: false : l'API doit recevoir l'hôte du navigateur (localhost:5173), sinon sa protection CSRF, qui compare
   // l'origine de la requête à cet hôte, refuse toute modification (la forme courte "/route": url force changeOrigin: true).
   server: { proxy: Object.fromEntries(apiRoutes.map((r) => [r, { target: API, changeOrigin: false }])) },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"] },
+  test: {
+    environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"],
+    // Module généré par vite-plugin-pwa au build : remplacé par une doublure pilotable dans les tests.
+    alias: { "virtual:pwa-register/react": fileURLToPath(new URL("./src/test/pwa-register.mock.ts", import.meta.url)) },
+  },
 });
