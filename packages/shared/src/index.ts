@@ -104,6 +104,14 @@ const iban = z.string().transform((v) => v.replace(/\s/g, "").toUpperCase()).pip
 export const AccountType = z.enum(["CHECKING", "SAVINGS"]);
 export const Frequency = z.enum(["WEEKLY", "MONTHLY", "YEARLY"]);
 
+/**
+ * Couleurs pastel au choix pour repérer un compte ou un budget (accordées à la charte : menthe, sauge, lagon…).
+ * Toujours affichées à côté du nom : la couleur aide à repérer, elle ne porte jamais seule l'information.
+ */
+export const PASTEL_COLORS = ["menthe", "rose", "ciel", "sable", "lavande", "peche", "lagon", "sauge"] as const;
+export const PastelColor = z.enum(PASTEL_COLORS);
+export type PastelColor = z.infer<typeof PastelColor>;
+
 export const AccountDto = z.object({
   name: z.string().min(1).max(80),
   type: AccountType,
@@ -111,6 +119,8 @@ export const AccountDto = z.object({
   iban: iban.optional(),
   /** Compte personnel, visible par son titulaire seul (absent ou false = compte joint, visible par tout le foyer). */
   personal: z.boolean().optional(),
+  /** Couleur de repère (null = aucune). */
+  color: PastelColor.nullable().optional(),
 });
 export type AccountDto = z.infer<typeof AccountDto>;
 
@@ -190,6 +200,8 @@ export const CategoryDto = z.object({
   name: z.string().trim().min(1).max(60),
   monthlyBudgetCents: z.number().int().positive("Le plafond doit être positif").max(100_000_000).nullable().default(null),
   rollover: z.boolean().default(false),
+  /** Couleur de repère du budget (null = aucune). */
+  color: PastelColor.nullable().default(null),
 });
 export type CategoryDto = z.infer<typeof CategoryDto>;
 /** Règle de catégorisation saisie : mot-clé (un ou plusieurs mots) → catégorie. */
@@ -229,7 +241,13 @@ export type ImportPreviewQuery = z.infer<typeof ImportPreviewQuery>;
 
 const atLeastOne = (o: object) => Object.keys(o).length > 0;
 
-export const AccountPatch = AccountDto.partial().refine(atLeastOne, "aucune modification");
+/**
+ * Modification d'un compte. `balanceCents` = solde souhaité AUJOURD'HUI (rapprochement avec la banque) : l'API ajuste le solde
+ * initial pour y arriver, sans créer d'opération (le reste à vivre et les budgets ne bougent pas).
+ */
+export const AccountPatch = AccountDto.partial()
+  .extend({ balanceCents: z.number().int().min(-2_000_000_000).max(2_000_000_000).optional() })
+  .refine(atLeastOne, "aucune modification");
 export type AccountPatch = z.infer<typeof AccountPatch>;
 
 export const TransactionPatch = TransactionDto.omit({ accountId: true }).partial().refine(atLeastOne, "aucune modification");

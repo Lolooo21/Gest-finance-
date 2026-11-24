@@ -71,12 +71,12 @@ export class PrivacyController {
       me: { ...me, createdAt: me.createdAt.toISOString() },
       members: members.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
       accounts: accounts.map((a) => ({
-        id: a.id, name: a.name, type: a.type, personal: a.ownerId !== null, initialBalanceCents: a.initialBalanceCents,
+        id: a.id, name: a.name, type: a.type, personal: a.ownerId !== null, initialBalanceCents: a.initialBalanceCents, color: a.color,
         iban: a.ibanEncrypted ? this.crypto.decrypt(a.ibanEncrypted) : null, createdAt: a.createdAt.toISOString(),
       })),
       transactions: transactions.map((t) => ({ id: t.id, accountId: t.accountId, date: toIso(t.date), amountCents: t.amountCents, label: t.label, categoryId: t.categoryId, imported: t.importHash !== null })),
       recurringRules: rules.map((r) => ({ id: r.id, accountId: r.accountId, label: r.label, amountCents: r.amountCents, frequency: r.frequency, start: toIso(r.start), end: date(r.end), categoryId: r.categoryId })),
-      categories: categories.map((c) => ({ id: c.id, name: c.name, monthlyBudgetCents: c.monthlyBudgetCents, rollover: c.rollover, budgetSince: date(c.budgetSince) })),
+      categories: categories.map((c) => ({ id: c.id, name: c.name, monthlyBudgetCents: c.monthlyBudgetCents, rollover: c.rollover, budgetSince: date(c.budgetSince), budgetResetAt: date(c.budgetResetAt), color: c.color })),
       categoryRules: categoryRules.map((r) => ({ pattern: r.pattern, categoryId: r.categoryId, source: r.source, hits: r.hits })),
       behaviorGoals: behaviorGoals.map((g) => ({ kind: g.kind, capCents: g.capCents, createdAt: g.createdAt.toISOString() })),
       savingsGoals: savingsGoals.map((g) => ({

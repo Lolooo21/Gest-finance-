@@ -90,7 +90,10 @@ export class CategoriesController {
   async create(@CurrentUser() user: AuthUser, @Body(new ZodPipe(CategoryDto)) dto: CategoryDto) {
     const category = await this.prisma.category
       .create({
-        data: { householdId: user.householdId, name: dto.name, monthlyBudgetCents: dto.monthlyBudgetCents, rollover: dto.rollover, budgetSince: dto.monthlyBudgetCents ? firstOfMonth() : null },
+        data: {
+          householdId: user.householdId, name: dto.name, monthlyBudgetCents: dto.monthlyBudgetCents, rollover: dto.rollover, color: dto.color,
+          budgetSince: dto.monthlyBudgetCents ? firstOfMonth() : null,
+        },
       })
       .catch(duplicateName);
     await this.audit.record(user.householdId, user.userId, "category.created");
@@ -104,11 +107,29 @@ export class CategoriesController {
     const current = await this.prisma.category.findFirst({ where: { id, householdId: user.householdId } });
     if (!current) throw new NotFoundException();
     const budgetSince = !dto.monthlyBudgetCents ? null : (current.budgetSince ?? firstOfMonth());
+    const budgetResetAt = !dto.monthlyBudgetCents ? null : current.budgetResetAt;
     await this.prisma.category
-      .update({ where: { id }, data: { name: dto.name, monthlyBudgetCents: dto.monthlyBudgetCents, rollover: dto.rollover, budgetSince } })
+      .update({ where: { id }, data: { name: dto.name, monthlyBudgetCents: dto.monthlyBudgetCents, rollover: dto.rollover, color: dto.color, budgetSince, budgetResetAt } })
       .catch(duplicateName);
     await this.audit.record(user.householdId, user.userId, "category.updated");
     return { ok: true };
+  }
+
+  /**
+   * Remise à zéro du budget : il repart d'aujourd'hui. Les dépenses déjà faites ce mois-ci et le reliquat reporté ne comptent
+   * plus ; aucune opération n'est supprimée (elles restent dans l'historique et dans le reste à vivre).
+   */
+  @Post(":id/reset")
+  @HttpCode(200)
+  @Roles("OWNER", "ADULT")
+  async reset(@CurrentUser() user: AuthUser, @Param("id", ParseUUIDPipe) id: string) {
+    const current = await this.prisma.category.findFirst({ where: { id, householdId: user.householdId }, select: { monthlyBudgetCents: true } });
+    if (!current) throw new NotFoundException();
+    if (!current.monthlyBudgetCents) throw new BadRequestException("Cette catégorie n'a pas de budget à remettre à zéro");
+    const today = toIso(new Date());
+    await this.prisma.category.update({ where: { id }, data: { budgetSince: firstOfMonth(), budgetResetAt: toDate(today) } });
+    await this.audit.record(user.householdId, user.userId, "category.budget_reset");
+    return { resetAt: today };
   }
 
   @Delete(":id")

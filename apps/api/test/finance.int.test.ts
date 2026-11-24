@@ -171,6 +171,26 @@ describe("modification et solde avec récurrences", () => {
     // 2 ans passés + l'occurrence de l'année en cours (1er janvier déjà échu) = 3 occurrences
     expect((await get(app, "/accounts", c)).json()[0].balanceCents).toBe(3_000);
   });
+
+  it("corrige le solde du jour sans créer d'opération ni toucher au reste à vivre, et garde la couleur choisie", async () => {
+    const c = await register();
+    const patch = (url: string, payload: object, cookies: { access: string }) => app.inject({ method: "PATCH", url, payload, cookies });
+    const accountId = await newAccount(c, { initialBalanceCents: 10_000, color: "ciel" });
+    const today = new Date().toISOString().slice(0, 10);
+    await post(app, "/transactions", { accountId, amountCents: -2_500, date: today, label: "Courses" }, c);
+    expect((await get(app, "/accounts", c)).json()[0]).toMatchObject({ balanceCents: 7_500, color: "ciel" });
+    const before = (await get(app, `/summary?from=${today}&to=${today}`, c)).json();
+
+    expect((await patch(`/accounts/${accountId}`, { balanceCents: -1_234, color: "rose" }, c)).statusCode).toBe(200);
+    expect((await get(app, "/accounts", c)).json()[0]).toMatchObject({ balanceCents: -1_234, color: "rose" });
+    expect((await get(app, "/transactions", c)).json()).toHaveLength(1);
+    expect((await get(app, `/summary?from=${today}&to=${today}`, c)).json()).toEqual(before);
+    // Couleur retirée, couleur hors palette refusée, solde d'un autre foyer introuvable.
+    expect((await patch(`/accounts/${accountId}`, { color: null }, c)).statusCode).toBe(200);
+    expect((await get(app, "/accounts", c)).json()[0].color).toBeNull();
+    expect((await patch(`/accounts/${accountId}`, { color: "fluo" }, c)).statusCode).toBe(400);
+    expect((await patch(`/accounts/${accountId}`, { balanceCents: 0 }, await register(2))).statusCode).toBe(404);
+  });
 });
 
 describe("paiement en plusieurs fois", () => {
