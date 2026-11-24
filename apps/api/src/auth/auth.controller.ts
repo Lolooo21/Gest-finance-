@@ -51,7 +51,7 @@ export class AuthController {
   @Post("logout")
   @HttpCode(200)
   async logout(@Req() req: FastifyRequest, @Res({ passthrough: true }) res: FastifyReply) {
-    await this.auth.logout(req.cookies.refresh);
+    await this.auth.logout(req.cookies.refresh, req.cookies.access);
     res.clearCookie("access", cookieBase);
     res.clearCookie("refresh", { ...cookieBase, path: "/auth" });
     return { ok: true };

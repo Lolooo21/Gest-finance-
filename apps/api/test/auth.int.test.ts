@@ -65,6 +65,42 @@ describe("refresh token", () => {
   });
 });
 
+describe("déconnexion", () => {
+  const login = async () => sessionCookies(await post(app, "/auth/login", { email: owner().email, password: owner().password }));
+
+  it("coupe aussitôt le jeton d'accès de cet appareil, sans toucher aux autres appareils", async () => {
+    await post(app, "/auth/register", owner());
+    const phone = await login();
+    const laptop = await login();
+    expect((await get(app, "/accounts", { access: phone.access! })).statusCode).toBe(200);
+    // Rotation : le jeton d'accès renouvelé appartient toujours à la même session.
+    const rotated = sessionCookies(await post(app, "/auth/refresh", undefined, { refresh: phone.refresh! }));
+    expect((await get(app, "/accounts", { access: rotated.access! })).statusCode).toBe(200);
+
+    expect((await post(app, "/auth/logout", undefined, rotated as Record<string, string>)).statusCode).toBe(200);
+    expect((await get(app, "/accounts", { access: rotated.access! })).statusCode).toBe(401);
+    expect((await get(app, "/accounts", { access: phone.access! })).statusCode).toBe(401);
+    expect((await get(app, "/accounts", { access: laptop.access! })).statusCode).toBe(200);
+    expect((await post(app, "/auth/refresh", undefined, { refresh: laptop.refresh! })).statusCode).toBe(200);
+  });
+
+  it("ferme la session même sans refresh token (jeton d'accès seul), et répond 200 sans aucun cookie", async () => {
+    await post(app, "/auth/register", owner());
+    const s = await login();
+    expect((await post(app, "/auth/logout", undefined, { access: s.access! })).statusCode).toBe(200);
+    expect((await get(app, "/accounts", { access: s.access! })).statusCode).toBe(401);
+    expect((await post(app, "/auth/refresh", undefined, { refresh: s.refresh! })).statusCode).toBe(401);
+    expect((await post(app, "/auth/logout")).statusCode).toBe(200);
+  });
+
+  it("note la déconnexion dans le journal d'audit", async () => {
+    await post(app, "/auth/register", owner());
+    const s = await login();
+    await post(app, "/auth/logout", undefined, s as Record<string, string>);
+    expect(await admin.auditLog.count({ where: { action: "auth.logout" } })).toBe(1);
+  });
+});
+
 describe("2FA TOTP", () => {
   it("exige le code après activation", async () => {
     const reg = await post(app, "/auth/register", owner());

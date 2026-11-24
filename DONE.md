@@ -1,5 +1,12 @@
 # DONE — réalisé
 
+## Sécurité : déconnexion immédiate (sessions révocables, novembre 2026)
+- Avant : la déconnexion révoquait le refresh token, mais le jeton d'accès (JWT, 15 minutes) restait utilisable jusqu'à son expiration.
+- Migration `20261124200000_sessions_revocables` : `RefreshToken.sessionId` (index) ; les jetons existants deviennent chacun leur propre session.
+- `apps/api/src/auth/auth.service.ts` : `issueSession(user, sessionId?)` ouvre une session (nouvel identifiant) à la connexion, à l'inscription, par passkey et au changement de mot de passe, et la met dans le jeton d'accès (`sid`) ; `refresh` garde la session et émet le nouveau jeton avant de révoquer l'ancien (la session ne paraît jamais fermée entre les deux) ; `logout(refresh, access)` retrouve la session par le refresh token ou, à défaut, par le jeton d'accès (même expiré), révoque tous ses jetons et note `auth.logout` au journal.
+- `apps/api/src/common/auth.guard.ts` : en plus de la version de session, exige un `sid` ayant encore un refresh token actif (non révoqué, non expiré) du même utilisateur ; un jeton sans `sid` (émis avant) est refusé et le front renouvelle la session de lui-même (aucune déconnexion visible au déploiement).
+- Tests : `auth.int.test.ts` (jeton d'accès refusé aussitôt après déconnexion, rotation dans la même session, autre appareil toujours connecté, déconnexion avec le seul jeton d'accès, sans cookie, journal) ; `security.int.test.ts` (jeton sans session, session d'un autre utilisateur, session inventée) ; `rls.int.test.ts` adapté.
+
 ## Bandeau « Nouvelle version disponible » (novembre 2026)
 - Cause : l'appli installée (PWA) téléchargeait la nouvelle version en arrière-plan sans recharger la page ; sur iPhone, l'ancienne version pouvait rester affichée après plusieurs ouvertures (constaté au passage à la v0.1.9).
 - `apps/web/vite.config.ts` : `registerType: "prompt"` : le nouveau service worker attend l'accord (message `SKIP_WAITING`) au lieu de s'activer d'office.

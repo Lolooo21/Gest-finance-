@@ -10,7 +10,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | CI de base (lint, typecheck, tests, audit, Gitleaks) | Terminé (exécutée sur chaque pull request) |
 | Push GitHub | Terminé |
 | Dockerfiles multi-stage non-root, compose prod + Caddy + Tailscale | Terminé (jalon 8a) ; construction, démarrage, test de fumée et Trivy vérifiés par la CI GitHub (pas de déploiement réel sur VPS) |
-| Premier déploiement réel sur un VPS suivant `docs/deploiement.md` | À faire (utilisateur) |
+| Premier déploiement réel sur un VPS suivant `docs/deploiement.md` | Terminé (production depuis le 18 novembre 2026, mises à jour automatiques) ; reste : test de restauration d'une sauvegarde |
 | Sauvegardes chiffrées (age) + envoi S3 + restauration testée + runbook | Terminé (jalon 8a) |
 | Sauvegardes : afficher la date de la dernière sauvegarde dans l'application et alerter si trop ancienne | Terminé (jalon 15) ; reste : notification push en cas d'alerte |
 | CI complète : Semgrep, CodeQL (dépôt public), Trivy, hadolint, Gitleaks, build des images + test de fumée | Terminé (jalon 8a) ; « Images Docker » vert ; hadolint/Semgrep corrigés, à confirmer au prochain push sur develop ou à la première pull request |
@@ -37,7 +37,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Propriétaire : réinitialiser le mot de passe d'un membre sans e-mail (secours) | Terminé (jalon 16) |
 | Sécurité : vérifier au premier déploiement que chaque appareil Tailscale a sa propre IP côté API (limites de débit) | À faire (déploiement) ; Caddy fait confiance à Tailscale (`trusted_proxies` 100.64.0.0/10 et réseaux privés) et transmet l'IP de l'appareil : reste à le constater dans les journaux en production |
 | Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | Libellés, employeurs et notes : Terminé (jalon 21) ; montants : non (calculs SQL), à compenser par un disque chiffré sur le VPS |
-| Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
+| Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | Terminé (novembre 2026) : sessions révocables, voir DONE.md |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | Terminé (jalon 16) ; reste : export du journal |
 | Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) ; couleur pastel et correction du solde du jour (novembre 2026) |
 | Accueil lisible (carte « Mes comptes », couleurs, courbe de prévision), budgets (couleur, dépense depuis le budget, remise à zéro), objectifs (créer / modifier / supprimer) | En test : tests automatiques verts ; vérification visuelle sur téléphone à faire |
@@ -86,7 +86,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Tâche | Statut |
 |---|---|
 | Unitaires `finance-core` (100 %) | Terminé |
-| Intégration API (Postgres réel) | Terminé (249 tests, exécutés par la CI) |
+| Intégration API (Postgres réel) | Terminé (252 tests, exécutés par la CI) |
 | Tests du front (Vitest + Testing Library) | Terminé (112 tests) |
 | E2E Playwright | À faire |
 | Sécurité (SAST, DAST, dépendances, images) | Terminé hors DAST : Semgrep, CodeQL, audit des dépendances, Trivy, Gitleaks en CI ; tests CSRF, force brute, sessions, JWT, injection SQL (jalon 14) ; ZAP (DAST) à faire |
