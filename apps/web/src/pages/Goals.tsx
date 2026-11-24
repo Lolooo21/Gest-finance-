@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 import { api, type BehaviorGoalView, type BehaviorKind, type GoalStatus } from "../api";
 import { centsToInput, formatCents, parseEuros } from "../money";
 import { Money } from "../privacy";
-import { Button, cardClass, ErrorBanner, fieldClass, useToast } from "../ui";
+import { Button, cardClass, ErrorBanner, fieldClass, useConfirm, useToast } from "../ui";
 
 const KINDS: { kind: BehaviorKind; title: string; help: string }[] = [
   { kind: "NO_OVERDRAFT", title: "Pas de découvert ce mois-ci", help: "Aucun compte courant ne passe sous zéro, jour après jour." },
@@ -28,17 +28,22 @@ function measure(goal: BehaviorGoalView) {
 function GoalRow({ title, help, goal }: { title: string; help: string; goal?: BehaviorGoalView }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const confirm = useConfirm();
   const [cap, setCap] = useState(goal?.capCents ? centsToInput(goal.capCents) : "");
   const [error, setError] = useState("");
   const kind = goal?.kind ?? KINDS.find((k) => k.title === title)!.kind;
   const save = useMutation({
     mutationFn: (capCents?: number) => api("PUT", `/goals/behavior/${kind}`, capCents === undefined ? {} : { capCents }),
-    onSuccess: () => { toast.success("Objectif enregistré."); return qc.invalidateQueries({ queryKey: ["goals"] }); },
+    onSuccess: () => { toast.success(goal ? "Objectif modifié." : "Objectif créé."); return qc.invalidateQueries({ queryKey: ["goals"] }); },
   });
   const remove = useMutation({
     mutationFn: () => api("DELETE", `/goals/behavior/${kind}`),
-    onSuccess: () => { toast.success("Objectif retiré."); return qc.invalidateQueries({ queryKey: ["goals"] }); },
+    onSuccess: () => { toast.success("Objectif supprimé."); return qc.invalidateQueries({ queryKey: ["goals"] }); },
   });
+  async function askDelete() {
+    const ok = await confirm({ title: `Supprimer l'objectif « ${title} » ?`, message: "Son suivi et sa série de mois réussis seront effacés. Vous pourrez le recréer à tout moment.", confirmLabel: "Supprimer" });
+    if (ok) remove.mutate();
+  }
   function submit(e: FormEvent) {
     e.preventDefault();
     if (kind !== "SPENDING_CAP") return save.mutate(undefined);
@@ -66,13 +71,20 @@ function GoalRow({ title, help, goal }: { title: string; help: string; goal?: Be
           </p>
         </>
       )}
-      <form onSubmit={submit} className="mt-2 flex flex-wrap items-center gap-2">
+      {/* Créer, modifier (le plafond, seul réglage d'un objectif), supprimer. */}
+      {!goal || kind === "SPENDING_CAP" ? (
+        <form onSubmit={submit} className="mt-2 flex flex-wrap items-center gap-2">
           {kind === "SPENDING_CAP" && (
             <input value={cap} onChange={(e) => setCap(e.target.value)} placeholder="Plafond (€)" aria-label={`Plafond de dépenses${goal?.capCents ? ` (actuel : ${formatCents(goal.capCents)})` : ""}`} inputMode="decimal" className={`${fieldClass} w-auto`} />
           )}
-          <Button type="submit" variant={goal ? "secondary" : "primary"} loading={save.isPending}>{goal ? "Mettre à jour" : "Activer"}</Button>
-          {goal && <Button variant="ghost" loading={remove.isPending} onClick={() => remove.mutate()}>Retirer</Button>}
-      </form>
+          <Button type="submit" icon={goal ? "check" : "plus"} variant={goal ? "secondary" : "primary"} loading={save.isPending}>{goal ? "Modifier le plafond" : "Créer l'objectif"}</Button>
+          {goal && <Button variant="ghost" icon="trash" aria-label={`Supprimer l'objectif ${title}`} loading={remove.isPending} onClick={() => void askDelete()}>Supprimer</Button>}
+        </form>
+      ) : (
+        <div className="mt-2">
+          <Button variant="ghost" icon="trash" aria-label={`Supprimer l'objectif ${title}`} loading={remove.isPending} onClick={() => void askDelete()}>Supprimer</Button>
+        </div>
+      )}
       {error && <p role="alert" className="mt-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     </li>
   );
@@ -85,6 +97,7 @@ export function GoalsPanel() {
   return (
     <section className={cardClass} aria-label="Objectifs du mois">
       <h2 className="text-lg font-semibold">Objectifs du mois</h2>
+      <p className="mt-1 text-xs text-slate-600">Des règles de bonne gestion vérifiées chaque mois. Créez celles qui vous parlent ; modifiez le plafond ou supprimez un objectif à tout moment.</p>
       {q.isError && <ErrorBanner message={q.error.message} onRetry={() => void q.refetch()} />}
       {q.isPending && <p className="py-3 text-sm" role="status">Chargement des objectifs…</p>}
       {q.data && (

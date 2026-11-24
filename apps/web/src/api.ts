@@ -42,7 +42,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 }
 
 /** `personal` : compte visible par son titulaire seul (sinon compte joint, visible par tout le foyer). */
-export interface Account { id: string; name: string; type: "CHECKING" | "SAVINGS"; balanceCents: number; endOfMonthCents: number; ibanMasked: string | null; personal?: boolean }
+export interface Account { id: string; name: string; type: "CHECKING" | "SAVINGS"; balanceCents: number; endOfMonthCents: number; ibanMasked: string | null; personal?: boolean; color?: string | null }
 export interface Tx { id: string; accountId: string; amountCents: number; date: string; label: string; categoryId: string | null }
 export interface Rule { id: string; accountId: string; label: string; amountCents: number; frequency: "WEEKLY" | "MONTHLY" | "YEARLY"; start: string; end: string | null; categoryId: string | null }
 export type AccountScope = "all" | "joint" | "personal";
@@ -80,7 +80,7 @@ export type BudgetStatus = "OK" | "WARNING" | "EXCEEDED";
 export interface BudgetEvaluation {
   month: string; limitCents: number; carryOverCents: number; availableCents: number; spentCents: number; remainingCents: number; percent: number; status: BudgetStatus;
 }
-export interface CategoryView { id: string; name: string; monthlyBudgetCents: number | null; rollover: boolean; spentCents: number; budget: BudgetEvaluation | null }
+export interface CategoryView { id: string; name: string; monthlyBudgetCents: number | null; rollover: boolean; color?: string | null; resetAt?: string | null; spentCents: number; budget: BudgetEvaluation | null }
 export interface BudgetsOverview { month: string; categories: CategoryView[]; uncategorizedSpentCents: number; totals: { availableCents: number; spentCents: number } }
 
 export type ImportStatus = "NEW" | "MATCHED" | "RECURRING" | "ALREADY_IMPORTED";

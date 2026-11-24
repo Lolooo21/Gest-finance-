@@ -66,6 +66,17 @@ describe("évaluation d'un budget", () => {
     expect(evaluateBudget(budget, "courses", "2026-02", [], oneOffs).carryOverCents).toBe(0);
   });
 
+  it("remet le budget à zéro : seules les dépenses depuis la date comptent ce mois-là, puis les mois suivants en entier", () => {
+    const oneOffs = [tx("2026-03-05", -30_000), tx("2026-03-20", -5_000), tx("2026-04-02", -1_000)];
+    const reset = { limitCents: 40_000, rollover: true, since: "2026-03", startDate: "2026-03-15" };
+    expect(evaluateBudget(reset, "courses", "2026-03", [], oneOffs)).toMatchObject({ spentCents: 5_000, carryOverCents: 0, remainingCents: 35_000 });
+    expect(evaluateBudget(reset, "courses", "2026-04", [], oneOffs)).toMatchObject({ spentCents: 1_000, carryOverCents: 35_000 });
+    // Les occurrences récurrentes d'avant la remise à zéro sont écartées aussi (lundis 2 et 9 mars).
+    expect(categorySpent("courses", "2026-03", rules, [], "2026-03-15")).toBe(6_000);
+    // Une date de départ d'un autre mois est sans effet.
+    expect(categorySpent("courses", "2026-04", [], oneOffs, "2026-03-15")).toBe(1_000);
+  });
+
   it("refuse un plafond nul ou négatif", () => {
     expect(() => evaluateBudget({ ...budget, limitCents: 0 }, "courses", "2026-03", [], [])).toThrow(RangeError);
   });

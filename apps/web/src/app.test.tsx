@@ -71,6 +71,38 @@ describe("App", () => {
     expect(calls.find((c) => c.url === "/auth/login")?.body).toMatchObject({ email: "Ada@Example.com", password: "correct-horse-battery" });
   });
 
+  it("accueil : carte « Mes comptes » avec le solde du jour, solde corrigé et couleur choisie sans quitter l'accueil", async () => {
+    const calls = mockApi((m, u) => {
+      if (u === "/household/me") return { json: { id: "u1", displayName: "Ada", role: "OWNER", tutorialDone: true } };
+      if (u === "/household/members") return { json: [] };
+      if (u === "/accounts" && m === "GET") {
+        return { json: [
+          { id: "a1", name: "Joint", type: "CHECKING", balanceCents: 123_456, endOfMonthCents: 100_000, ibanMasked: null, color: "ciel" },
+          { id: "s1", name: "Livret A", type: "SAVINGS", balanceCents: 500_000, endOfMonthCents: 500_000, ibanMasked: null, personal: true, color: null },
+        ] };
+      }
+      if (u === "/accounts/a1" && m === "PATCH") return { json: { ok: true } };
+      if (u === "/recurring-rules" || u.startsWith("/transactions")) return { json: [] };
+      return { json: { from: "", to: "", incomeCents: 0, fixedChargesCents: 0, oneOffExpensesCents: 0, remainingCents: 0 } };
+    });
+    renderApp();
+    const user = userEvent.setup();
+    const card = await screen.findByRole("region", { name: "Mes comptes" });
+    await waitFor(() => expect(within(card).getByTestId("account-balance-a1").textContent?.replace(/\s/g, " ")).toContain("1 234,56"));
+    expect(within(card).getByText("Épargne · personnel")).toBeInTheDocument();
+    expect(within(card).getByText(/Total, épargne comprise/).parentElement?.textContent?.replace(/\s/g, " ")).toContain("6 234,56");
+
+    await user.click(within(card).getByRole("button", { name: "Modifier le solde de Joint" }));
+    const form = within(card).getByRole("form", { name: "Modifier le compte Joint" });
+    const balance = within(form).getByLabelText("Solde aujourd'hui (€)");
+    await user.clear(balance);
+    await user.type(balance, "980");
+    await user.click(within(form).getByLabelText(/Découvert/));
+    await user.click(within(form).getByRole("radio", { name: "Menthe" }));
+    await user.click(within(form).getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PATCH" && c.url === "/accounts/a1")?.body).toEqual({ balanceCents: -98_000, color: "menthe" }));
+  });
+
   it("affiche le reste à vivre, masque les montants et envoie une sortie en centimes négatifs", async () => {
     const calls = mockApi((m, u) => {
       if (u === "/household/members") return { json: [] };
@@ -739,6 +771,23 @@ describe("prévisionnel et objectifs", () => {
     expect(within(card).getByText(/Avec l'épargne, tous comptes/).textContent?.replace(/\s/g, " ")).toContain("5 100,00");
   });
 
+  it("donne la date et le solde d'un jour au clavier sur la courbe du prévisionnel", async () => {
+    mockApi(base((m, u) => (u === "/forecast?days=30" ? { json: forecast() } : (undefined as never))));
+    startAt("#operations");
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Prévisionnel");
+    const chart = await within(panel).findByRole("img");
+    expect(chart).toHaveAccessibleName(/au plus bas/);
+    chart.focus();
+    await user.keyboard("{ArrowRight}");
+    const tip = within(panel).getByRole("status");
+    expect(tip.textContent).toMatch(/octobre/);
+    expect(tip.textContent).toMatch(/€/);
+    await user.keyboard("{Escape}");
+    expect(within(panel).queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("masque les montants du prévisionnel en mode confidentialité", async () => {
     mockApi(base((m, u) => (u === "/forecast?days=30" ? { json: forecast() } : (undefined as never))));
     startAt("#operations");
@@ -771,9 +820,9 @@ describe("prévisionnel et objectifs", () => {
     expect(within(panel).getByText(/2 mois réussis d'affilée/)).toBeInTheDocument();
     expect(within(panel).getByText(/Série interrompue/)).toBeInTheDocument();
 
-    // Reste à vivre positif : pas encore activé → bouton « Activer », sans plafond.
+    // Reste à vivre positif : pas encore créé → bouton « Créer l'objectif », sans plafond.
     const remaining = within(panel).getByText("Reste à vivre positif").closest("li")!;
-    await user.click(within(remaining).getByRole("button", { name: "Activer" }));
+    await user.click(within(remaining).getByRole("button", { name: "Créer l'objectif" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url === "/goals/behavior/POSITIVE_REMAINING")).toBe(true));
     expect(calls.find((c) => c.url === "/goals/behavior/POSITIVE_REMAINING")?.body).toEqual({});
 
@@ -781,10 +830,12 @@ describe("prévisionnel et objectifs", () => {
     const input = within(cap).getByLabelText(/Plafond de dépenses/);
     await user.clear(input);
     await user.type(input, "1 900,50");
-    await user.click(within(cap).getByRole("button", { name: "Mettre à jour" }));
+    await user.click(within(cap).getByRole("button", { name: "Modifier le plafond" }));
     await waitFor(() => expect(calls.find((c) => c.url === "/goals/behavior/SPENDING_CAP" && c.method === "PUT")?.body).toEqual({ capCents: 190_050 }));
 
-    await user.click(within(within(panel).getByText("Pas de découvert ce mois-ci").closest("li")!).getByRole("button", { name: "Retirer" }));
+    await user.click(within(panel).getByRole("button", { name: "Supprimer l'objectif Pas de découvert ce mois-ci" }));
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false); // rien sans confirmation
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Supprimer" }));
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.url === "/goals/behavior/NO_OVERDRAFT")).toBe(true));
   });
 
@@ -796,7 +847,7 @@ describe("prévisionnel et objectifs", () => {
     const panel = await screen.findByLabelText("Objectifs du mois");
     const cap = (await within(panel).findByText("Dépenses sous un plafond")).closest("li")!;
     await user.type(within(cap).getByLabelText(/Plafond de dépenses/), "abc");
-    await user.click(within(cap).getByRole("button", { name: "Activer" }));
+    await user.click(within(cap).getByRole("button", { name: "Créer l'objectif" }));
     expect(await within(cap).findByRole("alert")).toHaveTextContent("Indiquez un plafond en euros");
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
   });
@@ -973,18 +1024,46 @@ describe("budgets par catégorie", () => {
     const user = userEvent.setup();
     const panel = await screen.findByLabelText("Budgets du mois");
     await within(panel).findByText(/Aucune catégorie/);
-    await user.click(within(panel).getByRole("button", { name: "Nouvelle catégorie" }));
+    await user.click(within(panel).getByRole("button", { name: "Nouveau budget" }));
     await user.type(within(panel).getByLabelText("Nom de la catégorie"), "Courses");
     await user.type(within(panel).getByLabelText("Budget mensuel"), "abc");
-    await user.click(within(panel).getByRole("button", { name: "Ajouter la catégorie" }));
+    await user.click(within(panel).getByRole("button", { name: "Créer le budget" }));
     expect(await within(panel).findByRole("alert")).toHaveTextContent("Le budget mensuel doit être un montant");
     expect(calls.some((c) => c.method === "POST" && c.url === "/categories")).toBe(false);
     await user.clear(within(panel).getByLabelText("Budget mensuel"));
     await user.type(within(panel).getByLabelText("Budget mensuel"), "400");
     await user.click(within(panel).getByLabelText(/Reporter ce qui reste/));
-    await user.click(within(panel).getByRole("button", { name: "Ajouter la catégorie" }));
+    await user.click(within(panel).getByRole("radio", { name: "Lavande" }));
+    await user.click(within(panel).getByRole("button", { name: "Créer le budget" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/categories")).toBe(true));
-    expect(calls.find((c) => c.method === "POST" && c.url === "/categories")?.body).toEqual({ name: "Courses", monthlyBudgetCents: 40_000, rollover: true });
+    expect(calls.find((c) => c.method === "POST" && c.url === "/categories")?.body).toEqual({ name: "Courses", monthlyBudgetCents: 40_000, rollover: true, color: "lavande" });
+  });
+
+  it("ajoute une dépense ponctuelle directement dans un budget et remet un budget à zéro après confirmation", async () => {
+    const calls = mockApi(base((m, u) => {
+      if (u === "/categories" && m === "GET") return { json: overview() };
+      if (u === "/transactions" && m === "POST") return { status: 201, json: {} };
+      if (u === "/categories/k1/reset" && m === "POST") return { json: { resetAt: "2026-11-24" } };
+      return undefined as never;
+    }));
+    startAt("#budgets");
+    renderApp();
+    const user = userEvent.setup();
+    const panel = await screen.findByLabelText("Budgets du mois");
+    expect(within(panel).getByText("Comment utiliser un budget ?")).toBeInTheDocument();
+    await user.click(await within(panel).findByRole("button", { name: "Ajouter une dépense à Courses" }));
+    const form = within(panel).getByRole("form", { name: "Dépense pour Courses" });
+    await user.click(within(form).getByRole("button", { name: "Ajouter la dépense" }));
+    expect(await within(form).findByRole("alert")).toHaveTextContent("Indiquez un montant");
+    await user.type(within(form).getByLabelText("Montant (€)"), "42,50");
+    await user.click(within(form).getByRole("button", { name: "Ajouter la dépense" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.url === "/transactions")?.body).toMatchObject({ accountId: "a1", amountCents: -4_250, label: "Courses", categoryId: "k1" }));
+
+    await user.click(within(panel).getByRole("button", { name: "Remettre à zéro Courses" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Aucune opération n'est supprimée");
+    await user.click(within(dialog).getByRole("button", { name: "Remettre à zéro" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/categories/k1/reset")).toBe(true));
   });
 
   it("classe une nouvelle dépense et reclasse une opération existante", async () => {

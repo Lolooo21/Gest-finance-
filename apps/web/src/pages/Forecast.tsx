@@ -2,37 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ScopeFilter, scopeParam, useAccountScope } from "../scope";
 import { useState } from "react";
 import { api, type Forecast } from "../api";
-import { formatCents, formatDateFr } from "../money";
+import { formatDateFr } from "../money";
 import { Money, usePrivacy } from "../privacy";
 import { Button, cardClass, ErrorBanner, Icon } from "../ui";
+import { ForecastChart } from "./ForecastChart";
 
 const HORIZONS = [30, 60, 90] as const;
-
-/** Courbe du solde des comptes courants (ou de tous les comptes s'il n'y en a pas), avec la ligne du zéro et le premier découvert. */
-function Chart({ forecast, hidden }: { forecast: Forecast; hidden: boolean }) {
-  const hasChecking = forecast.accounts.some((a) => a.type === "CHECKING");
-  const values = forecast.points.map((p) => (hasChecking ? p.checkingCents : p.totalCents));
-  const w = 600;
-  const h = 140;
-  const pad = 8;
-  const lo = Math.min(0, ...values);
-  const hi = Math.max(0, ...values);
-  const span = hi - lo || 1;
-  const x = (i: number) => pad + (i * (w - 2 * pad)) / Math.max(1, values.length - 1);
-  const y = (v: number) => h - pad - ((v - lo) * (h - 2 * pad)) / span;
-  const line = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const negative = forecast.firstNegativeDate ? forecast.points.findIndex((p) => p.date === forecast.firstNegativeDate) : -1;
-  const label = hidden
-    ? "Courbe du solde prévisionnel (montants masqués)"
-    : `Courbe du solde prévisionnel : de ${formatCents(values[0] ?? 0)} à ${formatCents(values[values.length - 1] ?? 0)} en ${forecast.days} jours`;
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label} className="mt-3 h-36 w-full">
-      <line x1={pad} x2={w - pad} y1={y(0)} y2={y(0)} stroke="#94a3b8" strokeDasharray="4 4" />
-      <polyline points={line} fill="none" stroke="#0f766e" strokeWidth="2.5" strokeLinejoin="round" />
-      {negative >= 0 && <circle cx={x(negative)} cy={y(values[negative]!)} r="5" fill="#b91c1c" />}
-    </svg>
-  );
-}
 
 /** Reste à vivre prévisionnel : solde projeté à 30, 60 ou 90 jours, alerte de découvert et prochaines échéances. */
 export function ForecastPanel() {
@@ -68,17 +43,34 @@ export function ForecastPanel() {
           ) : (
             <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">Aucun découvert prévu sur {f.days} jours.</p>
           )}
-          <Chart forecast={f} hidden={hidden} />
-          <p className="grid grid-cols-3 gap-2 text-center text-sm">
-            <span><span className="block text-xs text-slate-600">Aujourd'hui</span><strong><Money cents={f.startCents} /></strong></span>
-            <span><span className="block text-xs text-slate-600">Dans {f.days} jours</span><strong><Money cents={f.endCents} /></strong></span>
-            <span><span className="block text-xs text-slate-600">Entrées − sorties</span><strong><Money cents={f.incomeCents - f.expensesCents} /></strong></span>
-          </p>
+          <ForecastChart forecast={f} hidden={hidden} />
+          {(() => {
+            // Mêmes valeurs que la courbe (comptes courants s'il y en a) ; le total avec l'épargne vient à part.
+            const checking = f.accounts.some((a) => a.type === "CHECKING");
+            const start = checking ? f.points[0]?.checkingCents ?? 0 : f.startCents;
+            const end = checking ? f.points.at(-1)?.checkingCents ?? 0 : f.endCents;
+            const tile = (title: string, cents: number, tone = false) => (
+              <span className="rounded-xl bg-teal-50 p-2">
+                <span className="block text-xs text-slate-600">{title}</span>
+                <strong className={`tabular-nums ${tone ? (cents < 0 ? "text-red-700" : "text-emerald-700") : ""}`}><Money cents={cents} /></strong>
+              </span>
+            );
+            return (
+              <>
+                <p className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
+                  {tile("Aujourd'hui", start)}
+                  {tile(`Le ${formatDateFr(f.to).replace(/ \d{4}$/, "")}`, end, true)}
+                  {tile("Entrées − sorties", f.incomeCents - f.expensesCents, true)}
+                </p>
+                {checking && f.endCents !== end && <p className="mt-1 text-center text-xs text-slate-600">Avec l'épargne, tous comptes le {formatDateFr(f.to)} : <Money cents={f.endCents} /></p>}
+              </>
+            );
+          })()}
           <h3 className="mt-4 text-sm font-semibold">Prochaines échéances</h3>
           <ul className="divide-y text-sm">
             {next.map((e, i) => (
               <li key={`${e.date}-${e.label}-${i}`} className="flex justify-between gap-3 py-2">
-                <span>{e.label} <span className="text-xs text-slate-600">{e.date} · {e.account}</span></span>
+                <span>{e.label} <span className="text-xs text-slate-600">{formatDateFr(e.date)} · {e.account}</span></span>
                 <span className={`font-medium ${e.amountCents < 0 ? "text-red-700" : "text-emerald-700"}`}><Money cents={e.amountCents} /></span>
               </li>
             ))}

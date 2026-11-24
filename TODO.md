@@ -39,7 +39,8 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Sécurité : chiffrer d'autres champs sensibles (libellés, montants) ou le disque du VPS | Libellés, employeurs et notes : Terminé (jalon 21) ; montants : non (calculs SQL), à compenser par un disque chiffré sur le VPS |
 | Sécurité : jetons d'accès coupés aussi à la simple déconnexion (liste de révocation) | À faire |
 | Page de consultation du journal d'audit (API prête : `GET /household/audit`) | Terminé (jalon 16) ; reste : export du journal |
-| Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) |
+| Comptes bancaires (solde, opérations, IBAN chiffré) | Terminé (jalon 3) ; couleur pastel et correction du solde du jour (novembre 2026) |
+| Accueil lisible (carte « Mes comptes », couleurs, courbe de prévision), budgets (couleur, dépense depuis le budget, remise à zéro), objectifs (créer / modifier / supprimer) | En test : tests automatiques verts ; vérification visuelle sur téléphone à faire |
 | Revenus/dépenses ponctuels et récurrents : création, liste, suppression | Terminé (jalon 3) ; paiement en plusieurs fois et libellés visibles du formulaire (novembre 2026) |
 | Modification d'un compte, d'une opération ou d'une règle (PATCH + édition en ligne) | Terminé (jalon 4) |
 | Interface 2FA (activation TOTP depuis le tableau de bord) | Terminé (jalon 4) ; QR code à faire |
@@ -85,8 +86,8 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Tâche | Statut |
 |---|---|
 | Unitaires `finance-core` (100 %) | Terminé |
-| Intégration API (Postgres réel) | Terminé (184 tests, exécutés par la CI) |
-| Tests du front (Vitest + Testing Library) | Terminé (73 tests) |
+| Intégration API (Postgres réel) | Terminé (249 tests, exécutés par la CI) |
+| Tests du front (Vitest + Testing Library) | Terminé (108 tests) |
 | E2E Playwright | À faire |
 | Sécurité (SAST, DAST, dépendances, images) | Terminé hors DAST : Semgrep, CodeQL, audit des dépendances, Trivy, Gitleaks en CI ; tests CSRF, force brute, sessions, JWT, injection SQL (jalon 14) ; ZAP (DAST) à faire |
 
