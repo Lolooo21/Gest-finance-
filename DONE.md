@@ -1,5 +1,13 @@
 # DONE — réalisé
 
+## Bandeau « Nouvelle version disponible » (novembre 2026)
+- Cause : l'appli installée (PWA) téléchargeait la nouvelle version en arrière-plan sans recharger la page ; sur iPhone, l'ancienne version pouvait rester affichée après plusieurs ouvertures (constaté au passage à la v0.1.9).
+- `apps/web/vite.config.ts` : `registerType: "prompt"` : le nouveau service worker attend l'accord (message `SKIP_WAITING`) au lieu de s'activer d'office.
+- `apps/web/src/UpdateBanner.tsx` (rendu dans `main.tsx`, visible aussi sur l'écran de connexion) : `useRegisterSW` de `virtual:pwa-register/react` ; bandeau « Nouvelle version disponible » avec « Mettre à jour » (active la version et recharge) et « Plus tard » ; recherche d'une mise à jour au démarrage, à chaque retour sur l'appli (`visibilitychange`) et toutes les heures, pas hors ligne.
+- `apps/web/package.json` : dépendance directe `workbox-window` 7.4.1 (exigée par le module généré, pnpm strict) ; `tsconfig.json` : types `vite-plugin-pwa/react`.
+- Tests : `update.test.tsx` (rien sans nouvelle version, « Mettre à jour », « Plus tard », vérification au retour sur l'appli) avec la doublure `src/test/pwa-register.mock.ts` (alias Vitest). Build vérifié : `index.html` n'injecte plus `registerSW.js`, `sw.js` n'appelle `skipWaiting()` que sur message.
+- Transition : les appareils encore en v0.1.9 n'ont pas le bandeau ; ils passent à la version suivante à la fermeture complète de l'appli, puis le bandeau prend le relais.
+
 ## Accueil, comptes, budgets, objectifs et prévision plus clairs (novembre 2026)
 - `packages/finance-core/src/budgets.ts` : `BudgetInput.startDate` (remise à zéro) et paramètre `startDate` de `categorySpent` : dans le mois de cette date, seules les dépenses à partir de ce jour comptent (opérations et occurrences récurrentes). Tests : `budgets.test.ts`.
 - `packages/shared` : `PASTEL_COLORS` / `PastelColor` (menthe, rose, ciel, sable, lavande, peche, lagon, sauge) ; `color` dans `AccountDto` et `CategoryDto` ; `AccountPatch.balanceCents` (solde voulu aujourd'hui).

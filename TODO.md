@@ -46,7 +46,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Interface 2FA (activation TOTP depuis le tableau de bord) | Terminé (jalon 4) ; QR code à faire |
 | Solde des comptes incluant les occurrences récurrentes échues | Terminé (jalon 4) ; opérations futures exclues du solde du jour et solde de fin de mois (correctif novembre 2026) |
 | Occurrences récurrentes affichées dans l'historique des opérations | À faire |
-| UI PWA (React/Vite, installable) : connexion, inscription, tableau de bord | Terminé (jalon 3) ; lecture hors-ligne à faire |
+| UI PWA (React/Vite, installable) : connexion, inscription, tableau de bord | Terminé (jalon 3) ; bandeau « Nouvelle version disponible » (novembre 2026, à confirmer sur téléphone à la version suivante) ; lecture hors-ligne à faire |
 | Mode confidentialité (masquer les montants) | Terminé (jalon 3) |
 | Messages d'erreur clairs, notifications, confirmations, boutons et actions rapides lisibles | Terminé |
 | Accessibilité : audit complet (clavier, lecteur d'écran, contrastes) et tests Playwright | À faire |
@@ -87,7 +87,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 |---|---|
 | Unitaires `finance-core` (100 %) | Terminé |
 | Intégration API (Postgres réel) | Terminé (249 tests, exécutés par la CI) |
-| Tests du front (Vitest + Testing Library) | Terminé (108 tests) |
+| Tests du front (Vitest + Testing Library) | Terminé (112 tests) |
 | E2E Playwright | À faire |
 | Sécurité (SAST, DAST, dépendances, images) | Terminé hors DAST : Semgrep, CodeQL, audit des dépendances, Trivy, Gitleaks en CI ; tests CSRF, force brute, sessions, JWT, injection SQL (jalon 14) ; ZAP (DAST) à faire |
 
