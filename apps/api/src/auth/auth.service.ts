@@ -192,28 +192,26 @@ export class AuthService {
   }
 
   /**
-   * Déconnexion : ferme la session de cet appareil, retrouvée par le refresh token et, à défaut, par le jeton d'accès (`sid`,
-   * même expiré). Tous les jetons de la session sont révoqués : le jeton d'accès encore valide est refusé dès la requête suivante.
+   * Déconnexion : ferme la session de cet appareil. Elle est retrouvée par le refresh token (empreinte connue en base) ou, à
+   * défaut, par le jeton d'accès s'il est valide (signature ET date) ; la révocation est toujours bornée à l'utilisateur à qui
+   * appartient le jeton. Tous les jetons de la session sont révoqués : le jeton d'accès est refusé dès la requête suivante.
    * Les autres appareils restent connectés.
    */
   async logout(refreshToken: string | undefined, accessToken: string | undefined) {
-    const sessions = new Set<string>();
-    let owner: { userId: string; householdId: string } | null = null;
-    if (refreshToken) {
-      const record = await this.system.refreshToken.findUnique({ where: { tokenHash: sha256(refreshToken) }, select: { sessionId: true, userId: true, user: { select: { householdId: true } } } });
-      if (record) {
-        sessions.add(record.sessionId);
-        owner = { userId: record.userId, householdId: record.user.householdId };
-      }
+    const fromRefresh = await this.system.refreshToken.findUnique({
+      where: { tokenHash: sha256(refreshToken ?? "") },
+      select: { sessionId: true, userId: true, user: { select: { householdId: true } } },
+    });
+    const fromAccess = await this.jwt.verifyAsync<{ sid?: unknown; userId?: unknown; householdId?: unknown }>(accessToken ?? "").catch(() => null);
+    const targets: { sessionId: string; userId: string; householdId: string }[] = [];
+    if (fromRefresh) targets.push({ sessionId: fromRefresh.sessionId, userId: fromRefresh.userId, householdId: fromRefresh.user.householdId });
+    if (fromAccess && typeof fromAccess.sid === "string" && typeof fromAccess.userId === "string" && typeof fromAccess.householdId === "string") {
+      targets.push({ sessionId: fromAccess.sid, userId: fromAccess.userId, householdId: fromAccess.householdId });
     }
-    if (accessToken) {
-      const claims = await this.jwt.verifyAsync<{ sid?: string; userId?: string; householdId?: string }>(accessToken, { ignoreExpiration: true }).catch(() => null);
-      if (claims?.sid) sessions.add(claims.sid);
-      if (!owner && claims?.userId && claims.householdId) owner = { userId: claims.userId, householdId: claims.householdId };
+    for (const t of targets) {
+      const { count } = await this.system.refreshToken.updateMany({ where: { sessionId: t.sessionId, userId: t.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      if (count > 0) await this.audit.record(t.householdId, t.userId, "auth.logout");
     }
-    if (sessions.size === 0) return;
-    const { count } = await this.system.refreshToken.updateMany({ where: { sessionId: { in: [...sessions] }, revokedAt: null }, data: { revokedAt: new Date() } });
-    if (count > 0 && owner) await this.audit.record(owner.householdId, owner.userId, "auth.logout");
   }
 
   async setupTotp(userId: string) {

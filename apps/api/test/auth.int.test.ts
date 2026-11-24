@@ -1,4 +1,5 @@
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
+import jwt from "jsonwebtoken";
 import { authenticator } from "otplib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { get, owner, post, resetDb, sessionCookies, startApp, admin } from "./helpers.js";
@@ -84,13 +85,31 @@ describe("déconnexion", () => {
     expect((await post(app, "/auth/refresh", undefined, { refresh: laptop.refresh! })).statusCode).toBe(200);
   });
 
-  it("ferme la session même sans refresh token (jeton d'accès seul), et répond 200 sans aucun cookie", async () => {
+  it("ferme la session même sans refresh token (jeton d'accès valide seul), et répond 200 sans aucun cookie", async () => {
     await post(app, "/auth/register", owner());
     const s = await login();
     expect((await post(app, "/auth/logout", undefined, { access: s.access! })).statusCode).toBe(200);
     expect((await get(app, "/accounts", { access: s.access! })).statusCode).toBe(401);
     expect((await post(app, "/auth/refresh", undefined, { refresh: s.refresh! })).statusCode).toBe(401);
     expect((await post(app, "/auth/logout")).statusCode).toBe(200);
+  });
+
+  it("ne ferme pas la session d'un autre utilisateur avec un jeton d'accès forgé ou expiré", async () => {
+    await post(app, "/auth/register", owner());
+    const victim = await login();
+    const { sessionId } = await admin.refreshToken.findFirstOrThrow({ where: { revokedAt: null }, orderBy: { createdAt: "desc" } });
+    const attacker = sessionCookies(await post(app, "/auth/register", owner(2)));
+    const me = await admin.user.findFirstOrThrow({ where: { email: owner(2).email } });
+    const secret = process.env.JWT_SECRET!;
+    // Jeton bien signé de l'attaquant mais portant la session de la victime : la révocation est bornée à son propre utilisateur.
+    const forged = jwt.sign({ userId: me.id, householdId: me.householdId, role: "OWNER", sv: 0, sid: sessionId }, secret, { algorithm: "HS256", expiresIn: "15m" });
+    await post(app, "/auth/logout", undefined, { access: forged });
+    // Jeton expiré : ignoré.
+    const victimUser = await admin.user.findFirstOrThrow({ where: { email: owner().email } });
+    const expired = jwt.sign({ userId: victimUser.id, householdId: victimUser.householdId, role: "OWNER", sv: 0, sid: sessionId }, secret, { algorithm: "HS256", expiresIn: -10 });
+    await post(app, "/auth/logout", undefined, { access: expired });
+    expect((await get(app, "/accounts", { access: victim.access! })).statusCode).toBe(200);
+    expect((await get(app, "/accounts", { access: attacker.access! })).statusCode).toBe(200);
   });
 
   it("note la déconnexion dans le journal d'audit", async () => {

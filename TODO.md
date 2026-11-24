@@ -86,7 +86,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Tâche | Statut |
 |---|---|
 | Unitaires `finance-core` (100 %) | Terminé |
-| Intégration API (Postgres réel) | Terminé (252 tests, exécutés par la CI) |
+| Intégration API (Postgres réel) | Terminé (253 tests, exécutés par la CI) |
 | Tests du front (Vitest + Testing Library) | Terminé (112 tests) |
 | E2E Playwright | À faire |
 | Sécurité (SAST, DAST, dépendances, images) | Terminé hors DAST : Semgrep, CodeQL, audit des dépendances, Trivy, Gitleaks en CI ; tests CSRF, force brute, sessions, JWT, injection SQL (jalon 14) ; ZAP (DAST) à faire |
