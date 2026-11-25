@@ -228,7 +228,7 @@ const hasSh = (() => {
 })();
 
 describe("scripts d'exploitation", () => {
-  const scripts = ["infra/backup/backup.sh", "infra/backup/restore.sh", "infra/backup/scheduler.sh", "infra/backup/test-backup.sh", "infra/scripts/init-secrets.sh", "infra/scripts/smoke.sh"];
+  const scripts = ["infra/backup/backup.sh", "infra/backup/restore.sh", "infra/backup/scheduler.sh", "infra/backup/test-backup.sh", "infra/scripts/init-secrets.sh", "infra/scripts/smoke.sh", "infra/scripts/trivy-db.sh"];
 
   it("sont exécutables, stricts (set -eu) et syntaxiquement valides", () => {
     for (const f of scripts) {
@@ -237,6 +237,23 @@ describe("scripts d'exploitation", () => {
       expect(text, `${f} : set -eu`).toMatch(/^set -eu$/m);
       expect(isExecutable(f), `${f} : exécutable`).toBe(true);
       if (hasSh) expect(() => execFileSync("sh", ["-n", join(ROOT, f)]), `${f} : syntaxe`).not.toThrow();
+    }
+  });
+
+  it("la CI retente les téléchargements fragiles : modules Go de Caddy et base de failles Trivy", () => {
+    const proxy = read("infra/docker/proxy.Dockerfile");
+    expect(proxy).toContain("--mount=type=cache,id=go-mod,target=/go/pkg/mod");
+    expect(proxy).toMatch(/until go get .* && go mod tidy; do/);
+    const db = read("infra/scripts/trivy-db.sh");
+    expect(db).toContain("--download-db-only");
+    expect(db).toContain("ghcr.io/aquasecurity/trivy-db:2");
+    // Chaque analyse Trivy de la CI réutilise la base téléchargée au lieu de la retélécharger.
+    for (const wf of ["docker.yml", "security.yml", "publication-auto.yml", "veille-securite.yml"]) {
+      const text = read(`.github/workflows/${wf}`);
+      expect(text, `${wf} : base téléchargée avec retentatives`).toContain("infra/scripts/trivy-db.sh");
+      const runs = text.match(/docker run --rm [^\n]*aquasec\/trivy|docker run --rm [^\n]*"\$TRIVY"/g) ?? [];
+      expect(runs.length, `${wf} : analyse Trivy`).toBeGreaterThan(0);
+      for (const r of runs) expect(r, `${wf} : ${r}`).toContain("TRIVY_SKIP_DB_UPDATE=true");
     }
   });
 
