@@ -1,5 +1,12 @@
 # DONE — réalisé
 
+## CI : retentatives des téléchargements fragiles (novembre 2026)
+- Cause : trois faux échecs le 24 novembre 2026, sans rapport avec le code — coupures de `proxy.golang.org` / `sum.golang.org` (« stream error … INTERNAL_ERROR ») pendant la construction de Caddy, et « 429 Too Many Requests » du miroir de la base de failles Trivy (`mirror.gcr.io`).
+- `infra/docker/proxy.Dockerfile` : `go get` + `go mod tidy` retentés jusqu'à 5 fois (attente 10, 20, 30, 40 s), cache BuildKit des modules Go (`id=go-mod`) pour garder ce qui est déjà téléchargé d'un essai à l'autre.
+- `infra/scripts/trivy-db.sh` (nouveau) : télécharge la base de failles une seule fois, jusqu'à 5 essais avec attente croissante, un essai sur deux depuis la source d'origine (`ghcr.io/aquasecurity/trivy-db:2`) ; cache `~/.cache/trivy`.
+- Workflows `docker.yml`, `security.yml`, `publication-auto.yml`, `veille-securite.yml` : téléchargent la base avec ce script, puis chaque analyse la réutilise (`TRIVY_SKIP_DB_UPDATE=true`) au lieu de la retélécharger.
+- Tests : `infra.test.ts` (script exécutable, strict et valide ; retentatives dans le Dockerfile ; chaque analyse Trivy des workflows réutilise la base). Vérifié en local : construction de Caddy, téléchargement de la base puis analyse sans mise à jour, shellcheck.
+
 ## Sécurité : déconnexion immédiate (sessions révocables, novembre 2026)
 - Avant : la déconnexion révoquait le refresh token, mais le jeton d'accès (JWT, 15 minutes) restait utilisable jusqu'à son expiration.
 - Migration `20261124200000_sessions_revocables` : `RefreshToken.sessionId` (index) ; les jetons existants deviennent chacun leur propre session.

@@ -38,9 +38,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Base de failles Trivy (téléchargée une fois, avec retentatives)
+        run: sh infra/scripts/trivy-db.sh aquasec/trivy:0.58.1
       - name: Dépendances, secrets et configuration (Dockerfile, compose)
         run: |
-          docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.58.1 fs \
+          docker run --rm -e TRIVY_SKIP_DB_UPDATE=true -v "$HOME/.cache/trivy:/root/.cache/trivy" -v "$PWD:/src" -w /src aquasec/trivy:0.58.1 fs \
             --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
             --skip-dirs node_modules --skip-dirs secrets .
   hadolint:

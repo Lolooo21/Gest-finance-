@@ -44,11 +44,13 @@ jobs:
           $C cp "backup:$F" /tmp/test.dump.age
           if age -d -i /tmp/mauvaise.txt -o /tmp/out.dump /tmp/test.dump.age 2>/dev/null; then echo "ÉCHEC : déchiffrement avec une mauvaise clé"; exit 1; fi
           echo "OK : sauvegarde chiffrée, illisible sans la clé privée."
+      - name: Base de failles Trivy (téléchargée une fois, avec retentatives)
+        run: sh infra/scripts/trivy-db.sh aquasec/trivy:0.58.1
       - name: Scan Trivy des images (gravité haute ou critique, correctifs disponibles)
         run: |
           for image in ghcr.io/lolooo21/gest-finance-api:local ghcr.io/lolooo21/gest-finance-proxy:local ghcr.io/lolooo21/gest-finance-backup:local; do
             echo "== $image"
-            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image \
+            docker run --rm -e TRIVY_SKIP_DB_UPDATE=true -v "$HOME/.cache/trivy:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image \
               --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
           done
       - name: Mise à jour automatique du VPS (succès, puis échec avec retour arrière et restauration)

@@ -15,6 +15,7 @@ Statuts : `À faire` · `En cours` · `En test` · `Terminé` (voir DONE.md)
 | Sauvegardes : afficher la date de la dernière sauvegarde dans l'application et alerter si trop ancienne | Terminé (jalon 15) ; reste : notification push en cas d'alerte |
 | CI complète : Semgrep, CodeQL (dépôt public), Trivy, hadolint, Gitleaks, build des images + test de fumée | Terminé (jalon 8a) ; « Images Docker » vert ; hadolint/Semgrep corrigés, à confirmer au prochain push sur develop ou à la première pull request |
 | CI : e2e Playwright et ZAP baseline | À faire |
+| CI : retentatives des téléchargements fragiles (modules Go de Caddy, base de failles Trivy) | Terminé (novembre 2026) |
 | Publication des images GHCR signées (tags `v*`) | Terminé (jalon 8a), non exécutée |
 | Circuit Git : branche `develop`, workflows déclenchés sur develop/main/PR | Terminé |
 | GitHub : définir `develop` par défaut et protéger `develop`/`main` (PR obligatoire, contrôles requis) | À faire (réglage utilisateur) |
