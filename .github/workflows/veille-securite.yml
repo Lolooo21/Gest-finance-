@@ -46,7 +46,8 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           mkdir -p veille
-          trivy() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" -w /src "$TRIVY" "$@"; }
+          sh infra/scripts/trivy-db.sh "$TRIVY"
+          trivy() { docker run --rm -e TRIVY_SKIP_DB_UPDATE=true -v "$HOME/.cache/trivy:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" -w /src "$TRIVY" "$@"; }
           trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --format json --output "veille/Dépendances (pnpm-lock.yaml de main).json" --skip-dirs node_modules .
           images="$(grep -E '^\s+image: (postgres|tailscale)' infra/docker/compose.prod.yml | awk '{print $2}')"
           if [ -n "$TAG" ]; then

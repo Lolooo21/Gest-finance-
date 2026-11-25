@@ -24,10 +24,16 @@ FROM golang:1.27-alpine3.23 AS caddy-build
 ENV CGO_ENABLED=0
 WORKDIR /build
 # golang.org/x/net (0.62.0 : correctifs CVE-2026-78669 HTTP/2 et CVE-2026-78661 html) et go-jose (4.1.6 : correctif CVE-2026-116587, déni de service) sont relevés par-dessus les versions choisies par Caddy 2.11.7.
-RUN go mod init caddy-build \
+# Téléchargement des modules retenté jusqu'à 5 fois (proxy.golang.org et sum.golang.org coupent parfois la connexion :
+# « stream error … INTERNAL_ERROR ») ; le cache des modules garde ce qui est déjà téléchargé d'un essai à l'autre.
+RUN --mount=type=cache,id=go-mod,target=/go/pkg/mod \
+    go mod init caddy-build \
     && printf 'package main\n\nimport (\n\tcaddycmd "github.com/caddyserver/caddy/v2/cmd"\n\t_ "github.com/caddyserver/caddy/v2/modules/standard"\n)\n\nfunc main() { caddycmd.Main() }\n' > main.go \
-    && go get github.com/caddyserver/caddy/v2@v2.11.7 golang.org/x/net@v0.62.0 github.com/go-jose/go-jose/v4@v4.1.6 \
-    && go mod tidy \
+    && i=1 \
+    && until go get github.com/caddyserver/caddy/v2@v2.11.7 golang.org/x/net@v0.62.0 github.com/go-jose/go-jose/v4@v4.1.6 && go mod tidy; do \
+         if [ "$i" -ge 5 ]; then echo "Échec : modules Go indisponibles après 5 essais" >&2; exit 1; fi; \
+         echo "Modules Go : nouvel essai dans $((i * 10)) s ($i/5)"; sleep $((i * 10)); i=$((i + 1)); \
+       done \
     && go build -trimpath -ldflags "-s -w" -o /go/bin/caddy .
 
 FROM alpine:3.23 AS runtime

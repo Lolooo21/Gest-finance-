@@ -54,7 +54,8 @@ jobs:
           FORCER: ${{ inputs.forcer }}
         run: |
           set -eu
-          trivy() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" -w /src "$TRIVY" "$@"; }
+          sh infra/scripts/trivy-db.sh "$TRIVY"
+          trivy() { docker run --rm -e TRIVY_SKIP_DB_UPDATE=true -v "$HOME/.cache/trivy:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" -w /src "$TRIVY" "$@"; }
           opts="--scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --format json --quiet"
           # shellcheck disable=SC2086 # $opts : options volontairement découpées
           if [ "$MOTIF" = "dependances" ]; then
